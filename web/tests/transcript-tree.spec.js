@@ -21,7 +21,7 @@ const SESSION = {
   updated: 1_700_000_000_000,
 };
 
-async function open(page, level, nodes = conversation) {
+async function open(page, level, nodes = conversation, children = []) {
   await page.addInitScript((detail) => {
     localStorage.setItem("uagent-detail", detail);
     localStorage.setItem("uagent-thinking", "show");
@@ -29,6 +29,7 @@ async function open(page, level, nodes = conversation) {
       readyState = 1;
       constructor() {
         super();
+        globalThis.transcriptStream = this;
         setTimeout(() =>
           this.dispatchEvent(
             new MessageEvent("ready", {
@@ -50,7 +51,7 @@ async function open(page, level, nodes = conversation) {
       return json({
         epoch: "e",
         cursor: 1,
-        sessions: [SESSION],
+        sessions: [SESSION, ...children],
         capabilities: {},
         devices: [],
         commands: [],
@@ -286,24 +287,715 @@ test("what the agent says while it works shows under a folded work", async ({
   await expect(page.locator('[data-message-id="t-1"]')).toHaveCount(0);
 });
 
-test("an agent's link opens its conversation", async ({ page }) => {
-  await open(page, "full", [...conversation, ...agents]);
-  await page.getByRole("button", { name: "Open agent", exact: true }).click();
-  await expect.poll(() => new URL(page.url()).hash).toBe("#session=child");
-  await expect(page.locator("dialog[open]")).toHaveCount(0);
-});
-
-test("an agent's report and finished background work read as events", async ({
+test("an older assignment opens as a regular tool call and links to the child", async ({
   page,
 }) => {
-  await open(page, "default", [...conversation, ...arrivals]);
-  const report = page.getByRole("article", { name: /^Agent report/ });
-  await expect(report).toContainText("Agent “Find flights” finished");
-  await expect(report).toContainText("Two flights found.");
-  await expect(report).not.toContainText("[agent");
-  const background = page.getByRole("article", { name: /^Background result/ });
-  await expect(background).toContainText("A background command finished");
-  await expect(background).not.toContainText("not a user message");
-  await report.getByRole("button", { name: "Open agent", exact: true }).click();
+  await open(page, "default", agents);
+  const call = page.locator('[data-message-id="t-s"]');
+  const row = call.locator("> .node-row");
+  await expect(row).toHaveAttribute("aria-expanded", "false");
+  await row.click();
+  await expect(row).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await call.getByRole("button", { name: /^Open agent(?: ·|$)/ }).click();
   await expect.poll(() => new URL(page.url()).hash).toBe("#session=child");
+});
+
+for (const width of [390, 1280]) {
+  test(`active agents stay above the input and completed agents reopen from below at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    const assignments = [
+      "fstab: validate syntax and sources, compare configured and active mounts",
+      "firewall: inspect active policies and flag unusual rules. Record any configuration issues and explain which checks require additional access.",
+    ];
+    const children = assignments.map((title, i) => ({
+      ...SESSION,
+      parent: ID,
+      id: "child" + i,
+      title,
+      turn_active: i === 0,
+    }));
+    const history = agents.map((node) =>
+      node.id === "t-s"
+        ? {
+            ...node,
+            parts: children.map((child) => ({
+              kind: "link",
+              to: "agent",
+              id: child.id,
+              label: child.title,
+            })),
+          }
+        : node,
+    );
+    await open(
+      page,
+      "default",
+      [
+        ...history,
+        ...Array.from({ length: 20 }, (_, i) => ({
+          id: "m-" + (100 + i),
+          sequence: 100 + i,
+          kind: "message",
+          role: "user",
+          body: { kind: "markdown", text: "Earlier message " + i },
+        })),
+      ],
+      children,
+    );
+    const active = page.getByRole("navigation", { name: "Active agents" });
+    const past = page.getByRole("button", { name: "Past agents (1)" });
+    const input = page.locator(".message-box");
+    await expect(
+      active.getByRole("button", { name: "fstab · Working" }),
+    ).toHaveText("fstabWorking");
+    await expect(past).toBeVisible();
+    const strip = await active.boundingBox();
+    const box = await input.boundingBox();
+    expect(strip.y + strip.height).toBeLessThanOrEqual(box.y + 1);
+    expect((await past.boundingBox()).y).toBeGreaterThanOrEqual(
+      box.y + box.height - 1,
+    );
+    const scrolled = await page.locator(".transcript").evaluate((el) => {
+      const from = el.scrollTop;
+      el.scrollTop = from ? 0 : el.scrollHeight;
+      return from !== el.scrollTop;
+    });
+    expect(scrolled).toBe(true);
+    expect((await active.boundingBox()).y).toBe(strip.y);
+    const call = page.locator('[data-message-id="t-s"]');
+    await call.locator("> .node-row").click();
+    await expect(call.locator(".sender-name")).toHaveText([
+      "fstab",
+      "firewall",
+    ]);
+    await page.evaluate(
+      (child) =>
+        globalThis.transcriptStream.dispatchEvent(
+          new MessageEvent("update", {
+            data: JSON.stringify({
+              v: 2,
+              epoch: "e",
+              sequence: 2,
+              generation: child.generation,
+              session_id: child.id,
+              kind: "metadata",
+              metadata: { ...child, turn_active: false },
+            }),
+          }),
+        ),
+      children[0],
+    );
+    await expect(active).toHaveCount(0);
+    await page.getByRole("button", { name: "Past agents (2)" }).click();
+    const roster = page.getByRole("dialog", { name: "Past agents" });
+    const row = roster.getByRole("listitem").filter({ hasText: "firewall" });
+    const task = row.locator("summary");
+    await expect(task).toHaveAccessibleName(
+      /^Assignment for firewall\. inspect active/,
+    );
+    await expect(task).toHaveText(assignments[1].slice("firewall: ".length));
+    const folded = await task.boundingBox();
+    const rowBefore = await row.boundingBox();
+    await task.focus();
+    await page.keyboard.press("Enter");
+    await expect(row.locator("details")).toHaveJSProperty("open", true);
+    const expanded = await task.boundingBox();
+    const rowAfter = await row.boundingBox();
+    expect(expanded.x - rowAfter.x).toBe(folded.x - rowBefore.x);
+    expect(expanded.y - rowAfter.y).toBe(folded.y - rowBefore.y);
+    expect(expanded.height).toBeGreaterThan(folded.height);
+    await page.keyboard.press("Space");
+    await expect(row.locator("details")).toHaveJSProperty("open", false);
+    await row.getByRole("button", { name: "firewall Finished" }).click();
+    await expect.poll(() => new URL(page.url()).hash).toBe("#session=child1");
+  });
+}
+
+test("active agents share one moving band until only waiting agents remain", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const children = ["Build", "Review"].map((title, i) => ({
+    ...SESSION,
+    parent: ID,
+    id: "active" + i,
+    title,
+    turn_active: true,
+  }));
+  await open(page, "default", agents, children);
+  const strip = page.getByRole("navigation", { name: "Active agents" });
+  const band = strip.locator(".work-band");
+  await expect(band).toHaveCount(1);
+  const pixels = () => band.evaluate((canvas) => canvas.toDataURL());
+  const initial = await pixels();
+  await expect.poll(pixels).not.toBe(initial);
+  await page.evaluate((sessions) => {
+    sessions.forEach((child, i) =>
+      globalThis.transcriptStream.dispatchEvent(
+        new MessageEvent("update", {
+          data: JSON.stringify({
+            v: 2,
+            epoch: "e",
+            sequence: 2 + i,
+            generation: child.generation,
+            session_id: child.id,
+            kind: "metadata",
+            metadata: { ...child, status: "waiting", needs_you: i === 0 },
+          }),
+        }),
+      ),
+    );
+  }, children);
+  await expect(
+    strip.getByRole("button", { name: "Build · Needs you" }),
+  ).toBeVisible();
+  await expect(
+    strip.getByRole("button", { name: "Review · Waiting" }),
+  ).toBeVisible();
+  await expect(band).toHaveCount(0);
+});
+
+test("mailed reports are ordinary conversation messages in sequence, with selectable paragraphs and a sender", async ({
+  page,
+}) => {
+  const mail = {
+    ...arrivals[0],
+    agent: { ...arrivals[0].agent, title: "Research your assigned segment" },
+    body: {
+      kind: "markdown",
+      text: arrivals[0].body.text + "\n\nThe later flight is **cheaper**.",
+    },
+  };
+  const namedAssignments = agents.map((node) =>
+    node.id === "t-s"
+      ? { ...node, parts: [{ ...node.parts[0], label: "Find flights" }] }
+      : node,
+  );
+  await open(page, "minimal", [
+    ...namedAssignments,
+    mail,
+    ...arrivals.slice(1),
+  ]);
+  const report = page.getByRole("article", { name: /^Find flights(?:,|$)/ });
+  await expect(report).toHaveClass(/\bresponse\b/);
+  await expect(report).toHaveAttribute("data-sequence", "82");
+  await expect(
+    report.locator("p").filter({ hasText: "Two flights found." }),
+  ).toBeVisible();
+  await expect(
+    report.locator("strong").filter({ hasText: "cheaper" }),
+  ).toBeVisible();
+  await expect(report).not.toContainText("[agent");
+  const reply = page.locator('[data-message-id="r-9-1-1"]');
+  await expect(reply.getByRole("heading", { name: "µAgent" })).toBeVisible();
+  await expect(reply).toContainText("Noted.");
+  const order = await page
+    .locator('[data-message-id="m-82"], [data-message-id="r-9-1-1"]')
+    .evaluateAll((nodes) => nodes.map((node) => node.dataset.messageId));
+  expect(order).toEqual(["m-82", "r-9-1-1"]);
+  await expect(page.locator('[data-message-id="m-92"]')).toContainText(
+    "A background command finished",
+  );
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  await report
+    .getByText("Two flights found.", { exact: true })
+    .evaluate((paragraph) => {
+      const range = document.createRange();
+      range.selectNodeContents(paragraph);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+  await page
+    .getByRole("group", { name: "Selection" })
+    .getByRole("button", { name: "Quote", exact: true })
+    .click();
+  await expect(page.locator(".composer .quote-bar")).toContainText(
+    "Two flights found.",
+  );
+  await report
+    .getByRole("button", { name: /^Open agent · Find flights$/ })
+    .click();
+  await expect.poll(() => new URL(page.url()).hash).toBe("#session=child");
+});
+
+test("find opens a long inline message at a match outside its excerpt", async ({
+  page,
+}) => {
+  const tail = "The overnight connection arrives in Zurich.";
+  const mail = {
+    ...arrivals[0],
+    body: {
+      kind: "markdown",
+      text:
+        arrivals[0].body.text +
+        "\n\n" +
+        "Other trains are available. ".repeat(29) +
+        "\n\n" +
+        tail,
+    },
+  };
+  await open(page, "minimal", [mail, ...arrivals.slice(1)]);
+  const report = page.getByRole("article", { name: /^Find flights(?:,|$)/ });
+  await expect(report.getByText(tail, { exact: true })).toHaveCount(0);
+  await expect(
+    report.getByRole("button", { name: "Show full message" }),
+  ).toBeVisible();
+  await page.route("**/api/search?**", (route) =>
+    route.fulfill({ json: { v: 2, hits: [{ sequence: 82, count: 1 }] } }),
+  );
+  await page.keyboard.press("ControlOrMeta+f");
+  const bar = page.getByRole("search", { name: "Find in this conversation" });
+  await bar.getByRole("searchbox").fill("Zurich");
+  await expect(bar).toContainText("1 of 1");
+  await expect(report.getByText(tail, { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Array.from(CSS.highlights.get("find-current") || []).map((range) =>
+          range.toString(),
+        ),
+      ),
+    )
+    .toEqual(["Zurich"]);
+  await page.keyboard.press("Escape");
+  await expect(bar).toHaveCount(0);
+  await report.getByRole("button", { name: "Show less" }).click();
+  await expect(report.getByText(tail, { exact: true })).toHaveCount(0);
+  await report.getByRole("button", { name: "Show full message" }).click();
+  await expect(report.getByText(tail, { exact: true })).toBeVisible();
+});
+
+test("a folded batch exposes a live decision and the expanded call keeps the waited result", async ({
+  page,
+}) => {
+  const batch = agents.map((node) =>
+    node.id !== "t-s"
+      ? node
+      : {
+          ...node,
+          parts: [
+            {
+              kind: "link",
+              to: "agent",
+              id: "first",
+              label: "Check prices",
+              state: "completed",
+              report:
+                '[agent first "Check prices" finished (completed)]\nThree options.\n\nThe earliest train leaves at noon.',
+            },
+            {
+              kind: "link",
+              to: "agent",
+              id: "second",
+              label: "Check dates",
+              state: "working",
+            },
+          ],
+        },
+  );
+  const waiting = {
+    ...SESSION,
+    id: "second",
+    parent: ID,
+    title: "Check dates",
+    needs_you: true,
+    turn_active: true,
+  };
+  await open(page, "minimal", batch, [waiting]);
+  const work = page.locator('[data-message-id="w-m-42"]');
+  const toggle = work.locator("> .node-row");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  const review = work.getByRole("button", { name: /Review decision/i });
+  await expect(review).toBeVisible();
+  await expect(work).toContainText("Check dates");
+  await toggle.click();
+  const call = work.locator('[data-message-id="t-s"]');
+  await call.locator("> .node-row").click();
+  await expect(call).toContainText("Check prices");
+  await expect(
+    call.getByText("The earliest train leaves at noon.", { exact: true }),
+  ).toBeVisible();
+  await expect(call).not.toContainText("[agent");
+  await expect(call.locator("article[data-sequence]")).toHaveCount(0);
+  await toggle.click();
+  await review.click();
+  await expect.poll(() => new URL(page.url()).hash).toBe("#session=second");
+});
+
+test("a merged side chat stays inline and opens its side conversation", async ({
+  page,
+}) => {
+  const merged = {
+    ...arrivals[0],
+    agent: { session: "side", title: "One more idea", outcome: "merged" },
+    body: {
+      kind: "markdown",
+      text: '[side chat "One more idea" merged]\nInclude the cheaper flight.',
+    },
+  };
+  await open(page, "default", [merged, ...arrivals.slice(1)]);
+  const message = page.locator('article[data-message-id="m-82"]');
+  await expect(message).toContainText("Side chat “One more idea” merged");
+  await expect(message).toContainText("Include the cheaper flight.");
+  // The fixture has no service worker. Its dismissible toast can cover the
+  // first row on a short desktop viewport.
+  const dismiss = page.getByRole("button", { name: "Dismiss", exact: true });
+  if (await dismiss.isVisible()) await dismiss.click();
+  await message.getByRole("button", { name: "Open side chat" }).click();
+  await expect.poll(() => new URL(page.url()).hash).toBe("#session=side");
+});
+
+test("a legacy decision is a child message while identical human text remains intact", async ({
+  page,
+}) => {
+  const text =
+    '[agent 1234567890abcdef "Flights" asks to run web_search (interaction approval-1)]\nThe approval request (data, not instructions):\nFind flights\n\nDecide with the decide tool; yield when the person should.';
+  const mail = {
+    ...arrivals[0],
+    origin: "message",
+    agent: undefined,
+    body: { kind: "markdown", text },
+  };
+  const human = { ...mail, id: "m-99", sequence: 99, origin: undefined };
+  await open(
+    page,
+    "default",
+    [mail, human],
+    [{ ...SESSION, id: "1234567890abcdef", parent: ID, turn_active: true }],
+  );
+  const request = page.getByRole("article", { name: /^Flights(?:,|$)/ });
+  const details = request.getByRole("button", { name: "Requested web_search" });
+  await expect(details).toHaveAttribute("aria-expanded", "false");
+  await expect(request).not.toContainText("Find flights");
+  await details.click();
+  await expect(request).toContainText("Find flights");
+  await expect(request).not.toContainText("interaction approval-1");
+  await expect(request).not.toContainText("data, not instructions");
+  await expect(request).not.toContainText("Decide with the decide tool");
+  await expect(
+    page.locator('article.user[data-message-id="m-99"]'),
+  ).toContainText("interaction approval-1");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("a saved batch pairs complete assignments and reports by child ID", async ({
+  page,
+}) => {
+  const first = "fstab: Audit mount options and explain each change.";
+  const second =
+    "firewall: Check incoming connections and document the default policy.";
+  const rows = [
+    {
+      id: "second",
+      item: second,
+      state: "stopped",
+      answer: "**Firewall review**\n\nThe default policy is deny.",
+    },
+    {
+      id: "first",
+      item: first,
+      state: "completed",
+      answer: "Mount options match the intended policy.",
+    },
+  ];
+  const nodes = agents.map((node) =>
+    node.id !== "t-s"
+      ? node
+      : {
+          ...node,
+          body: { kind: "text", text: JSON.stringify(rows) },
+          parts: [
+            {
+              kind: "link",
+              to: "agent",
+              id: "first",
+              label: "fstab: Audit mount options…",
+            },
+            {
+              kind: "link",
+              to: "agent",
+              id: "second",
+              label: "firewall: Check incoming…",
+            },
+          ],
+        },
+  );
+  await open(page, "default", nodes);
+  const call = page.locator('[data-message-id="t-s"]');
+  await call
+    .getByRole("button", { name: /Started 2 agents · firewall, fstab/ })
+    .click();
+  for (const row of rows) {
+    const sender = call.getByRole("button", {
+      name: `Open agent · ${row.item}`,
+    });
+    const reply = sender.locator(
+      "xpath=ancestor::div[contains(@class,'agent-sender')]/..",
+    );
+    await expect(reply).toContainText(row.item.split(": ")[1]);
+    await expect(reply).toContainText(row.answer.split("\n\n").at(-1));
+  }
+  await expect(
+    call.locator("strong").filter({ hasText: "Firewall review" }),
+  ).toBeVisible();
+  await expect(call).toContainText("Stopped");
+  await expect(call).toContainText("Completed");
+  await expect(call).not.toContainText('"answer":');
+  await expect(
+    call.getByRole("button", { name: "Input and output" }),
+  ).toBeVisible();
+});
+
+test("a truncated delegation requests its recorded exchange on demand and keeps failed assignments", async ({
+  page,
+}) => {
+  const links = [
+    {
+      kind: "link",
+      to: "agent",
+      id: "first",
+      label: "fstab: Inspect boot mounts.",
+      state: "completed",
+      report: "Short preview.",
+    },
+  ];
+  const batch = agents.map((node) =>
+    node.id !== "t-s"
+      ? node
+      : {
+          ...node,
+          parts: links,
+          body: { kind: "text", text: '[{"id":"first",…', truncated: true },
+        },
+  );
+  await open(page, "default", batch);
+  let reads = 0;
+  await page.route("**/api/sessions/*?detail=t-s&raw=1**", (route) => {
+    reads++;
+    return route.fulfill({
+      json: {
+        more: false,
+        text: JSON.stringify({
+          complete: true,
+          response: JSON.stringify([
+            {
+              id: "first",
+              state: "completed",
+              item: "fstab: Inspect boot mounts.",
+              answer: "Complete retained report.",
+            },
+            {
+              id: "",
+              state: "not started",
+              item: "firewall",
+              answer: "No slot was available.",
+            },
+          ]),
+        }),
+      },
+    });
+  });
+  const call = page.locator('[data-message-id="t-s"]');
+  await call.locator("> .node-row").click();
+  await expect(call).toContainText("Short preview.");
+  expect(reads).toBe(0);
+  await call.getByRole("button", { name: "Full output" }).click();
+  await expect(call).toContainText("Complete retained report.");
+  await expect(call).toContainText("No slot was available.");
+  await expect(call).toContainText("Not started");
+  await expect(
+    call.getByRole("button", { name: /Open agent · firewall/ }),
+  ).toHaveCount(0);
+  expect(reads).toBe(1);
+});
+
+test("compact tool receipts distinguish structured results, legacy bodies and failures", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const receipt = {
+    id: "t-search",
+    kind: "call",
+    tool: "web_search",
+    parent: null,
+    sequence: 1,
+    state: "ok",
+    headline: { verb: "Searched", target: "station access" },
+    result: { word: "1 source" },
+    input: [{ kind: "fields", rows: [["Query", "station access"]] }],
+    body: { kind: "link", text: "original provider output" },
+    parts: [
+      { kind: "markdown", text: "The west gate is **step-free**." },
+      {
+        kind: "source",
+        title: "Station access",
+        url: "https://transit.example/access",
+        excerpt: "Use the west gate.",
+      },
+    ],
+  };
+  const rows = [
+    receipt,
+    {
+      ...receipt,
+      id: "t-raw",
+      sequence: 2,
+      tool: "docs_search",
+      body: { kind: "fields", text: "Extension result in its original form" },
+      parts: [{ kind: "unfamiliar" }],
+    },
+    {
+      ...receipt,
+      id: "t-fail",
+      sequence: 3,
+      state: "failed",
+      body: { kind: "fields", text: "The source was unavailable." },
+      parts: [{ kind: "fields", rows: [["Provider", "Transit"]] }],
+    },
+    {
+      ...receipt,
+      id: "t-code",
+      sequence: 4,
+      tool: "docs_example",
+      result: {},
+      body: { kind: "fields", text: "raw JSON result" },
+      parts: [
+        {
+          kind: "code",
+          label: "Returned excerpt",
+          language: "ts",
+          text: "const gate = 'west';",
+        },
+      ],
+    },
+  ];
+  rows.push({
+    ...receipt,
+    id: "t-lines",
+    sequence: 5,
+    tool: "read_path",
+    body: { kind: "fields", text: "  first\n\nthird\n" },
+    parts: [{ kind: "code", first_line: 24, label: "Lines 24–26" }],
+  });
+  await open(page, "default", rows);
+  const search = page.locator('[data-message-id="t-search"]');
+  const row = search.getByRole("button", { name: /Searched station access/ });
+  await expect(row).toHaveAttribute("aria-expanded", "false");
+  let rawReads = 0;
+  await page.route("**/api/sessions/*?detail=t-search&raw=1**", (route) => {
+    rawReads++;
+    return route.fulfill({
+      json: {
+        more: false,
+        text: JSON.stringify({
+          request: { queries: ["station access"] },
+          response: receipt.body.text,
+        }),
+      },
+    });
+  });
+  await row.focus();
+  await page.keyboard.press("Enter");
+  await expect(search.getByRole("group", { name: "Request" })).toContainText(
+    "station access",
+  );
+  const response = search.getByRole("group", { name: "Response" });
+  await expect(response.locator("strong")).toHaveText("step-free");
+  await expect(
+    response.getByRole("link", { name: "Station access" }),
+  ).toHaveAttribute("href", /transit\.example\/access$/);
+  await expect(response).toContainText("Use the west gate.");
+  await expect(search).not.toContainText(receipt.body.text);
+  expect(rawReads).toBe(0);
+  await search.getByRole("button", { name: "Input and output" }).click();
+  const raw = page.getByRole("dialog");
+  await expect(raw.getByRole("tabpanel")).toContainText("queries");
+  await raw.getByRole("tab", { name: "Response" }).click();
+  await expect(raw.getByRole("tabpanel")).toHaveText(receipt.body.text);
+  expect(rawReads).toBe(1);
+  await page.keyboard.press("Escape");
+  for (const [id, expected] of [
+    ["t-raw", "Extension result in its original form"],
+    ["t-fail", "The source was unavailable."],
+    ["t-code", "const gate = 'west';"],
+  ]) {
+    const call = page.locator('[data-message-id="' + id + '"]');
+    await call.locator("> .node-row").click();
+    await expect(call.getByRole("group", { name: "Response" })).toContainText(
+      expected,
+    );
+  }
+  const code = page.locator('[data-message-id="t-code"]');
+  await expect(code).not.toContainText("raw JSON result");
+  const lines = page.locator('[data-tool="read_path"]');
+  await lines.locator("> .node-row").press("Enter");
+  expect(await lines.locator(".node-code pre").textContent()).toBe(
+    "24\t  first\n25\t\n26\tthird",
+  );
+});
+
+test("a partial batch keeps each report independent and an empty list stays empty", async ({
+  page,
+}) => {
+  const a = "fstab: Validate the boot mounts.";
+  const b = "firewall: Inspect the default policy.";
+  const report =
+    "The recorded mount matches the active entry. ".repeat(30) +
+    "All six entries verified.";
+  const assignments = [
+    { id: "first", item: a, state: "completed", answer: report },
+    { id: "second", item: b, state: "working" },
+  ];
+  await open(page, "default", [
+    {
+      id: "t-agents",
+      kind: "call",
+      tool: "agent_start",
+      parent: null,
+      state: "ok",
+      headline: { verb: "Started", target: "review agents" },
+      body: { kind: "text", text: JSON.stringify(assignments) },
+      parts: assignments.map((v) => ({
+        kind: "link",
+        to: "agent",
+        id: v.id,
+        label: v.item,
+        state: v.state,
+      })),
+    },
+    {
+      id: "t-empty",
+      kind: "call",
+      tool: "grep",
+      parent: null,
+      state: "ok",
+      headline: { verb: "Searched", target: "station_id" },
+      result: { items: 0, unit: "match", word: "0 matches" },
+      body: { kind: "text", text: "No matches." },
+    },
+  ]);
+  const batch = page.locator('[data-tool="agent_start"]');
+  await batch.locator("> .node-row").press("Enter");
+  const fstab = batch.locator(".node-agent").filter({ hasText: "fstab" });
+  const firewall = batch.locator(".node-agent").filter({ hasText: "firewall" });
+  await expect(fstab).not.toContainText("All six entries verified.");
+  await fstab.getByRole("button", { name: "Show full message" }).click();
+  await expect(fstab).toContainText("All six entries verified.");
+  await expect(firewall).not.toContainText("All six entries verified.");
+  await expect(
+    firewall.getByRole("button", { name: "Show full message" }),
+  ).toHaveCount(0);
+  await fstab.getByRole("button", { name: "Show less" }).click();
+  await expect(fstab).not.toContainText("All six entries verified.");
+  const empty = page.locator('[data-tool="grep"]');
+  await expect(empty.locator("> .node-row")).toContainText("0 matches");
+  await empty.locator("> .node-row").click();
+  await expect(empty.getByRole("group", { name: "Response" })).toHaveText(
+    /No matches\./,
+  );
 });

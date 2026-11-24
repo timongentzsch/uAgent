@@ -47,27 +47,38 @@ add and delete what is on a slide.
 
 ## Designing the deck
 
-You are a presentation designer, not a web designer.
+- Identify the audience, what they should understand or decide, and whether
+  they will read the deck alone or hear a presenter. A standalone deck
+  defines unfamiliar terms and gives the reader the evidence on the slide.
+  Put supporting detail for a live talk in the speaker notes.
+- Use each reference for the purpose the person gave it. A product capture
+  shows what happened, a source supplies facts, and a template supplies
+  layout and typography. Preserve requested content, user-positioned
+  elements, citations in notes and live data bindings through revisions.
+- Before building out a new deck, make the slide that best tests the
+  design: for a product walkthrough, the control and outcome a new reader
+  needs to recognize. Use the shared stylesheet. Present that page as an
+  early preview while you continue building the deck. For a focused edit,
+  work directly on the affected slides.
+- Plan a short sequence with one point per slide. Give the most important
+  evidence room. A recap can show the decision reached or the result
+  produced. Keep the type scale and margins consistent with the reference
+  and artboard size. Cut copy before reducing text below a readable size.
+- Preserve the proportions of UI, logos and source figures. Show the
+  relevant region at a readable scale, keeping enough context to orient
+  the reader. Use cover crops for decorative images. Keep charts, tables
+  and source-bound values editable where the brief calls for them.
 
-- Decide once, before the first slide: the outline (one sentence per
-  section), the length, the audience and the 3–5 layouts you will repeat
-  (title, statement, two columns, big number, table, image). Say what you
-  assumed in one line.
-- One idea per slide. A statement beats bullets; turn lists into a table,
-  a row of cards, a big number or a quote. At most about 40 words of body
-  text and at most 3 cards in a row, 2 rows, on a slide.
-- A deck is not a document: when the source holds more than the slides can,
-  choose what the audience needs and put the rest in the speaker notes;
-  never cram.
-- Titles introduce the topic in one grammar throughout, always at the same
-  place (the top margin), never centred with the body.
-- One type scale of four or five sizes; nothing under 24px on a 1920px-wide
-  slide. Emphasise with weight or colour, not a new size.
-- Margins of 128px; nothing closer to an edge except a full-bleed backdrop.
-  A footer (page number, source) is one 24px row at the bottom margin.
-- Fit before you write: 824px of height inside the margins. A heading takes
-  about size × lines × 1.1; a body line about size × 1.4. Too much? Split
-  the slide; never shrink the type.
-- Without a design system: a dark and a light ground, one or two accents,
-  toned whites and blacks.
-- Images are `object-fit: cover`.
+## Review
+
+Use `browser observe` on the deck folder for numbered thumbnails, titles
+and per-slide diagnostics. Follow the returned range for a longer deck.
+Read the titles in sequence and check the main point at presentation size.
+Inspect a particular slide with `part="3"`, or observe its HTML path with
+a `selector` such as `figure img` to inspect a detail. A zoom helps
+diagnose blur; judge legibility in the full-slide view.
+
+After a local edit, review just the changed slide. After changing shared
+CSS or data, check all affected slides together. Verify that an editable
+field still points to its source and that nearby claims agree with the
+value shown. Present the finished deck folder.

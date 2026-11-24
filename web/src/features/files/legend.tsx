@@ -14,16 +14,38 @@ const GRID_WIDTH = 176;
 export function useCurrentInView(
   list: RefObject<HTMLElement | null>,
   index: number,
+  grid = false,
 ) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: whenever another is current
   useEffect(() => {
-    const current = list.current?.querySelector<HTMLElement>(
-      '[aria-selected="true"]',
+    const pane = list.current;
+    const current = pane?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!pane || !current) return;
+
+    const box = current.getBoundingClientRect();
+    const view = pane.getBoundingClientRect();
+    const left = view.left + pane.clientLeft;
+    const top = view.top + pane.clientTop;
+    const right = left + pane.clientWidth;
+    const bottom = top + pane.clientHeight;
+    // A click already reached this item, even if only its edge is visible.
+    if (
+      document.activeElement === current &&
+      box.right > left &&
+      box.left < right &&
+      box.bottom > top &&
+      box.top < bottom
+    )
+      return;
+
+    // Reveal keyboard and toolbar selections inside this list alone.
+    pane.scrollBy(
+      Math.min(0, box.left - left) || Math.max(0, box.right - right),
+      Math.min(0, box.top - top) || Math.max(0, box.bottom - bottom),
     );
-    current?.scrollIntoView({ block: "nearest", inline: "nearest" });
-    if (list.current?.contains(document.activeElement))
-      current?.focus({ preventScroll: true });
-  }, [index]);
+    if (pane.contains(document.activeElement))
+      current.focus({ preventScroll: true });
+  }, [index, grid]);
 }
 
 // The sequence small beside the stage (a filmstrip under it in a narrow pane).
@@ -78,14 +100,7 @@ export default function Legend({
     for (const item of items) observer.observe(item);
     return () => observer.disconnect();
   }, [stamp]);
-  useCurrentInView(list, index);
-  const option = (at: number, label: string) => ({
-    role: "option" as const,
-    "aria-selected": at === index,
-    "aria-label": label,
-    tabIndex: at === index ? 0 : -1,
-    onClick: () => to(at),
-  });
+  useCurrentInView(list, index, grid);
   // A slide dragged to a new place: the press, held once it has moved, and
   // the gap it would drop into (0 is before the first). A press that moved
   // opens nothing.
@@ -194,6 +209,7 @@ export default function Legend({
           class="page-legend-item"
           data-path={board.path}
           data-failed={board.failed || undefined}
+          data-issue={board.issue || undefined}
           data-skipped={board.skip}
           data-dragging={drop?.from === at || undefined}
           data-drop={
@@ -220,17 +236,21 @@ export default function Legend({
             onMessage={heard(board.path)}
           />
           <span class="page-legend-name small truncate">
-            {board.failed && <TriangleAlert />}
+            {(board.failed || board.issue) && <TriangleAlert />}
             {board.skip && <EyeOff />}
             {`${at + 1} · ${board.title}`}
           </span>
           <Button
             variant="quiet"
             class="cover"
-            {...option(
-              at,
-              `${board.section ? `${board.section}, ` : ""}${unit} ${at + 1}: ${board.title}${board.failed ? ", failed to run" : ""}${board.skip ? ", skipped" : ""}`,
-            )}
+            role="option"
+            aria-label={`${board.section ? `${board.section}, ` : ""}${unit} ${at + 1}: ${board.title}${board.failed ? ", failed to run" : ""}${board.issue ? `, ${board.issue}` : ""}${board.skip ? ", skipped" : ""}`}
+            aria-selected={at === index}
+            tabIndex={at === index ? 0 : -1}
+            onClick={(event) => {
+              event.currentTarget.focus({ preventScroll: true });
+              to(at);
+            }}
           />
         </div>
       ))}

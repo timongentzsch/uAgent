@@ -13,6 +13,18 @@ export const isRunning = (item: Session, online: boolean) =>
 export const sessionById = (sessions: Session[], id?: string) =>
   sessions.find((item) => item.id === id);
 
+// Keep the catalogue's order when showing child sessions under their parent.
+export function childrenByParent(sessions: Session[]) {
+  const children = new Map<string, Session[]>();
+  for (const session of sessions) {
+    if (!session.parent) continue;
+    const siblings = children.get(session.parent);
+    if (siblings) siblings.push(session);
+    else children.set(session.parent, [session]);
+  }
+  return children;
+}
+
 export type SessionState = "waiting" | "failed" | "working" | "idle";
 
 export function statusOf(item: Session, online: boolean): SessionState {

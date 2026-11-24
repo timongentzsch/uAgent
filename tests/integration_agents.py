@@ -132,12 +132,49 @@ def test_a_waited_agent_answers_inline_and_keeps_its_conversation(root, home, *,
         assert_true(header(agent)["turns"] == 2, header(agent))
 
 
+def test_wait_keeps_a_second_queued_report_for_ordinary_delivery(root, home, *, binary):
+    def route(_, body):
+        if brief_of(body):
+            (child,) = agent_files(home)
+            sender = session_id(child)
+            parent = header(child)["agent"]["parent"]
+            mailbox = home / ".uagent" / "mail" / parent
+            # Publish both reports in one rename so the wait sees them together.
+            staged = mailbox / "staged"
+            staged.mkdir(parents=True)
+            for number in (1, 2):
+                text = f"queued report {number}"
+                mail = {
+                    "format": 1,
+                    "id": str(number),
+                    "from": sender,
+                    "to": parent,
+                    "sender_path": str(child),
+                    "body": {"state": "completed", "text": text},
+                }
+                (staged / f"000-{number}.json").write_text(json.dumps(mail))
+            staged.replace(mailbox / "new")
+            return event({"content": "finished"})
+        if not results_of(body):
+            return tool_call("agent_start", {"brief": "BRIEF report"})
+        return event({"content": "done"})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "-p", "wait", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        parents = [body for _, body in server.requests if results_of(body) and not brief_of(body)]
+        (row,) = json.loads(results_of(parents[0])[0])
+        assert_true("queued report 1" in row["answer"], row)
+        assert_true(any("queued report 2" in text_of(body) for body in parents), parents)
+
+
 def test_plan_mode_starts_agents_that_only_read(root, home, *, binary):
     """Whatever it asks for, an agent started in plan mode only reads; a turn
     that writes no plan still ends cleanly."""
 
     def route(_, body):
         if brief_of(body):
+            assert_true(approval_mode(body) == "plan", approval_mode(body))
             return event({"content": "agent looked"})
         if not results_of(body):
             return tool_call("agent_start", {"brief": "BRIEF change it", "edits": "folder"})
@@ -431,9 +468,8 @@ def test_a_person_writing_into_an_agents_turn_decides_it(root, home, *, binary):
             process.kill()
 
 
-def test_an_agent_takes_its_parents_mode_auto_at_most(root, home, *, binary):
-    """A yolo parent's agent reviews its own calls (Auto); one the person puts
-    in yolo keeps it when its runtime starts again."""
+def test_agent_inherits_yolo_and_keeps_its_chosen_mode_after_restart(root, home, *, binary):
+    """A child inherits YOLO, and a later explicit choice survives a restart."""
     state = {"holding": threading.Event(), "release": threading.Event(), "modes": []}
 
     def route(_, body):
@@ -459,7 +495,7 @@ def test_an_agent_takes_its_parents_mode_auto_at_most(root, home, *, binary):
             assert_true(state["holding"].wait(budget(20)), "the agent never ran its brief")
             client = client_of(home, agent_files(home)[0])
             try:
-                chosen = client.send("permissions", mode="yolo")
+                chosen = client.send("permissions", mode="ask")
                 client.until(
                     lambda f: (
                         f.get("kind") == "outcome" and f.get("request_id") == chosen["request_id"]
@@ -473,7 +509,48 @@ def test_an_agent_takes_its_parents_mode_auto_at_most(root, home, *, binary):
         finally:
             state["release"].set()
             process.kill()
-        assert_true(state["modes"] == ["auto", "yolo"], state["modes"])
+        assert_true(state["modes"] == ["yolo", "ask"], state["modes"])
+
+
+def test_readonly_yolo_children_can_research_without_parent_decisions(root, home, *, binary):
+    """Reproduce the parallel search/fetch assignment using loopback fixtures."""
+    from integration_providers import search_env
+
+    items = ["editor", "terminal", "desktop"]
+
+    def search(_, _body):
+        return event({"content": "source located"})
+
+    def route(_, body):
+        results = results_of(body)
+        if brief := brief_of(body):
+            assert_true(approval_mode(body) == "yolo", approval_mode(body))
+            assert_true("write_file" not in function_names(body), function_names(body))
+            if not results:
+                return tool_call("web_search", {"queries": [brief]})
+            if len(results) == 1:
+                assert_true("source located" in results[0], results)
+                return tool_call("web_fetch", {"url": sources.url + "/evidence"}, call_id="fetch")
+            # Loopback is denied by the fetcher even in YOLO. Reaching it
+            # proves the tool executed without an approval round trip.
+            assert_true("refused non-public network destination" in results[-1], results)
+            return event({"content": "verified"})
+        assert_true(not ASKS.search(text_of(body)), "research asked the parent for permission")
+        if not results:
+            return tool_call("agent_start", {"brief": "BRIEF research", "items": items})
+        rows = json.loads(results[-1])
+        assert_true([row["item"] for row in rows] == items, rows)
+        assert_true(all(row["state"] == "completed" for row in rows), rows)
+        return event({"content": "research complete"})
+
+    with Server([search]) as sources, Server([route]) as model:
+        env = search_env(home, model, sources, UAGENT_APPROVAL="yolo", UAGENT_AGENTS_MAX="3")
+        result = run(root, env, "-p", "compare all three", timeout=45, binary=binary)
+        assert_true(
+            result.stdout.strip() == "research complete",
+            (result.stdout, result.stderr, model.route_failures, sources.route_failures),
+        )
+        assert_true(len(sources.requests) == 3 and not sources.get_requests, sources.get_requests)
 
 
 def test_an_agent_that_may_not_edit_only_reads(root, home, *, binary):

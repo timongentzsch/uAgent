@@ -9,6 +9,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "include/agent/conversation.h"
@@ -22,6 +23,7 @@ inline constexpr size_t kViewBytes = KiB(384);
 struct TranscriptEntry {
   const json* message;
   std::string kind;
+  const std::string* legacy_work = nullptr;
 };
 
 // Oldest first; with `calls`, an assistant message's calls too.
@@ -52,6 +54,8 @@ class TranscriptView {
   const std::map<uint64_t, TranscriptEntry>& Index() const;
   mutable std::once_flag indexed_;
   mutable std::map<uint64_t, TranscriptEntry> entries_;
+  // Borrowed from the retained agent_start results, including older pages.
+  mutable std::map<std::string_view, std::string_view> agent_labels_;
 };
 
 // Presentation only: no system prompt, provider replay, base64 or path link.

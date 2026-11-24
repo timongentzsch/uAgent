@@ -232,7 +232,7 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
     return ToolFailure(ToolErrorCode::kInternal, "read failed");
   }
   bool more = output_limited || (shown >= limit && lines.More());
-  if (total == 0) return ToolSuccess("(empty file)");
+  if (total == 0) return ListResult("(empty file)", 0, "line");
   if (offset > total && !more) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "offset " + std::to_string(offset) + " is beyond EOF (" +
@@ -254,6 +254,16 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
               std::to_string(requested_lines) + " requested";
   }
   ToolResult result = ListResult(std::move(out), last - first + 1, "line");
+  const std::string range = first == last ? "Line " + std::to_string(first)
+                                          : "Lines " + std::to_string(first) +
+                                                "–" + std::to_string(last);
+  const std::string label = range + (line_truncated ? " · partial line"
+                                     : more ? " · more available"
+                                            : " of " + std::to_string(total));
+  // The existing output owns the bytes. Number its lines when opened.
+  result.parts.push_back(
+      {{"kind", "code"}, {"label", label}, {"first_line", first}});
+  result.body_kind = "fields";
   result.hint = header + "]";
   if (!output_limited) result.read_range = ReadRange{path, first, last};
   return result;
@@ -725,19 +735,20 @@ ToolResult ToolWriteFileWithDisplay(const std::string& path,
   ToolResult result =
       ToolAtomicWrite(path, content, kSharedFileMode, true, overwrite);
   if (!result.Ok()) return result;
-  result.effect = FileEffect{CanonicalAccessPath(path).string(), existed,
-                             existed ? previous : std::nullopt,
-                             HashHex(content), original_mode};
-  if (!previous) return result;
-  EditDisplay diff = WholeFileDiff(*previous, content);
-  if (diff.body.empty()) {
-    result.facts.no_change = true;
-    return result;
+  if (previous) {
+    EditDisplay diff = WholeFileDiff(*previous, content);
+    if (!diff.body.empty()) {
+      result = ChangeResult(std::move(result.output), std::move(diff.body),
+                            diff.added, diff.removed);
+    } else {
+      result.facts.no_change = existed && *previous == content;
+    }
   }
-  ToolResult change = ChangeResult(
-      std::move(result.output), std::move(diff.body), diff.added, diff.removed);
-  change.effect = std::move(result.effect);
-  return change;
+  result.facts.outcome = existed ? "replaced" : "created";
+  result.effect = FileEffect{CanonicalAccessPath(path).string(), existed,
+                             existed ? std::move(previous) : std::nullopt,
+                             HashHex(content), original_mode};
+  return result;
 }
 
 std::string WholeFileDiffDisplay(const std::string& path,
@@ -788,7 +799,7 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
     return ToolFailure(FileToolError(ec), "cannot open directory " + p);
   }
   std::sort(entries.begin(), entries.end());
-  if (entries.empty()) return ToolSuccess("(empty directory)");
+  if (entries.empty()) return ListResult("(empty directory)", 0, "entry");
   if (offset > static_cast<int64_t>(entries.size())) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "offset is beyond directory entries (" +
@@ -818,6 +829,11 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
   ToolResult result = ListResult(preview ? std::move(*preview) : std::move(out),
                                  static_cast<int64_t>(count), "entry");
   result.hint = header;
+  if (offset > 1 || end < entries.size()) {
+    result.parts = json::array({FieldsPart(
+        {{"Entries", std::to_string(offset) + "–" + std::to_string(end) +
+                         " of " + std::to_string(entries.size())}})});
+  }
   if (preview) {
     AddHint(result, "[small directory contents]");
     result.result_chars = ReadFileResultChars();

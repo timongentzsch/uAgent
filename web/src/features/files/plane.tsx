@@ -173,6 +173,7 @@ export default function Plane({
             class="canvas-page"
             data-media={item.media}
             data-failed={item.failed || undefined}
+            data-issue={item.issue || undefined}
             style={{ left: `${item.x}px`, top: `${item.y}px` }}
           >
             <Frame

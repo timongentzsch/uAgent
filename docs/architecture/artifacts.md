@@ -240,6 +240,14 @@ and sheets left out), each with a named `@page` of its own artboard's size,
 served with `script-src 'none'`. Chrome renders in a throwaway context,
 waits up to 10 s for fonts and `window.uagentReady`, and prints or shoots.
 
+A browser `observe` on a deck folder uses the same ordered artboards,
+including their individual page sizes. The host serves them inside an inert
+HTML template and Chrome loads up to eight selected slides. Each sandboxed
+frame sends its existing Files title and layout checks to the review page.
+The tool returns a numbered contact sheet and the corresponding file names
+and diagnostics. A single `part` draws that slide in detail. Observing a
+slide file with a CSS `selector` captures that element at its drawn size.
+
 **`present` and the page check.** `present` (`src/app/present.cc`) asks the
 folder listing what a path is. An artifact becomes a result part
 `{kind: "artifact", type, path, cover, count}` that the conversation shows
@@ -250,7 +258,9 @@ reads the `uagent page:` console lines it logged, or, if the window is not
 the artboard's size, reloads the page at that size in a throwaway context
 and reads them there. The checks are: files that did not load, a page
 larger than its artboard, a section that overflows, overlapping text on a
-slide, a print line not understood, and a sheet's cells in error.
+slide, a print line not understood, and a sheet's cells in error. The
+overlap check measures visible letter bounds when two text ranges intersect.
+Files distinguishes layout findings, formula errors and page failures.
 
 ## Invariants and limits
 

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <map>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -98,6 +99,40 @@ const json* ResultRecord(const json& facts, uint64_t sequence,
   return FindToolFacts(facts, id, call_id);
 }
 
+// Old expanded patches kept only the per-file receipts. Eviction can leave
+// gaps among their numeric call-id suffixes, including the first receipt.
+void RestorePatch(json& record, const json& facts, const std::string& response,
+                  const std::string& call) {
+  if (response.empty() || call.empty()) return;
+  std::map<int64_t, std::string> parts;
+  bool failed = false;
+  const std::string prefix = call + ":";
+  for (const auto& [id, row] : facts.items()) {
+    const auto* subcall = JsonStringRef(row, "call_id");
+    if (!subcall || !subcall->starts_with(prefix) ||
+        JsonValue(row, "response_id", "") != response)
+      continue;
+    const auto* name = JsonStringRef(row, "name");
+    if (!name || (*name != "write_file" && *name != "edit_file" &&
+                  *name != "delete_file"))
+      continue;
+    int64_t order = 0;
+    if (!ParseInt64(subcall->c_str() + prefix.size(), order) || order < 1 ||
+        id != DetailId(response, *subcall))
+      continue;
+    parts.emplace(order, id);
+    failed |= JsonValue(row, "state", "") == "failed";
+  }
+  if (parts.empty()) return;
+  json children = json::array();
+  for (const auto& part : parts) children.push_back(part.second);
+  record["name"] = "apply_patch";
+  record["state"] = failed ? "failed" : "recorded";
+  record["headline"] = {{"verb", "Patch"}, {"target", ""}};
+  record["result"] = {{"word", Plural(parts.size(), "recorded change")}};
+  record["children"] = std::move(children);
+}
+
 // What a call handed the person: a file, or an artifact in the folder.
 bool IsHandedOver(const json& part) {
   const std::string kind = JsonValue(part, "kind", "");
@@ -116,9 +151,12 @@ json MakeNode(std::string id, std::string_view parent, std::string_view kind,
 
 void SetBody(json& node, std::string_view kind, const std::string& text,
              bool truncated) {
-  if (Blank(text)) return;
-  node["body"] = {{"kind", kind}, {"text", Utf8Trunc(text, kPreviewChars - 3)}};
-  if (truncated || text.size() > kPreviewChars) {
+  if (text.empty() || (kind != "fields" && Blank(text))) return;
+  const bool clipped = text.size() > kPreviewChars;
+  node["body"] = {
+      {"kind", kind},
+      {"text", clipped ? Utf8Trunc(text, kPreviewChars - 3) : text}};
+  if (truncated || clipped) {
     node["body"]["truncated"] = true;
   }
 }
@@ -227,12 +265,27 @@ json CallNode(const json& record, std::string_view work) {
                                            JsonValue(activity, "label",
                                                      JsonValue(record, "name",
                                                                "tool"))))}});
+  if (const std::string* name = JsonStringRef(record, "name")) {
+    node["tool"] = *name;
+    if (*name == "write_file" && state == "ok") {
+      const json result = JsonValue(record, "result", kNone);
+      const std::string effect = JsonValue(result, "outcome", "");
+      if (effect == "created" || effect == "replaced") {
+        node["headline"]["verb"] = JsonValue(result, "no_change", false)
+                                       ? "Unchanged"
+                                   : effect == "created" ? "Created"
+                                                         : "Replaced";
+      }
+    }
+  }
   // A change is told by its diff, kept whole up to its own bound.
   if (const std::string change = JsonValue(record, "change", "");
       state == "ok" && !change.empty()) {
-    node["body"] = {{"kind", "diff"},
-                    {"text", change},
-                    {"truncated", record.contains("change_path")}};
+    node["body"] = {
+        {"kind", "diff"},
+        {"text", change},
+        {"truncated", record.contains("change_path") ||
+                          JsonValue(record, "diff_truncated", false)}};
   } else {
     SetBody(node, JsonValue(record, "body_kind", "text"),
             JsonValue(record, "output", ""),
@@ -307,9 +360,10 @@ json WorkNode(const std::string& message, const json& facts) {
 json EntryNode(const json& entry) {
   const std::string kind = JsonValue(entry, "kind", "activity");
   const std::string state = JsonValue(entry, "state", "ok");
-  json node =
-      MakeNode(JsonValue(entry, "id", ""), JsonValue(entry, "turn_root", ""),
-               kind == "turn_summary" ? "footer" : "notice");
+  const std::string work = JsonValue(entry, "work", "");
+  json node = MakeNode(JsonValue(entry, "id", ""),
+                       work.empty() ? JsonValue(entry, "turn_root", "") : work,
+                       kind == "turn_summary" ? "footer" : "notice");
   Keep(node, entry, {"sequence", "time", "incoming", "summary", "compaction"});
   if (kind == "turn_summary") return node;
   node["state"] = state;
@@ -370,6 +424,7 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
   if (entry.kind == "activity" || entry.kind == "turn_summary" ||
       entry.kind == "compaction") {
     out.push_back(EntryNode(message));
+    if (entry.legacy_work) out.back()["parent"] = *entry.legacy_work;
   }
   if (entry.kind != "user" && entry.kind != "attachment" &&
       entry.kind != "assistant" && entry.kind != "tool_result") {
@@ -385,17 +440,40 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
     out.push_back(std::move(node));
   };
   // A call, then the files it handed over.
-  const auto add_call = [&](const json& record) {
+  const auto add_receipt = [&](const json& record) {
     add(CallNode(record, work));
     if (json files = FilesNode(record, turn); !files.is_null()) {
       add(std::move(files));
     }
+  };
+  const auto add_call = [&](const json& record) {
+    const json* children = JsonArray(record, "children");
+    const size_t parent = out.size();
+    add_receipt(record);
+    if (!children) return;
+    const size_t first_child = out.size();
+    // Expanded calls share a single result message for the model. Rebuild
+    // their individual receipts in execution order on every transcript page.
+    for (const json& child : *children) {
+      if (!child.is_string()) continue;
+      const auto found = facts.find(child.get_ref<const std::string&>());
+      if (found != facts.end()) {
+        const size_t child_index = out.size();
+        add_receipt(*found);
+        out[child_index]["parent"] = out[parent]["id"];
+      }
+    }
+    if (out.size() > first_child) out[parent].erase("body");
   };
   if (entry.kind == "tool_result") {
     std::string id;
     const json* found = ResultRecord(facts, sequence, message, id);
     json record = found ? *found : json::object();
     record["detail_id"] = id;
+    if (!found) {
+      RestorePatch(record, facts, JsonValue(metadata, "response_id", ""),
+                   JsonValue(message, "tool_call_id", ""));
+    }
     // Saved calls finished by definition: a missing receipt is a gap in
     // history, never live work.
     if (!record.contains("state")) record["state"] = "ok";
@@ -467,6 +545,9 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
     if (!record.contains("name")) {
       record["name"] = Utf8Trunc(
           JsonValue(JsonValue(call, "function", kNone), "name", ""), 128);
+    }
+    if (!found && record["name"] == "apply_patch") {
+      RestorePatch(record, facts, response_id, call_id);
     }
     add_call(record);
   }

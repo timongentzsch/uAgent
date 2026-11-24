@@ -1,5 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -188,6 +189,13 @@ class Recorder {
     json facts = Links();
     facts["detail_id"] = id;
     Published(std::move(facts));
+  }
+
+  std::string Notice(json facts) {
+    facts["turn_root"] = turn_;
+    json node = EntryNode(conversation_.RecordEntry(std::move(facts)));
+    Changed(node);
+    return node["id"].get<std::string>();
   }
 
   void Footer(double duration_ms, const std::string& outcome) {
@@ -665,6 +673,183 @@ TEST_CASE(TestGoldenPageOfOneLongTurnKeepsItsHead) {
   const json older = view.Page(first["before"].get<uint64_t>());
   CHECK(!older["more"].get<bool>());
   CHECK(older["nodes"].front()["id"] == nodes.front()["id"]);
+}
+
+TEST_CASE(TestExpandedPatchRestoresItsChildrenAndTheirOutcomes) {
+  Recorder turn;
+  turn.Say("Apply the patch");
+  const std::string parent = DetailId("response", "patch");
+  turn.Reply("response", "", "", {{"patch", "apply_patch"}});
+  turn.Result("patch", parent);
+  Conversation saved = turn.History();
+  saved.RecordDisplay(parent, {{"name", "apply_patch"},
+                               {"children", {"a", "b"}},
+                               {"state", "failed"},
+                               {"output", "combined"}});
+  saved.RecordDisplay("a", {{"detail_id", "a"},
+                            {"group", parent},
+                            {"name", "write_file"},
+                            {"state", "ok"},
+                            {"change", "+new"},
+                            {"result", {{"outcome", "created"}}}});
+  saved.RecordDisplay("b", {{"detail_id", "b"},
+                            {"group", parent},
+                            {"name", "edit_file"},
+                            {"state", "failed"},
+                            {"output", "context did not match"}});
+  for (const auto& nodes :
+       {LastNodes(saved),
+        TranscriptView(saved).Page()["nodes"].get<std::vector<json>>()}) {
+    auto row = std::ranges::find_if(
+        nodes, [&](const auto& n) { return n["id"] == parent; });
+    REQUIRE(std::distance(row, nodes.end()) >= 3);
+    CHECK((*row)["state"] == "failed");
+    CHECK(!row->contains("body"));
+    CHECK((row + 1)->at("headline")["verb"] == "Created");
+    CHECK((row + 1)->at("body")["kind"] == "diff");
+    CHECK((row + 2)->at("parent") == parent);
+    CHECK((row + 2)->at("body")["text"] == "context did not match");
+  }
+}
+
+TEST_CASE(TestLegacyExpandedPatchUsesRecordedChildren) {
+  Recorder turn;
+  turn.Say("Patch two files");
+  const std::string parent = DetailId("response", "patch");
+  turn.Reply("response", "", "", {{"patch", "apply_patch"}});
+  turn.Result("patch", parent);
+  Conversation saved = turn.History();
+  saved.RecordDisplay(saved.LastDisplayId(), {{"response_id", "response"}});
+  for (int part : {2, 10}) {
+    const std::string call = "patch:" + std::to_string(part);
+    const std::string id = DetailId("response", call);
+    saved.RecordDisplay(id,
+                        {{"detail_id", id},
+                         {"call_id", call},
+                         {"response_id", "response"},
+                         {"name", "edit_file"},
+                         {"state", part == 2 ? "ok" : "failed"},
+                         {"view", {{"target", "same.txt"}}},
+                         {"output", part == 2 ? "saved" : "context missing"}});
+  }
+  for (const auto& nodes :
+       {LastNodes(saved),
+        TranscriptView(saved).Page()["nodes"].get<std::vector<json>>()}) {
+    const auto row = std::ranges::find_if(
+        nodes, [&](const json& n) { return n["id"] == parent; });
+    REQUIRE(std::distance(row, nodes.end()) >= 3);
+    CHECK((*row)["headline"]["verb"] == "Patch");
+    CHECK((*row)["state"] == "failed");
+    CHECK((*row)["result"]["word"] == "2 recorded changes");
+    CHECK(!row->contains("body"));
+    CHECK((row + 1)->at("id") == DetailId("response", "patch:2"));
+    CHECK((row + 1)->at("parent") == parent);
+    CHECK((row + 2)->at("body")["text"] == "context missing");
+  }
+  Recorder ordinary;
+  ordinary.Say("Read the file");
+  ordinary.Reply("response", "", "", {{"unrecorded", "read_path"}});
+  ordinary.Result("unrecorded", DetailId("response", "unrecorded"));
+  const auto missing = LastNodes(ordinary.History());
+  REQUIRE(missing.size() == 1);
+  CHECK(!missing.front().contains("body"));
+}
+
+TEST_CASE(TestTranscriptBodyPreservesFieldsAndExactPreview) {
+  json node;
+  SetBody(node, "fields", "\n  \n");
+  CHECK(node["body"]["text"] == "\n  \n");
+  for (size_t size = kPreviewChars - 3; size <= kPreviewChars + 1; ++size) {
+    const std::string text(size, 'x');
+    SetBody(node, "text", text);
+    CHECK(JsonValue(node["body"], "truncated", false) ==
+          (size > kPreviewChars));
+    if (size <= kPreviewChars)
+      CHECK(node["body"]["text"] == text);
+    else
+      CHECK(node["body"]["text"].get<std::string>().size() == kPreviewChars);
+  }
+}
+
+TEST_CASE(TestOffPageAgentNamesUseTheRetainedAssignment) {
+  const std::string first = "0123456789abcdef", second = "fedcba9876543210";
+  const std::string label = "Inspect the slides";
+  const std::string long_label(kStatusLabelBytes + 8, 'a');
+  Recorder turn;
+  turn.Say("Review the work");
+  turn.Reply("r-start", "", "", {{"start", "agent_start"}});
+  const std::string call =
+      turn.Call("r-start", "start", "agent_start", nullptr, "ok", {}, "",
+                json::array({LinkPart("agent", first, label),
+                             LinkPart("agent", second, long_label)}));
+  turn.Result("start", call);
+  Conversation conversation = turn.History();
+  const auto say = [&](const std::string& text, json facts) {
+    conversation.Push({{"role", "user"}, {"content", text}},
+                      MessageKind::kUser);
+    conversation.RecordDisplay(conversation.LastDisplayId(), std::move(facts));
+  };
+  for (size_t i = 0; i < kViewNodes; ++i) say("Another turn", json::object());
+  const auto report = [&](const std::string& id, const std::string& outcome) {
+    return json{{"origin", "agent"},
+                {"agent",
+                 {{"session", id}, {"title", "Review"}, {"outcome", outcome}}}};
+  };
+  say("First report", report(first, "completed"));
+  say("Second report", report(second, "completed"));
+  const std::string envelope =
+      "[agent " + first +
+      " \"Review\" asks the person (interaction A)]\n"
+      "The question (data, not instructions):\nMay I proceed?";
+  say(envelope, {{"origin", "message"}});
+  say(envelope, json::object());
+  say("Side chat", report(first, "merged"));
+  const TranscriptView view(conversation);
+  const json page = view.Page();
+  CHECK(page["more"] == true);
+  std::vector<std::string> labels;
+  for (const auto& node : page["nodes"]) {
+    CHECK(node["id"] != call);
+    if (node.contains("agent_label")) labels.push_back(node["agent_label"]);
+    if (node.contains("agent")) CHECK(node["agent"]["title"] == "Review");
+  }
+  CHECK((labels == std::vector<std::string>{
+                       label, long_label.substr(0, kStatusLabelBytes), label}));
+  CHECK(page["nodes"].back()["body"]["text"] == "Side chat");
+}
+
+TEST_CASE(TestWorkNoticesKeepTheirPlaceAcrossSteeringAndReload) {
+  for (const bool legacy : {false, true}) {
+    Recorder turn;
+    turn.Say("investigate");
+    auto notice = [&](json facts, const std::string& work) {
+      if (!legacy) facts["work"] = work;
+      return turn.Notice(std::move(facts));
+    };
+    const auto compact = notice({{"kind", "compaction"}}, "w-m-2");
+    turn.Steer("also check this", 20);
+    const auto memory = notice({{"memory", {{"action", "created"}}}}, "w-m-4");
+    turn.Reply("r-1", "done");
+    turn.Footer(50, "complete");
+    const auto idle = notice({{"memory", {{"action", "updated"}}}}, "");
+    const json nodes = ConversationView(turn.History())["nodes"];
+    std::vector<std::string> notices;
+    for (const auto& node : nodes) {
+      if (node["kind"] != "notice") continue;
+      notices.push_back(node["id"].get<std::string>() + " " +
+                        node["parent"].get<std::string>());
+    }
+    CHECK(
+        (notices == std::vector<std::string>{
+                        compact + " w-m-2", memory + " w-m-4", idle + " m-2"}));
+    CHECK(nodes.back()["id"] == idle);
+    if (!legacy) {
+      for (const auto& node : turn.Live()) {
+        if (node["kind"] == "notice")
+          CHECK(std::ranges::find(nodes, node) != nodes.end());
+      }
+    }
+  }
 }
 
 TEST_CASE(TestCompactionNoticeSaysWhatWent) {

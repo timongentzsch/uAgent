@@ -64,7 +64,17 @@ void Agent::RecordReceipt(const Headline& headline, json parts) {
   Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});
 }
 
-// A memory saved or lost outside a turn, as the row a memory tool call draws.
+// A notice breaks a run of grouped reads. It belongs to the work that
+// was current on arrival; after the turn finishes it follows the footer.
+void Agent::RecordWorkNotice(json notice) {
+  EndRun();
+  notice["turn_root"] = turn_root_;
+  notice["work"] = WorkId(reply_to_);
+  const json entry = conversation_.RecordEntry(std::move(notice));
+  Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(entry)}}});
+}
+
+// A memory saved or lost in the background.
 void Agent::RecordMemory(const MemoryEvent& event) {
   const bool failed = event.action == "failed";
   const Headline headline =
@@ -81,9 +91,7 @@ void Agent::RecordMemory(const MemoryEvent& event) {
   node["memory"] = {{"action", event.action},
                     {"key", event.key},
                     {"automatic", event.automatic}};
-  node["turn_root"] = turn_root_;
-  node = conversation_.RecordEntry(std::move(node));
-  Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(node)}}});
+  RecordWorkNotice(std::move(node));
   std::string line = "Memory " + event.action;
   if (!event.key.empty()) line += " · " + event.key;
   if (!event.preview.empty()) line += "\n  " + event.preview;

@@ -7,6 +7,7 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | Constant | Value | What |
 | --- | --- | --- |
 | `kPreviewChars` | `4096` | Separate budgets although equal: growing one must not grow the other. |
+| `kSourceExcerptChars` | `800` | Separate budgets although equal: growing one must not grow the other. |
 | `kCatalogueHeaderBytes` | `4096` | Separate budgets although equal: growing one must not grow the other. |
 | `kChangePreviewChars` | `16 KiB` | The opening of a diff that a tool result carries; the rest is an artifact. |
 | `kAttachmentCacheBytes` | `16 MiB` | Cap of the encoded attachments kept for the model calls of a turn. |

@@ -116,6 +116,15 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
                 and b'<iframe class="p1440x900" src="02%20%22b%22.html">' in deck,
                 deck,
             )
+            # Review and print use identical ordering and dimensions. Only review
+            # makes the slides inert until the browser chooses its bounded range.
+            review = page("design/?deck&review&w=1440&h=900")[1]
+            assert_true(
+                b"<template id=slides>" in review
+                and review.replace(b"<template id=slides>", b"").replace(b"</template>", b"")
+                == deck,
+                review,
+            )
             policy = headers["Content-Security-Policy"]
             assert_true("sandbox" not in policy and "frame-ancestors 'none'" in policy, policy)
             assert_true(b"uagentDesign" not in deck, deck[:200])

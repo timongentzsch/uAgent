@@ -260,6 +260,7 @@ void Master::Preview(const Request& request, Response& response) {
   const json result =
       WorkspaceFiles(workspace, session,
                      {{"mode", deck ? "deck" : "preview"},
+                      {"review", deck && request.has_param("review")},
                       {"path", relative},
                       {"width", ParamNumber(request, "w", 1920, 1, 8000)},
                       {"height", ParamNumber(request, "h", 1080, 1, 8000)}});

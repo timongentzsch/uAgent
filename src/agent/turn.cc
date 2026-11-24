@@ -326,6 +326,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
     PushUserInput(attachment ? std::move(user_content) : json(user_input),
                   attachment, images, request_id, origin);
     Emit(NoticeEvent(PresentationStatus::kWarned, "interrupted"));
+    reply_to_.clear();
     Emit(Event{EventId::kTurnStopped,
                {{"turn", turn_id_}, {"outcome", "interrupted"}, {"steps", 0}}});
     return;
@@ -607,6 +608,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   summary.update(
       {{"messages", conversation_.Size()}, {"context_tokens", ContextUsed()}});
   CloseWork(TurnOutcomeName(state.stop.outcome));
+  reply_to_.clear();
   json entry = {{"kind", "turn_summary"},
                 {"turn_root", turn_root_},
                 {"summary", summary}};

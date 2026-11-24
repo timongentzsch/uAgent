@@ -100,6 +100,13 @@ the snapshot's state and pending decision, `deleted` forgets a session.
 Changes are written to the snapshot store once per
 animation frame, and only for the selected or watched conversations.
 
+**Agent replies.** A child's delivery uses the ordinary message renderer at
+its recorded sequence in the parent chat. Its sender opens the child
+conversation. An assignment and any replies returned directly by the tool
+use the normal expandable call row. A request addressed to the parent stays
+in history with its details. A live child with `needs_you` exposes a direct
+review action even when its work is folded.
+
 **Outgoing messages.** A message gets a client `request_id` and an outgoing
 row. `api.command` posts it and, if the reply is `pending`, waits up to
 30 s (`commandReceiptWaitMs`) for the outcome on the stream. `outgoingAfter`

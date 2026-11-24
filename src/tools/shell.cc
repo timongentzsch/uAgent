@@ -534,6 +534,56 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   return {std::move(running), std::nullopt, /*launched=*/true};
 }
 
+namespace {
+
+// Both grep implementations can terminate the path with NUL. Keep colons,
+// hyphens and digits in real filenames separate from line/column references.
+// Reconstruct their ordinary text output and group its bounded preview.
+json GrepPreview(std::string& output) {
+  json parts = json::array();
+  std::string file, lines;
+  bool complete = true;
+  auto flush = [&] {
+    if (!lines.empty()) parts.push_back(CodePart(std::move(lines), "", file));
+    lines.clear();
+  };
+  for (size_t pos = 0; pos < output.size();) {
+    size_t end = output.find('\n', pos);
+    if (end == std::string::npos) end = output.size();
+    std::string_view line(output.data() + pos, end - pos);
+    auto sep = line.find('\0');
+    if (sep == std::string_view::npos) {
+      if (line == "--") {
+        if (pos < kPreviewChars) lines += "--\n";
+      } else {
+        complete = false;
+      }
+    } else {
+      auto reference = line.substr(sep + 1);
+      auto marker = reference.find_first_not_of("0123456789");
+      bool valid = marker != 0 && marker != std::string_view::npos &&
+                   (reference[marker] == ':' || reference[marker] == '-');
+      output[pos + sep] = valid ? reference[marker] : ':';
+      if (!valid) complete = false;
+      if (valid && pos < kPreviewChars) {
+        auto path = line.substr(0, sep);
+        if (path != file) {
+          flush();
+          file = path;
+        }
+        lines.append(reference.substr(0, kPreviewChars + 1));
+        lines += '\n';
+      }
+    }
+    pos = end + 1;
+  }
+  flush();
+  if (!complete || parts.empty()) return nullptr;
+  return parts;
+}
+
+}  // namespace
+
 ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
                     const std::string& path, const GrepOptions& options,
                     const ToolContext& context) {
@@ -559,14 +609,13 @@ ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
     if (ripgrep) {
       command = std::string("rg --files --color=never") + sorted;
       if (!glob.empty()) command += " --glob " + ShellQuote(glob);
-      command += " -- " + ShellQuote(target) +
-                 " | rg --line-number --color=never " + (literal ? "-F " : "") +
-                 "-- " + ShellQuote(pattern);
+      command += " -- " + ShellQuote(target) + " | rg --color=never " +
+                 (literal ? "-F " : "") + "-- " + ShellQuote(pattern);
     } else {
       command = "find " + ShellQuote(target) + " -type f";
       if (!glob.empty()) command += " -name " + ShellQuote(glob);
       command += std::string(" -print | grep ") + (literal ? "-F" : "-E") +
-                 " -n -- " + ShellQuote(pattern);
+                 " -- " + ShellQuote(pattern);
     }
   } else {
     command = ripgrep ? std::string(
@@ -576,6 +625,8 @@ ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
                       : std::string("grep -r -n -H -I --exclude-dir=.git");
     command += literal ? " -F" : (ripgrep ? "" : " -E");
     if (matching_files) command += " -l";
+    if (!matching_files)
+      command += ripgrep ? " --with-filename --null" : " --null";
     if (context_lines > 0 && !matching_files) {
       command += ripgrep ? " --context " : " -C ";
       command += std::to_string(context_lines);
@@ -602,6 +653,7 @@ ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
   if (exit_code == 1) return ListResult("(no matches)", 0, unit);
   // 141: head closed the pipe on a producer with more to say.
   if (exit_code != 141 && !outcome.Ok()) {
+    std::ranges::replace(output, '\0', ':');
     outcome.output = outcome.error == ToolErrorCode::kProcessFailed
                          ? std::string(kToolErrorPrefix) +
                                "search command failed:\n" + output
@@ -625,7 +677,20 @@ ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
   bool more_results = cut != std::string::npos && cut < output.size();
   if (more_results) output.resize(cut);
   const int64_t shown = std::min(lines, max_results);
+  json parts;
+  if (!files_only && !matching_files) parts = GrepPreview(output);
   ToolResult result = ListResult(std::move(output), shown, unit);
+  if (parts.is_array()) {
+    result.body_kind = "fields";
+    result.parts = std::move(parts);
+  }
+  if (more_results || byte_limited ||
+      (result.parts.is_array() && result.output.size() > kPreviewChars)) {
+    result.parts.push_back(FieldsPart(
+        {{"Preview", byte_limited   ? "Output byte limit reached"
+                     : more_results ? "Result limit reached"
+                                    : "More lines in full output"}}));
+  }
   AddHint(
       result,
       "[" + std::string(ripgrep ? "ripgrep" : "grep") +

@@ -1,6 +1,6 @@
 import { ArrowRight, CircleAlert, Square, X } from "lucide-preact";
 import type { ComponentChildren } from "preact";
-import { useEffect, useId, useRef } from "preact/hooks";
+import { useEffect, useId, useMemo, useRef } from "preact/hooks";
 import type { Act, Session } from "../../shared/types.ts";
 import { Button, IconButton, LoadError } from "../../shared/ui.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
@@ -15,6 +15,7 @@ import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
 import type { Asking, Side } from "../../app/use-side-conversations.ts";
+import { AgentParticipants, useParticipants } from "./agent-sender.tsx";
 import { Transcript } from "./node.tsx";
 import { MessageActions } from "./message-actions.ts";
 
@@ -78,11 +79,13 @@ function SideForm({
 
 function SideAnswer({
   side,
+  sessions,
   asking,
   cancel,
   choose,
 }: {
   side: Side;
+  sessions: Session[];
   asking?: Asking;
   cancel: () => void;
   choose: (id: string) => Promise<void>;
@@ -102,6 +105,10 @@ function SideAnswer({
   }, [side.id, online, load, report, store]);
   const session = snapshot?.metadata;
   const pending = snapshot?.pending;
+  const agents = useMemo(
+    () => sessions.filter((agent) => agent.parent === side.id),
+    [sessions, side.id],
+  );
   const running = !!session?.turn_active;
   const act: Act = (kind, fields) => command(kind, session, fields);
   const all = snapshot?.state?.view?.nodes || [];
@@ -113,6 +120,7 @@ function SideAnswer({
   const nodes = first >= 0 ? all.slice(first) : started.current ? all : [];
   // Follows its end as the transcript does, through the same hook.
   const historyKey = `side:${side.id || ""}`;
+  const participants = useParticipants(nodes, agents);
   const thread = useTranscriptHistory(() => {}, historyKey, nodes);
   return (
     <>
@@ -125,8 +133,10 @@ function SideAnswer({
         <div ref={thread.attachContent}>
           {!nodes.length && <p class="muted">{side.question}</p>}
           {session && (
-            <MessageActions.Provider value={{ report }}>
-              <Transcript nodes={nodes} online={online} session={session} />
+            <MessageActions.Provider value={{ report, open: choose }}>
+              <AgentParticipants.Provider value={participants}>
+                <Transcript nodes={nodes} online={online} session={session} />
+              </AgentParticipants.Provider>
             </MessageActions.Provider>
           )}
           {session &&
@@ -294,6 +304,7 @@ export default function SideChats({
         <SideAnswer
           key={side.firstRequest}
           side={side}
+          sessions={sessions}
           asking={asking?.to === shown ? asking : undefined}
           cancel={cancel}
           choose={choose}

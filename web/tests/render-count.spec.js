@@ -41,6 +41,14 @@ const HISTORY = Array.from({ length: 120 }, (_, index) => ({
   sequence: index + 1,
 }));
 
+// One existing child reply stays still while the next answer streams.
+HISTORY[1] = {
+  ...HISTORY[1],
+  role: "user",
+  origin: "agent",
+  agent: { session: "child", title: "Earlier research", outcome: "completed" },
+};
+
 // In the page, testSend sends the host's next event; testSince counts the
 // renders and storage writes (by key) since testMark.
 async function open(page) {
@@ -252,7 +260,12 @@ test("streaming renders only what changed", async ({ page }) => {
   expect(counts.ChatPage).toBeLessThanOrEqual(62);
   expect(counts.MessageView).toBeLessThanOrEqual(62);
   expect(counts.RowLine).toBeLessThanOrEqual(6 * 2 + 1);
-  for (const name of ["Composer", "ModelControl", "ActivityButtonView"])
+  for (const name of [
+    "Composer",
+    "ModelControl",
+    "ActivityButtonView",
+    "AgentSender",
+  ])
     expect(counts[name] || 0, name).toBe(0);
 
   await page.evaluate(async () => {
@@ -265,7 +278,9 @@ test("streaming renders only what changed", async ({ page }) => {
         headline: { verb: "Started", target: "agent" },
         state: "ok",
         body: { kind: "text", text: "started" },
-        parts: [{ kind: "link", to: "agent", id: "child", label: "Open" }],
+        parts: [
+          { kind: "link", to: "agent", id: "child", label: "Inspect tests" },
+        ],
         sequence: testSequence,
       },
     });
@@ -289,9 +304,9 @@ test("streaming renders only what changed", async ({ page }) => {
     }
   });
   const { renders: ticks } = await page.evaluate(() => testSince());
-  await expect(page.locator('[data-message-id="spawn"]')).toContainText(
-    "Started agent",
-  );
+  await expect(
+    page.locator('[data-message-id="spawn"]').locator("> .node-row"),
+  ).toContainText("Started agent");
   expect(ticks.RowLine || 0).toBe(0);
   expect(ticks.MessageView || 0).toBe(0);
   expect(ticks.SessionRow).toBeGreaterThan(0);

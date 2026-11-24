@@ -137,11 +137,13 @@ std::string MemoryPreview(const std::string& content) {
 
 ToolResult ListMemoryKeys(const std::filesystem::path& cwd) {
   std::string output;
-  for (const MemoryEntry& memory : ListMemories(cwd)) {
+  const auto memories = ListMemories(cwd);
+  for (const MemoryEntry& memory : memories) {
     if (!output.empty()) output += '\n';
     output += memory.key;
   }
-  return ToolSuccess(output.empty() ? "(no memories)" : std::move(output));
+  return ListResult(output.empty() ? "(no memories)" : std::move(output),
+                    static_cast<int64_t>(memories.size()), "memory");
 }
 
 ToolResult SearchMemoryText(const std::string& query,
@@ -151,10 +153,10 @@ ToolResult SearchMemoryText(const std::string& query,
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "memory search requires a non-empty key query");
   }
-  constexpr size_t kMaxMatches = 16;
+  constexpr int64_t kMaxMatches = 16;
   constexpr size_t kMaxLineBytes = 320;
   std::string output = "[memory search; non-authoritative evidence]\n";
-  size_t matches = 0;
+  int64_t matches = 0;
   auto capped = [&] {
     if (++matches < kMaxMatches) return false;
     output += "[more matches; narrow the query]";
@@ -175,15 +177,15 @@ ToolResult SearchMemoryText(const std::string& query,
       output += "- " + memory.key + ": " +
                 OneLine(RedactMemorySecrets(line), kMaxLineBytes) + "\n";
       emitted = true;
-      if (capped()) return ToolSuccess(std::move(output));
+      if (capped()) return ListResult(std::move(output), matches, "match");
       break;
     }
     if (key_match && !emitted) {
       output += "- " + memory.key + "\n";
-      if (capped()) return ToolSuccess(std::move(output));
+      if (capped()) return ListResult(std::move(output), matches, "match");
     }
   }
-  return matches ? ToolSuccess(std::move(output))
+  return matches ? ListResult(std::move(output), matches, "match")
                  : ToolFailure(ToolErrorCode::kNotFound,
                                "no memory matches: " + TerminalSafe(query));
 }
@@ -209,13 +211,20 @@ ToolResult ReadMemoryFile(const MemoryEntry& memory) {
   }
   // When it was last saved, so the model can weigh a fact that may be stale.
   const int64_t saved = SnapshotFile(memory.path).modified_seconds;
-  return ToolSuccess(
+  ToolResult result = ToolSuccess(
       "[memory " + memory.key +
       (saved > 0
            ? "; saved " + LocalTime(static_cast<std::time_t>(saved), "%Y-%m-%d")
            : "") +
       "; non-authoritative evidence" + (writable ? "" : "; read-only") + "]\n" +
       body);
+  if (!body.empty()) {
+    result.parts =
+        json::array({{{"kind", "markdown"},
+                      {"text", Utf8Trunc(std::move(body), kPreviewChars)}}});
+    result.body_kind = "fields";
+  }
+  return result;
 }
 
 // `source`: the conversation a background extraction learned it from.
@@ -331,7 +340,10 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   saved.facts.no_change = action == "unchanged";
   if (!saved.facts.no_change) {
     LibraryChanged();
-    saved.parts = json::array({LinkPart("memory", event.key, "Open memory")});
+    saved.parts = json::array(
+        {FieldsPart({{"Memory", event.key}, {"Change", event.action}}),
+         LinkPart("memory", event.key, "Open memory")});
+    saved.body_kind = "fields";
   }
   return saved;
 }

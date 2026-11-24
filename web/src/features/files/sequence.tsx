@@ -1232,7 +1232,12 @@ export default function Sequence({
                     // The boards hear what fails here, and all of a document
                     // or a sheet, whose legend may be shut. Any other page is
                     // measured by its picture: here it is as tall as the stage.
-                    if (doc || sheet || message.type === "error")
+                    if (
+                      doc ||
+                      sheet ||
+                      message.type === "error" ||
+                      message.type === "issue"
+                    )
                       heard(path)(message);
                     if (message.type === "ready") {
                       setSaid(message);

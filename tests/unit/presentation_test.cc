@@ -18,6 +18,7 @@
 #include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/core/turn_status.h"
+#include "include/tools/ask.h"
 #include "include/tools/registry.h"
 #include "include/tools/tool.h"
 #include "include/ui/display.h"
@@ -260,6 +261,41 @@ TEST_CASE(TestToolViews) {
   CHECK(todo["target"] == "1/2 done" && todo["input"].empty());
 }
 
+TEST_CASE(TestOperationalReceiptPreviews) {
+  CHECK(FieldsPart({{"Z", "first"}, {"A", "second"}})["rows"] ==
+        json::array({{"Z", "first"}, {"A", "second"}}));
+  json rows = json::array();
+  for (int index = 0; index < 30; ++index) rows.push_back({"Key", "Value"});
+  CHECK(FieldsPart(rows)["rows"].back() ==
+        json::array({"More", "6 fields in full details"}));
+
+  const json options =
+      json::array({{{"label", "Inline"}}, {{"label", "Expanded"}}});
+  const json questions = json::array({{{"question", "Which layout?"},
+                                       {"header", "Layout"},
+                                       {"options", options}},
+                                      {{"question", "Anything else?"},
+                                       {"header", "Notes"},
+                                       {"options", options}}});
+  const Tool ask = AskTool(
+      [](const json&, bool*) { return R"([{"choices":["Inline"]},{}])"; });
+  const ToolResult answer = ask.run({{"questions", questions}}, {});
+  CHECK(answer.facts.items == 1 && answer.facts.unit == "answer");
+  CHECK(answer.body_kind == "fields");
+  CHECK(answer.parts.front()["rows"] ==
+        json::array(
+            {{"Which layout?", "Inline"}, {"Anything else?", "(no answer)"}}));
+  CHECK(ModelText(answer) ==
+        "Which layout?\n→ Inline\nAnything else?\n→ (no answer)\n");
+  const Tool cancelled = AskTool([](const json&, bool* eof) {
+    *eof = true;
+    return "";
+  });
+  const ToolResult skipped = cancelled.run({{"questions", questions}}, {});
+  CHECK(skipped.facts.items == 0 && skipped.parts.front()["rows"].size() == 2);
+  CHECK(skipped.output.starts_with("The user did not answer"));
+}
+
 // The model reads the output, then the hints; a person reads the output.
 TEST_CASE(TestModelHints) {
   ToolResult result = ToolSuccess("done");
@@ -287,10 +323,11 @@ TEST_CASE(TestResultWord) {
   CHECK((word({.outcome = "denied"}, "failed") == "denied"));
   CHECK((word({.outcome = "rejected", .reason = "path is outside"}, "failed") ==
          "rejected: path is outside"));
-  CHECK((word({.exit = ResultFacts::Exit{.signal = 9}}, "failed") == "killed"));
+  CHECK(
+      (word({.exit = ResultFacts::Exit{.signal = 9}}, "failed") == "signal 9"));
   CHECK((word({.exit = ResultFacts::Exit{.code = 2}}, "failed", 1400) ==
          "exit 2 · 1.4s"));
-  CHECK((word({.exit = ResultFacts::Exit{}}, "ok", 1400) == "1.4s"));
+  CHECK((word({.exit = ResultFacts::Exit{}}, "ok", 1400) == "exit 0 · 1.4s"));
   CHECK((word({.added = 3, .removed = 1}) == "+3 −1"));
   CHECK((word({.added = 0, .removed = 0, .no_change = true}) == "no change"));
   CHECK((word({.items = 1, .unit = "line"}) == "1 line"));

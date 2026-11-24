@@ -161,6 +161,11 @@ TEST_CASE(TestFileTools) {
   CHECK(read.find("lines 1-1") != std::string::npos);
   CHECK(read.starts_with("one\n"));
   CHECK(ToolReadFile(file.string(), 1, 1).read_range->last == 1);
+  const auto second = ToolReadFile(file.string(), 2, 1);
+  CHECK(second.parts[0]["first_line"] == 2 &&
+        second.parts[0]["label"] == "Line 2 of 2");
+  CHECK(!second.parts[0].contains("text"));
+  CHECK(second.output == "two\n" && second.body_kind == "fields");
   // A media read rejects line ranges instead of silently ignoring them.
   fs::path binary_file = root / "payload.bin";
   CHECK(ToolWriteFile(binary_file.string(), std::string("PNG\x89\0\x1f", 6))
@@ -208,6 +213,11 @@ TEST_CASE(TestFileTools) {
   ToolResult create_result =
       ToolWriteFileWithDisplay(created.string(), "one\ntwo\n");
   CHECK(create_result.Ok());
+  CHECK(create_result.facts.outcome == "created");
+  auto empty_created =
+      ToolWriteFileWithDisplay((root / "empty-created.txt").string(), "");
+  CHECK(empty_created.facts.outcome == "created" &&
+        !empty_created.facts.no_change);
   CHECK(create_result.facts.added == 2 && create_result.facts.removed == 0);
   CHECK(create_result.diff.find("+one") != std::string::npos);
   CHECK(create_result.diff.find("+two") != std::string::npos);
@@ -215,6 +225,7 @@ TEST_CASE(TestFileTools) {
   ToolResult replace_result =
       ToolWriteFileWithDisplay(created.string(), "one\nthree\n", true);
   CHECK(replace_result.Ok());
+  CHECK(replace_result.facts.outcome == "replaced");
   CHECK(replace_result.facts.added == 1 && replace_result.facts.removed == 1);
   CHECK(replace_result.diff.find("-two") != std::string::npos);
   CHECK(replace_result.diff.find("+three") != std::string::npos);

@@ -291,7 +291,9 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
                    {"result", JsonValue(data, "facts", json::object())},
                    {"body_kind", JsonValue(data, "body_kind", "text")},
                    {"output", JsonValue(data, "result", "")}};
-    for (const char* key : {"headline", "activity", "parts"}) {
+    if (data.contains("change_path")) record["diff_truncated"] = true;
+    for (const char* key :
+         {"name", "headline", "activity", "parts", "change"}) {
       if (data.contains(key)) record[key] = data[key];
     }
     json node = CallNode(record, "");

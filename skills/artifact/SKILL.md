@@ -73,19 +73,13 @@ their message. You make every change by editing the files.
 
 ## Check, then present
 
-1. Where the `browser` tool is available, open every page you wrote or
-   changed, after its last change, with `open` and its `path`. It loads as
-   Files shows it and lists the page's problems: larger than its artboard,
-   text that runs into other text or past an edge, a document page that runs
-   past its height, a file that did not load.
-2. Fix every problem and open the page again, until none is listed.
-3. Look at the page once (`observe` with its `path`, or a deck's folder)
-   and fix what reads wrong or strays from the design system's tokens.
-   Pages you did not touch need no second look.
-4. Hand it over with `present`: the folder of a deck, a design or a design
-   system (`decks/q3-review/`), the file of a document or a sheet
-   (`docs/q3-board-memo.html`). The person gets a card that opens it. Make
-   no PDF or images yourself: Files exports them.
+- For a deck, use the overview and targeted review in `references/deck.md`.
+- For other artifacts, use `browser open` with the changed page's `path` for
+  layout and missing-file diagnostics. Use `observe` with its path to read
+  the result at its intended size. Fix and recheck affected pages.
+- Hand over the finished artifact with `present`: the folder for a deck,
+  design or design system, the file for a document or sheet. Files exports
+  PDFs and images.
 
 In your reply, name a folder or page by its path from the folder you work
 in (`design/landing/01-hero.html`), never a bare file name.

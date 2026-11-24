@@ -531,7 +531,8 @@ std::string PreviewMime(const fs::path& path) {
 // (the asked size where it names none): a deck's slides, or a design's
 // pages. Documents and sheets are artifacts of their own, and a skipped
 // slide is left out.
-std::string DeckPage(const fs::path& folder, int width, int height) {
+std::string DeckPage(const fs::path& folder, int width, int height,
+                     bool review) {
   const auto px = [](int64_t n) { return std::to_string(n) + "px"; };
   // Each page by its file's name, and the named @page of its size.
   std::vector<std::pair<std::string, std::string>> pages;
@@ -563,10 +564,14 @@ std::string DeckPage(const fs::path& folder, int width, int height) {
       "border:0;break-after:page}";
   for (const auto& [name, rules] : sizes) page += "@page " + name + rules;
   page += "</style>";
+  // In a review Chrome instantiates just the slides in the requested range.
+  // Printing instantiates the same ordered frames, all at once.
+  if (review) page += "<template id=slides>";
   for (const auto& [file, name] : pages) {
     page += "<iframe class=\"" + name + "\" src=\"" + PercentEncode(file) +
             "\"></iframe>";
   }
+  if (review) page += "</template>";
   return page;
 }
 
@@ -722,7 +727,8 @@ json Request(const fs::path& root, const json& request) {
       return {{"error", "not found"}, {"status", 404}};
     }
     return {{"text", DeckPage(*target, JsonValue(request, "width", 1920),
-                              JsonValue(request, "height", 1080))}};
+                              JsonValue(request, "height", 1080),
+                              JsonValue(request, "review", false))}};
   }
   if (mode == "stat") {
     std::error_code error;

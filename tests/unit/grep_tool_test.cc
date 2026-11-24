@@ -41,6 +41,18 @@ TEST_CASE(TestGrepTool) {
   // The count header is the model's hint; a person reads the matches alone.
   CHECK(result.facts.items == 3 && result.facts.unit == "line");
   CHECK(!result.output.starts_with('['));
+  CHECK(result.body_kind == "fields" &&
+        result.parts[0]["label"] == source.string());
+  CHECK(result.parts[0]["text"].get<std::string>().find("needle one") !=
+        std::string::npos);
+  CHECK(result.output.find('\0') == std::string::npos);
+  const auto colon = root / "ref:12:copy.cpp";
+  CHECK(ToolWriteFile(colon.string(), "needle match\n").Ok());
+  auto grouped =
+      ToolGrep(supervisor, "needle", root.string(), {.glob = "*.cpp"});
+  CHECK(grouped.parts.size() == 2 &&
+        grouped.parts[0]["label"] == colon.string());
+  fs::remove(colon);
   {
     // One match past the cap is reported as cut, not dropped silently.
     ScopedEnv roomy("UAGENT_TOOL_RESULT_CHARS", "1000000");
@@ -57,6 +69,7 @@ TEST_CASE(TestGrepTool) {
   CHECK(filenames.Ok());
   CHECK(filenames.output.find("one.cpp") != std::string::npos);
   CHECK(filenames.output.find("needle one") == std::string::npos);
+  CHECK(filenames.output.starts_with(root.string()));
   ToolResult contextual =
       ToolGrep(supervisor, "needle two", source.string(), {.context_lines = 1});
   CHECK(contextual.output.find("needle one") != std::string::npos);
@@ -132,6 +145,8 @@ TEST_CASE(TestGrepTool) {
   setenv("PATH", fallback_bin.c_str(), 1);
   result = ToolGrep(supervisor, "needle", source.string());
   CHECK(result.hint.starts_with("[grep"));
+  CHECK(result.body_kind == "fields" &&
+        result.parts[0]["label"] == source.string());
   CHECK(result.output.find("needle one") != std::string::npos);
   CHECK(ToolGrep(supervisor, "(", source.string(), {.literal = true}).output ==
         "(no matches)");
@@ -276,10 +291,11 @@ TEST_CASE(TestGrepTool) {
            {{{"operation", "poll"}, {"id", 3}}, "Checked activity 3"},
            {{{"operation", "list"}}, "Listed activities"},
            {{{"operation", "resize"}, {"id", 3}, {"rows", 40}, {"cols", 120}},
-            "Sent input to activity 3"},
+            "Resized activity 3"},
            {{{"operation", "write"}, {"id", 3}, {"chars", "hello"}},
             "Sent input to activity 3"},
            {{{"operation", "wait"}, {"mode", "all"}}, "Waited for activities"},
+           {{{"operation", "wait"}, {"ids", {5}}}, "Waited for activity 5"},
            {{{"operation", "stop"}, {"id", 3}}, "Stopped activity 3"}}) {
     CHECK(activity && ToolSummary(*activity, arguments) == summary);
   }

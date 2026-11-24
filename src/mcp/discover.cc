@@ -148,6 +148,18 @@ void McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
                                  context);
         });
     tool.provider = provider;
+    // Keep the server and its original tool name legible after namespacing.
+    tool.headline = [label = s.name + "/" + remote_name](const json& args) {
+      std::string target;
+      for (const char* key : {"query", "path", "url", "name", "title", "id"}) {
+        if (const auto* value = JsonStringRef(args, key);
+            value && !value->empty()) {
+          target = OneLine(*value, 160);
+          break;
+        }
+      }
+      return Headline{"Calling " + label, "Called " + label, std::move(target)};
+    };
     tool.timeout_s = config.mcp_timeout_s;
 
     size_t tool_schema_bytes =

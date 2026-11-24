@@ -7,7 +7,7 @@ import {
   carried,
   added,
   duplicated,
-  failures,
+  boardDiagnostics,
   hear,
   kindOf,
   moved,
@@ -62,13 +62,13 @@ test("a sheet's boards are its tabs: numbered as many as the folder says, then a
   // Every tab is the one file; its cells in error are counted each.
   const errors = ["Costs!B2 =1/0 is #DIV/0!", "Inputs!A1 =x is #NAME?"].reduce(
     (all, message) =>
-      hear(all, "d/budget.html", { type: "error", message, line: 0 }),
+      hear(all, "d/budget.html", { type: "issue", message, cell: true }),
     seen,
   );
   const boards = boardsOf("d", folder, errors, "budget.html");
   assert.deepEqual(paths(boards), Array(3).fill("d/budget.html"));
-  assert.deepEqual(failures(boards, errors, "sheet"), {
-    count: 2,
+  assert.deepEqual(boardDiagnostics(boards, errors), {
+    summary: "2 cells in error",
     text: "`d/budget.html` has cells in error: Costs!B2 =1/0 is #DIV/0!; Inputs!A1 =x is #NAME?",
   });
   // On the design's canvas it is a stack of its tabs; in the legend of a
@@ -215,7 +215,7 @@ test("a design's canvas holds its pages, pictures and films, and a stack for a d
   assert.equal(named["d/torn.gif"].failed, "did not load");
   for (const path of ["d/huge.jpg", "d/02-raw.mov"])
     assert.match(named[path].failed, /^is larger than 8/);
-  assert.equal(failures(boards, seen).count, 0);
+  assert.equal(boardDiagnostics(boards, seen).summary, "");
   // Drawn at their final size: what said it, and what will not load.
   assert.deepEqual(
     boards.filter((board) => settled(board, seen)).map((board) => board.path),
@@ -289,8 +289,8 @@ test("failed pages are counted once each and written as lines for the agent", ()
     boards.map((board) => board.failed),
     ["one", ""],
   );
-  assert.deepEqual(failures(boards, seen), {
-    count: 1,
+  assert.deepEqual(boardDiagnostics(boards, seen), {
+    summary: "1 page failed to run",
     text: "`d/a.html` threw: one; two (line 7)",
   });
   // A document's pages are one file.
@@ -301,7 +301,7 @@ test("failed pages are counted once each and written as lines for the agent", ()
     "a.html",
   );
   assert.equal(pages.length, 2);
-  assert.equal(failures(pages, seen).count, 1);
+  assert.equal(boardDiagnostics(pages, seen).summary, "1 page failed to run");
   // Written again, the page says anew what fails; a file they share, all.
   assert.deepEqual(rewritten(seen, "d/b.html"), seen);
   assert.deepEqual(rewritten(seen, "d/a.html")["d/a.html"].errors, []);
@@ -442,4 +442,37 @@ test("the stage follows its slide to its new name, or to a neighbour when it is 
   assert.equal(shownAfter(removed(deck, 1), deck, 1), "03-numbers.html");
   assert.equal(shownAfter(removed(deck, 3), deck, 3), "03-numbers.html");
   assert.equal(shownAfter(removed(["only.html"], 0), ["only.html"], 0), "");
+});
+
+test("design findings, runtime exceptions and edited cells retain their own counts and messages", () => {
+  const folder = listing("deck", ["a.html", "deck"], ["b.html", "deck"]);
+  const issue = { type: "issue", message: "Caption overlaps footer" };
+  let seen = hear({}, "d/a.html", issue);
+  assert.equal(hear(seen, "d/a.html", issue), seen);
+  seen = hear(seen, "d/a.html", {
+    type: "error",
+    message: "Uncaught exception",
+    line: 12,
+  });
+  seen = hear(seen, "d/b.html", {
+    type: "issue",
+    message: "Bad formula",
+    cell: true,
+  });
+  seen = hear(seen, "d/b.html", {
+    type: "edit",
+    errors: ["B2 divides by zero"],
+  });
+  const boards = boardsOf("d", folder, seen, "a.html");
+  assert.equal(boards[0].issue, "design issue");
+  assert.deepEqual(boardDiagnostics(boards, seen), {
+    summary:
+      "1 page failed to run · 1 page with design issues · 1 cell in error",
+    text: "`d/a.html` threw: Uncaught exception (line 12)\n`d/a.html` has design issues: Caption overlaps footer\n`d/b.html` has cells in error: B2 divides by zero",
+  });
+  const clear = rewritten(seen, "d/a.html");
+  assert.equal(
+    boardDiagnostics(boardsOf("d", folder, clear, "a.html"), clear).summary,
+    "1 cell in error",
+  );
 });

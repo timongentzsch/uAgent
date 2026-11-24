@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -62,12 +63,11 @@ inline std::string CitationMarkdown(const json& annotations) {
 
 // Enough sources to corroborate a claim and enough of each to judge it.
 inline constexpr size_t kEvidenceEntries = 5;
-inline constexpr size_t kEvidenceExcerptChars = 800;
 
 inline std::string CitationEvidence(
-    const json& annotations, size_t max_entries = kEvidenceEntries,
-    size_t excerpt_chars = kEvidenceExcerptChars) {
-  std::vector<CitationEntry> entries = CitationEntries(annotations);
+    const std::vector<CitationEntry>& entries,
+    size_t max_entries = kEvidenceEntries,
+    size_t excerpt_chars = kSourceExcerptChars) {
   std::string out;
   for (size_t i = 0; i < std::min(entries.size(), max_entries); ++i) {
     const CitationEntry& entry = entries[i];

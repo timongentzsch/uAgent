@@ -78,6 +78,7 @@ export type PageMessage =
   | { type: "drawn" }
   | { type: "size"; height: number }
   | { type: "error"; message: string; line: number }
+  | { type: "issue"; message: string; cell?: boolean }
   // What is wrong with it as drawn has all been said.
   | { type: "checked" }
   // A new version of its file taken in place, held while a person changes

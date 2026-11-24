@@ -82,7 +82,7 @@ export interface Exchange {
   generation_id?: string;
 }
 // One state vocabulary for every call and receipt.
-type RowState = "running" | "ok" | "failed" | "cancelled";
+type RowState = "running" | "ok" | "failed" | "cancelled" | "recorded";
 // What a finished call's result was. The host words it: `word` is the
 // whole subtitle ("exit 1 · 2.3s"), absent when there is none; the facts
 // behind it are for reading.
@@ -113,8 +113,16 @@ export type BodyKind =
 export type ToolPart =
   | RefusalPart
   | { kind: "command"; text: string }
-  | { kind: "code"; text: string; language?: string; label?: string }
+  | {
+      kind: "code";
+      text?: string;
+      first_line?: number;
+      language?: string;
+      label?: string;
+    }
   | { kind: "fields"; rows: [string, string][] }
+  | { kind: "source"; url: string; title?: string; excerpt?: string }
+  | { kind: "markdown"; text: string }
   | FilePart
   | ArtifactPart
   | LinkPart;
@@ -146,6 +154,8 @@ export interface FilePart {
 export interface LinkPart {
   kind: "link";
   to: "agent" | "activity" | "memory" | "browser";
+  state?: string;
+  report?: string;
   id: string | number;
   label: string;
 }
@@ -219,6 +229,7 @@ export interface Node {
   time?: string;
   state?: RowState;
   routine?: boolean;
+  tool?: string;
   headline?: { verb: string; target: string };
   result?: ResultFacts;
   body?: { kind: BodyKind; text: string; truncated?: boolean; tail?: string };
@@ -228,6 +239,8 @@ export interface Node {
   // report, finished background work, or another conversation's message.
   origin?: "tool" | "agent" | "activity" | "message";
   agent?: AgentFacts;
+  // Assignment from the retained start call, including when it is on an older page.
+  agent_label?: string;
   request_id?: string;
   incoming?: number;
   streaming?: boolean;

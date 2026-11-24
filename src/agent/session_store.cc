@@ -365,12 +365,16 @@ const SessionInfo& TopOf(const SessionInfo& info, const SessionsById& ids) {
   }
   return *top;
 }
-}  // namespace
 
-std::vector<SessionInfo> SessionsIn(const std::string& cwd,
-                                    const std::string& host) {
-  const std::vector<SessionInfo> sessions = Readable();
-  const SessionsById ids = ById(sessions);
+SessionInfo TopAt(const std::string& path, const SessionsById& ids) {
+  const auto own = ids.find(SessionIdFor(path));
+  return own == ids.end() ? SessionInfo{} : TopOf(*own->second, ids);
+}
+
+std::vector<SessionInfo> InWorkspace(const std::vector<SessionInfo>& sessions,
+                                     const SessionsById& ids,
+                                     const std::string& cwd,
+                                     const std::string& host) {
   std::vector<SessionInfo> in;
   for (const SessionInfo& info : sessions) {
     const SessionInfo& top = TopOf(info, ids);
@@ -378,18 +382,25 @@ std::vector<SessionInfo> SessionsIn(const std::string& cwd,
   }
   return in;
 }
+}  // namespace
+
+std::vector<SessionInfo> SessionsIn(const std::string& cwd,
+                                    const std::string& host) {
+  const std::vector<SessionInfo> sessions = Readable();
+  return InWorkspace(sessions, ById(sessions), cwd, host);
+}
 
 SessionInfo TopConversation(const std::string& path) {
   const std::vector<SessionInfo> sessions = Readable();
-  const SessionsById ids = ById(sessions);
-  const auto own = ids.find(SessionIdFor(path));
-  return own == ids.end() ? SessionInfo{} : TopOf(*own->second, ids);
+  return TopAt(path, ById(sessions));
 }
 
 std::vector<SessionInfo> SessionsBeside(const std::string& path) {
-  const SessionInfo top = TopConversation(path);
+  const std::vector<SessionInfo> sessions = Readable();
+  const SessionsById ids = ById(sessions);
+  const SessionInfo top = TopAt(path, ids);
   return top.cwd.empty() ? std::vector<SessionInfo>{}
-                         : SessionsIn(top.cwd, top.host);
+                         : InWorkspace(sessions, ids, top.cwd, top.host);
 }
 
 std::string AgentParentPath(const std::string& path,
@@ -408,11 +419,12 @@ std::string AgentParentPath(const std::string& path,
 std::string ForkSourcePath(const std::string& path) {
   const std::string source =
       JsonValue(SessionHeader(path), kSessionHeaderParent, "");
+  if (source.empty()) return "";
   std::error_code ec;
   for (const auto& entry : std::filesystem::directory_iterator(
            std::filesystem::path(path).parent_path(), ec)) {
-    if (!source.empty() && JsonValue(SessionHeader(entry.path().string()),
-                                     kSessionHeaderSessionId, "") == source) {
+    if (JsonValue(SessionHeader(entry.path().string()), kSessionHeaderSessionId,
+                  "") == source) {
       return entry.path().string();
     }
   }

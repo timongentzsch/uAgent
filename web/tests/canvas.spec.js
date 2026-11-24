@@ -561,10 +561,10 @@ test("a page that runs past its size or misses a file says so", async ({
     "02-cover.html": artboard("Cover", "<p>ok</p>"),
   });
   const files = await openFiles(app, session, "design/book/");
-  await expect(files.getByText("1 page failed to run")).toBeVisible();
+  await expect(files.getByText("1 page with design issues")).toBeVisible();
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   await expect(app.locator("#prompt")).toHaveValue(
-    /`design\/book\/book\.html` threw: .*missing\.png did not load.*page 1 runs 200px past its height/,
+    /`design\/book\/book\.html` has design issues: .*missing\.png did not load.*page 1 runs 200px past its height/,
   );
 });
 
@@ -593,20 +593,43 @@ test("a slide with text over text and a document block taller than a page say so
   });
   // The one slide is a deck; the document beside it is its own.
   const files = await openFiles(app, session, "design/checks/");
-  await expect(files.getByText("1 page failed to run")).toBeVisible();
+  await expect(files.getByText("1 page with design issues")).toBeVisible();
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   const draft = app.locator("#prompt");
   await expect(draft).toHaveValue(
-    /`design\/checks\/01-slide\.html` threw: “Cut off” runs past the slide's 1920x1080 edge.*“Revenue grew” overlaps “Footer note”/,
+    /`design\/checks\/01-slide\.html` has design issues: “Cut off” runs past the slide's 1920x1080 edge.*“Revenue grew” overlaps “Footer note”/,
   );
   await files.getByRole("button", { name: "Back to the list" }).click();
   await files.getByRole("button", { name: "memo.html", exact: true }).click();
   await expect(viewerOf(files).stage.getByText("tall")).toBeVisible();
-  await expect(files.getByText("1 page failed to run")).toBeVisible();
+  await expect(files.getByText("1 page with design issues")).toBeVisible();
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   await expect(draft).toHaveValue(
-    /`design\/checks\/memo\.html` threw: a figure is 1000px tall, more than a page \(605px\)/,
+    /`design\/checks\/memo\.html` has design issues: a figure is 1000px tall, more than a page \(605px\)/,
   );
+});
+
+test("tightly led slide lines pass while colliding letters are reported", async ({
+  page,
+}) => {
+  const helper = await readFile(
+    new URL("../public/design-helper.js", import.meta.url),
+    "utf8",
+  );
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await page.route("https://slides.test/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: `<!doctype html><meta charset="utf-8"><meta name="artboard" content="1000x700 slide"><script>${helper}</script>
+      <style>h1{font:700 80px/.96 sans-serif}p{font:40px serif;position:absolute;left:40px;top:350px}</style>
+      <h1>Heading<br>Second line</h1><p>Real collision</p><p>Other lettering</p>`,
+    }),
+  );
+  await page.goto("https://slides.test/cover");
+  const { problems } = await page.evaluate(() => window.uagentChecked);
+  expect(problems).toEqual([
+    expect.stringMatching(/“Real collision” overlaps “Other lettering”/),
+  ]);
 });
 
 // Slides whose verdict hangs on how they are drawn. Two follow the frame's
@@ -703,7 +726,10 @@ test("a slide is checked at its artboard's size with its fonts in and its script
   for (const frame of plain()) await frame.waitForLoadState();
   await app.evaluate(() => window.hear());
   // Sized now: the slides whose texts meet on their artboard, and only those.
-  const failed = legend.locator("[data-failed]");
+  const failed = legend.locator("[data-issue]");
+  await expect(
+    legend.getByRole("option", { name: /High, design issue$/ }),
+  ).toBeVisible();
   const said = () =>
     failed.evaluateAll((all) => all.map((item) => item.dataset.path));
   await expect(failed).toHaveCount(2);
@@ -730,7 +756,7 @@ test("alone, a slide says what is wrong with it in a window of its artboard's si
 }) => {
   const { files } = await openDeck(app, session, host.project, await DRAWN());
   // The notice of the failed pages moves the tools under it as it comes.
-  await expect(files.getByText("3 pages failed to run")).toBeVisible();
+  await expect(files.getByText("3 pages with design issues")).toBeVisible();
   const alone = await openAlone(app, files);
   // As the agent's browser reads a page: it waits for the page's word, and
   // where the window is another than the artboard asks for, reads one that is.
@@ -754,13 +780,19 @@ test("alone, a slide says what is wrong with it in a window of its artboard's si
   for (const name of Object.keys(verdicts))
     expect(await says(name)).toEqual({
       said: [],
-      wants: { w: 1920, h: 1080, fits: false, parts: 1 },
+      wants: { w: 1920, h: 1080, fits: false, parts: 1, problems: [] },
     });
   await alone.setViewportSize({ width: 1920, height: 1080 });
   for (const [name, said] of Object.entries(verdicts))
     expect(await says(name)).toEqual({
       said,
-      wants: { w: 1920, h: 1080, fits: true, parts: 1 },
+      wants: {
+        w: 1920,
+        h: 1080,
+        fits: true,
+        parts: 1,
+        problems: said.map((line) => line.slice("uagent page: ".length)),
+      },
     });
 });
 
@@ -2130,6 +2162,113 @@ test("on a phone a deck's legend is a filmstrip under the stage", async ({
   await expect(
     legend.getByRole("option", { name: "Slide 1: Cover" }),
   ).toBeInViewport();
+});
+
+test("selecting a filmstrip thumbnail preserves its position in a clipped viewer", async ({
+  page,
+  session,
+  host,
+}) => {
+  const { legend, count } = await openDeck(
+    page,
+    session,
+    host.project,
+    Object.fromEntries(
+      ["Cover", "Detail", "Results", "End"].map((title, at) => [
+        `0${at + 1}.html`,
+        slide(title),
+      ]),
+    ),
+    { phone: true },
+  );
+  const options = legend.getByRole("option");
+  await options.nth(1).click();
+  await expect(count).toHaveText("2 / 4");
+  // Leave part of the filmstrip below the enclosing scrollport and part
+  // of the first thumbnail beyond the strip's left edge.
+  await page.addStyleTag({
+    content:
+      ".files-stage { overflow: auto } .files-stage > .open-page { min-height: calc(100% + 46px) }",
+  });
+  await legend.evaluate((list) => {
+    list.scrollLeft = 55;
+  });
+  const read = () =>
+    legend.evaluate((list) => ({
+      top: list.getBoundingClientRect().top,
+      left: list.scrollLeft,
+    }));
+  const before = await read();
+  const strip = await legend.boundingBox();
+  await page.mouse.click(strip.x + 12, strip.y + 20);
+  await expect(count).toHaveText("1 / 4");
+  await expect(options.first()).toBeFocused();
+  // Wait through the navigation effect before reading geometry.
+  await page.evaluate(
+    () =>
+      new Promise((done) =>
+        requestAnimationFrame(() => requestAnimationFrame(done)),
+      ),
+  );
+  expect(await read()).toEqual(before);
+  await page.keyboard.press("End");
+  await expect(count).toHaveText("4 / 4");
+  await expect(options.last()).toBeFocused();
+  await expect
+    .poll(async () => (await read()).left)
+    .toBeGreaterThan(before.left);
+  expect((await read()).top).toBe(before.top);
+});
+
+test("a section heading leaves slide thumbnails and their captions aligned across the filmstrip", async ({
+  page,
+  session,
+  host,
+}) => {
+  const { legend } = await openDeck(page, session, host.project, {
+    "01-cover.html": slide("Cover"),
+    "02-detail.html": slide(
+      "Detail",
+      "",
+      '<meta name="section" content="Findings">',
+    ),
+    "03-summary.html": slide("Summary"),
+  });
+  const heading = legend.locator(".page-legend-section");
+  const frames = legend.locator(".page-frame");
+  const captions = legend.locator(".page-legend-name");
+  const tops = (items) =>
+    items.evaluateAll((nodes) =>
+      nodes.map((n) => n.getBoundingClientRect().top),
+    );
+  const aligned = async () => {
+    for (const items of [frames, captions]) {
+      await expect(items).toHaveCount(3);
+      const y = await tops(items);
+      expect(Math.max(...y) - Math.min(...y)).toBeLessThan(1);
+    }
+    expect(
+      (await heading.boundingBox()).y + (await heading.boundingBox()).height,
+    ).toBeLessThanOrEqual((await frames.nth(1).boundingBox()).y);
+  };
+  await expect(heading).toHaveText("Findings");
+  await expect(
+    legend.getByRole("option", { name: "Findings, Slide 2: Detail" }),
+  ).toBeVisible();
+  // A wide Files pane keeps each section immediately before its own slide.
+  const resize = page.getByRole("separator", { name: "Resize the files" });
+  await resize.press("Shift+ArrowLeft");
+  const wide = await tops(frames);
+  expect(wide[1]).toBeGreaterThan(wide[0]);
+  expect(wide[2]).toBeGreaterThan(wide[1]);
+  const first = await legend.locator(".page-legend-item").first().boundingBox();
+  expect(wide[0]).toBeCloseTo(first.y, 0);
+  // The same desktop chat with a narrow pane, then the phone sheet.
+  for (let i = 0; i < 4; i++) await resize.press("Shift+ArrowRight");
+  await aligned();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(legend).toBeVisible();
+  await aligned();
 });
 
 test("a slide that fails is marked in the legend, and its errors go to the agent once", async ({

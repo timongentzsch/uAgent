@@ -45,7 +45,7 @@ import { MarkdownFile } from "../../shared/markdown-view.tsx";
 import { diffLineClass, folderOf, formatStat } from "../../shared/display.ts";
 import DiffView from "../../shared/diff-view.tsx";
 import { shareOrDownload } from "../../shared/share.ts";
-import { bytes, plural } from "../../shared/quantities.ts";
+import { bytes } from "../../shared/quantities.ts";
 import { fenced } from "../../shared/format.ts";
 import { maxTextFileBytes } from "../../shared/limits.ts";
 import { stored } from "../../shared/storage.ts";
@@ -65,7 +65,7 @@ import type { Node } from "../../shared/types.ts";
 import {
   boardsOf,
   carried,
-  failures,
+  boardDiagnostics,
   hear,
   join,
   kindOf,
@@ -639,7 +639,7 @@ export default function Files({
         : [],
     [here, stage, page, dir, seen, file, folders.value],
   );
-  const failed = failures(boards, seen, kind);
+  const diagnostics = boardDiagnostics(boards, seen);
   // A deck's slides renamed, copied or deleted by hand: the folder is read
   // again and the view follows to `show` in one step, so the slide is never
   // taken for gone. Refused (the agent changed the folder), nothing was moved.
@@ -1014,7 +1014,7 @@ export default function Files({
               </Notice>
             </p>
           )}
-          {failed.count > 0 && (
+          {diagnostics.summary && (
             <p class="page-notice">
               <Notice
                 tone="warning"
@@ -1024,7 +1024,7 @@ export default function Files({
                       variant="secondary"
                       onClick={() => {
                         void settle();
-                        addToChat(failed.text);
+                        addToChat(diagnostics.text);
                       }}
                     >
                       Ask agent to fix
@@ -1032,9 +1032,7 @@ export default function Files({
                   )
                 }
               >
-                {kind === "sheet"
-                  ? `${plural(failed.count, "cell")} in error`
-                  : `${plural(failed.count, "page")} failed to run`}
+                {diagnostics.summary}
               </Notice>
             </p>
           )}

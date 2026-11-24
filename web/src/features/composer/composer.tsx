@@ -27,7 +27,7 @@ import type {
   Outgoing,
 } from "../../shared/types.ts";
 import type { ComponentChildren, TargetedKeyboardEvent } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
 import { useApi } from "../../state/api.ts";
 import { useConversation, useHostContext } from "../../state/host-context.ts";
@@ -40,7 +40,13 @@ import {
   mentionOptions,
 } from "./mention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
-import { ActivityButton, type SideRows } from "../../shared/turn-status.tsx";
+import {
+  AgentBar,
+  AgentRoster,
+  groupAgents,
+  ActivityButton,
+  type SideRows,
+} from "../../shared/turn-status.tsx";
 import MessageInput, { QuoteBar } from "../../shared/message-input.tsx";
 import ModelControl from "../../shared/model-control.tsx";
 import { useNarrowColumn } from "../../shared/layout.ts";
@@ -85,6 +91,7 @@ function Composer({
   stopped,
   resume,
   agents,
+  agentNames,
   sides,
   above,
   choose,
@@ -109,6 +116,7 @@ function Composer({
   stopped?: string;
   resume?: () => void;
   agents: Session[];
+  agentNames: ReadonlyMap<string, string>;
   // The conversation's side chats, for the Activity list.
   sides: SideRows;
   // What sits on the input: Jump to latest stays clear of it.
@@ -119,6 +127,10 @@ function Composer({
   const { online, connection, report } = useHostContext();
   const narrow = useNarrowColumn();
   const { upload, uploading, busy, act, following } = useConversation();
+  const { current, past } = useMemo(
+    () => groupAgents(agents, agentNames, sides.list),
+    [agents, agentNames, sides.list],
+  );
   const input = useRef<HTMLTextAreaElement>(null);
   const recalled = useRef(-1);
   // A send empties the draft and turns Send into Stop under the same
@@ -325,6 +337,12 @@ function Composer({
         held={!!pending}
         recall={recall}
         insert={insert}
+      />
+      <AgentBar
+        entries={current}
+        online={online}
+        report={report}
+        choose={choose}
       />
       <form class="message-box" onSubmit={send}>
         {suggestions.list}
@@ -606,19 +624,24 @@ function Composer({
         <div class="status-line">
           <ActivityButton
             open={openInspector}
-            choose={choose}
             session={session}
             online={online}
             connection={connection}
             report={report}
             items={state?.activities || NONE}
-            agents={agents}
             sides={sides}
             running={running}
             started={state?.turn_started_ms}
             pending={!!pending}
             stopped={continuing ? stopLabel : undefined}
             resume={resume}
+          />
+          <AgentRoster
+            entries={past}
+            past
+            online={online}
+            report={report}
+            choose={choose}
           />
           {running && (
             <Button

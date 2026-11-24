@@ -8,7 +8,11 @@ import type {
   TerminalInfo,
 } from "../../shared/types.ts";
 import { useApi } from "../../state/api.ts";
-import { statusOf, type SessionState } from "../../state/attention.ts";
+import {
+  childrenByParent,
+  statusOf,
+  type SessionState,
+} from "../../state/attention.ts";
 import { useHostContext } from "../../state/host-context.ts";
 import { folderOf } from "../../shared/display.ts";
 import { folderName } from "../../shared/folder-label.tsx";
@@ -72,7 +76,7 @@ export default function FolderOverview({
   const roots = here
     .filter((item) => !item.parent)
     .sort((a, b) => (b.updated || 0) - (a.updated || 0));
-  const agents = (item: Session) => here.filter((a) => a.parent === item.id);
+  const children = childrenByParent(here);
   const state = (item: Session) => statusOf(item, online);
   // Read again whenever one of its conversations changes.
   const changed = Math.max(0, ...here.map((item) => item.updated || 0));
@@ -197,20 +201,23 @@ export default function FolderOverview({
           <ul
             class={`overview-${layout}${layout === "list" ? " divided" : ""}`}
           >
-            {roots.map((item) => (
-              <li key={item.id}>
-                <Card
-                  item={item}
-                  state={state(item)}
-                  agents={agents(item)}
-                  working={
-                    agents(item).filter((a) => state(a) === "working").length
-                  }
-                  card={layout === "grid"}
-                  open={() => choose(item.id)}
-                />
-              </li>
-            ))}
+            {roots.map((item) => {
+              const agents = children.get(item.id) || [];
+              return (
+                <li key={item.id}>
+                  <Card
+                    item={item}
+                    state={state(item)}
+                    agents={agents.length}
+                    working={
+                      agents.filter((a) => state(a) === "working").length
+                    }
+                    card={layout === "grid"}
+                    open={() => choose(item.id)}
+                  />
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <EmptyState>No conversations here yet.</EmptyState>
@@ -250,7 +257,7 @@ function Card({
 }: {
   item: Session;
   state: SessionState;
-  agents: Session[];
+  agents: number;
   working: number;
   card: boolean;
   open: () => void;
@@ -305,8 +312,8 @@ function Card({
       )}
       <small class="overview-foot">
         <span>
-          {agents.length
-            ? `${plural(agents.length, "agent")}${working ? ` · ${working} working` : ""}`
+          {agents
+            ? `${plural(agents, "agent")}${working ? ` · ${working} working` : ""}`
             : "No agents"}
         </span>
         <span>

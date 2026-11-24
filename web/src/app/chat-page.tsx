@@ -33,13 +33,16 @@ import Composer from "../features/composer/composer.tsx";
 import { SideLayout } from "../shared/side-pane.tsx";
 import Chat, { prepareHistoryNodes } from "../features/chat/chat.tsx";
 import { FindBar, type FindRequest } from "../features/chat/find-bar.tsx";
+import {
+  AgentParticipants,
+  useParticipants,
+} from "../features/chat/agent-sender.tsx";
 import { MessageActions } from "../features/chat/message-actions.ts";
 import { LiveActivities } from "../state/live-activities.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { keepFirst, mergeNodes } from "../shared/tree.ts";
 import { maxHistoryNodes } from "../shared/limits.ts";
-import { isRunning } from "../state/attention.ts";
 import { useLatest } from "../shared/use-latest.ts";
 import SideChats from "../features/chat/side-answer.tsx";
 import { SelectionActions } from "../features/chat/selection-actions.tsx";
@@ -221,12 +224,10 @@ export default function ChatPage({
   );
   const sessions = catalogue.sessions;
   const agents = useMemo(
-    () =>
-      sessions.filter(
-        (item) => item.parent === selected && isRunning(item, online),
-      ),
-    [sessions, selected, online],
+    () => sessions.filter((item) => item.parent === selected),
+    [sessions, selected],
   );
+  const participants = useParticipants(nodes, agents);
   // Its side chats that have a conversation, for the Activity list: a row
   // shows the tab where they have a column, and the page where not.
   const sides = side.sides;
@@ -318,6 +319,7 @@ export default function ChatPage({
       stopped={stopped}
       resume={actions.resume}
       agents={agents}
+      agentNames={participants.names}
       choose={open}
     />
   );
@@ -379,18 +381,20 @@ export default function ChatPage({
         value={snapshot?.state?.activities || NO_ACTIVITIES}
       >
         <MessageActions.Provider value={actions}>
-          <Chat
-            key={selected}
-            attachScroller={attachScroller}
-            attachContent={attachContent}
-            preserveWhile={preserveWhile}
-            selected={selected}
-            snapshot={snapshot}
-            loadError={loadError}
-            nodes={nodes}
-            session={shown}
-            older={older}
-          />
+          <AgentParticipants.Provider value={participants}>
+            <Chat
+              key={selected}
+              attachScroller={attachScroller}
+              attachContent={attachContent}
+              preserveWhile={preserveWhile}
+              selected={selected}
+              snapshot={snapshot}
+              loadError={loadError}
+              nodes={nodes}
+              session={shown}
+              older={older}
+            />
+          </AgentParticipants.Provider>
         </MessageActions.Provider>
       </LiveActivities.Provider>
       {session && (

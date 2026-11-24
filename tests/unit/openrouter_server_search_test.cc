@@ -346,6 +346,41 @@ TEST_CASE(TestOpenRouterServerSearch) {
   {
     // A missing page says to search for it, so a model stops guessing links.
     TestWorkspace workspace("fetched-page");
+    const std::string url = "https://example.com/article";
+    WebResponse page;
+    page.content_type = "text/html";
+    page.body =
+        "<title>Roads &amp; rails</title><header>Menu</header>"
+        "<article>Related story</article><MAIN class='reader'>"
+        "<h2>Findings</h2><p>The bridge opened.</p></MAIN>";
+    ToolResult fetched = ReadFetchedPage(url, page, "fetch");
+    CHECK(fetched.body_kind == "link" &&
+          fetched.output == HtmlToText(page.body));
+    CHECK(fetched.parts ==
+          json::array({SourcePart(url, "Roads & rails",
+                                  "## Findings\n\nThe bridge opened.")}));
+    page.body =
+        "<div data-role='main' title='role=main'>Menu</div>"
+        "<section ROLE = 'main'><section>One</section> two</section>";
+    CHECK(ReadFetchedPage(url, page, "fetch").parts[0]["excerpt"] == "One two");
+    page.body =
+        "<nav><article>Skip</article></nav><article>Opening "
+        "<article>nested</article> and conclusion</article>";
+    CHECK(ReadFetchedPage(url, page, "fetch").parts[0]["excerpt"] ==
+          "Opening nested and conclusion");
+    page.body = "<main-menu>Menu</main-menu><main>Unclosed";
+    fetched = ReadFetchedPage(url, page, "fetch");
+    CHECK(fetched.body_kind == "markdown" &&
+          !fetched.parts[0].contains("excerpt"));
+    page.content_type = "text/plain";
+    page.effective_url = "https://example.com/canonical";
+    page.truncated = true;
+    page.body = std::string(799, 'x') + "é" + " tail";
+    fetched = ReadFetchedPage(url, page, "fetch");
+    CHECK(fetched.parts[0]["url"] == page.effective_url);
+    CHECK(fetched.parts[1]["rows"][0][0] == "Transfer");
+    CHECK(fetched.output == page.body &&
+          fetched.parts[0]["excerpt"] == std::string(799, 'x') + "…");
     WebResponse missing;
     missing.error = "HTTP 404";
     missing.http_status = 404;

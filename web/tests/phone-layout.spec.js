@@ -103,16 +103,16 @@ test.describe("message layout", () => {
           return {
             wraps: last.y > body.y + last.height,
             beside: metadata.x >= body.right,
-            // How far the time's middle is from the last line's.
-            off: Math.round(
+            // Body and timestamp glyphs at different sizes can center on
+            // adjacent half-pixels, even when their line boxes are aligned.
+            aligned:
               Math.abs(
                 middle(lines(node.querySelector("time")).at(-1)) - middle(last),
-              ),
-            ),
+              ) <= 0.5,
           };
         }),
       )
-      .toEqual({ wraps: true, beside: true, off: 0 });
+      .toEqual({ wraps: true, beside: true, aligned: true });
   });
 });
 

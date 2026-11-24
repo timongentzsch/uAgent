@@ -33,7 +33,8 @@ namespace uagent {
 // chosen at its scope, and "default" takes the choice back.
 constexpr char kApprovalKey[] = "UAGENT_APPROVAL";
 
-json ApprovalState(const EffectiveConfigSnapshot& configured, bool agent) {
+json ApprovalState(const EffectiveConfigSnapshot& configured,
+                   const json& agent) {
   // An unreadable value reads as asking.
   auto parsed = [](const std::string& text) {
     ApprovalMode value = ApprovalMode::kAsk;
@@ -44,10 +45,9 @@ json ApprovalState(const EffectiveConfigSnapshot& configured, bool agent) {
       JsonValue(configured.sources, kApprovalKey, "") == "conversation";
   ApprovalMode effective = parsed(configured.Get(kApprovalKey));
   ApprovalMode inherited = parsed(configured.Inherited(kApprovalKey));
-  // An agent reviews (Auto) unless a mode is chosen for its own conversation;
-  // the saved setting does not reach it.
-  if (agent) {
-    inherited = ApprovalMode::kAuto;
+  // Roles saved before mode inheritance used Auto as their default.
+  if (!agent.empty()) {
+    inherited = parsed(JsonValue(agent, "approval", "auto"));
     if (!chosen) effective = inherited;
   }
   return {{"mode", chosen ? ApprovalModeName(effective) : "default"},
@@ -56,7 +56,6 @@ json ApprovalState(const EffectiveConfigSnapshot& configured, bool agent) {
 }
 
 json PermissionControl(AppContext& context, const json& request) {
-  const bool agent = !context.options.AgentRole().empty();
   // A call refused without asking, allowed for the rest of the conversation.
   if (const json* allow = JsonObject(request, "allow")) {
     PermissionRule rule{JsonValue(*allow, "tool", ""),
@@ -75,7 +74,8 @@ json PermissionControl(AppContext& context, const json& request) {
     context.config_manager.ChooseForConversation(
         kApprovalKey, mode == "default" ? "" : ApprovalModeName(chosen));
   }
-  json result = ApprovalState(context.config_manager.Read(), agent);
+  json result =
+      ApprovalState(context.config_manager.Read(), context.options.AgentRole());
   ApprovalMode effective = ApprovalMode::kAsk;
   ParseApprovalMode(JsonValue(result, "effective", ""), effective);
   // Planning starts afresh: a plan from before is not put to the person

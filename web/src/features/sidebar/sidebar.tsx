@@ -46,7 +46,12 @@ import { Menu, MenuItem, useLongPress } from "../../shared/menu.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { plural } from "../../shared/quantities.ts";
-import { statusOf, waiting, type SessionState } from "../../state/attention.ts";
+import {
+  childrenByParent,
+  statusOf,
+  waiting,
+  type SessionState,
+} from "../../state/attention.ts";
 import { collapsed, folded, opened, placeKey, useFolding } from "./folding.ts";
 import { DAYS, dayOf } from "./days.ts";
 import { PinItem } from "./pins.tsx";
@@ -98,16 +103,15 @@ function groupSessions(
   );
   const listed = new Set(sorted.map((item) => item.id));
   const needs = new Set(waiting(sessions).map((item) => item.id));
+  const children = childrenByParent(
+    sorted.filter(
+      (item) =>
+        item.parent && !needs.has(item.id) && statusOf(item, online) !== "idle",
+    ),
+  );
   const entry = (item: Session): Entry => ({
     item,
-    agents: sorted
-      .filter(
-        (agent) =>
-          agent.parent === item.id &&
-          !needs.has(agent.id) &&
-          statusOf(agent, online) !== "idle",
-      )
-      .map(entry),
+    agents: (children.get(item.id) || []).map(entry),
   });
   for (const item of sorted)
     if ((!item.parent || !listed.has(item.parent)) && !needs.has(item.id))
@@ -182,13 +186,15 @@ type View = "recent" | "places";
 // A place shows its last week, at least its three newest and the open
 // conversation; the rest wait behind "N older".
 function placeRows(entries: Entry[], key: string, selected: string) {
-  const old = entries.filter(
-    (entry, index) =>
+  const fresh: Entry[] = [],
+    old: Entry[] = [];
+  for (const [index, entry] of entries.entries()) {
+    const older =
       index > 2 &&
       dayOf(entry.item.updated) > 2 &&
-      !rowsOf(entry).some((item) => item.id === selected),
-  );
-  const fresh = entries.filter((entry) => !old.includes(entry));
+      !rowsOf(entry).some((item) => item.id === selected);
+    (older ? old : fresh).push(entry);
+  }
   return { fresh, old, open: opened.has(key) };
 }
 const olderKey = (host: string, path: string) =>

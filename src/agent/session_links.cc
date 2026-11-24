@@ -12,15 +12,11 @@
 #include "include/core/strings.h"
 
 namespace uagent {
+namespace {
 
-MailParty SessionParty(const std::string& path) {
-  return SessionParty(path, AgentOf(SessionHeader(path)));
-}
-
-MailParty SessionParty(const std::string& path, const json& role) {
-  const json header = SessionHeader(path);
+MailParty PartyFromHeader(const std::string& path, const json& header,
+                          const json& role) {
   MailParty party{.id = SessionIdFor(path),
-                  .path = path,
                   .identity = JsonValue(header, kSessionHeaderSessionId, ""),
                   .source = JsonValue(header, kSessionHeaderParent, "")};
   const std::string parent =
@@ -29,7 +25,6 @@ MailParty SessionParty(const std::string& path, const json& role) {
   return party;
 }
 
-namespace {
 // A sender named as lists name it, so the reply can address it.
 std::string SessionLabel(const std::string& path) {
   const std::string title =
@@ -39,6 +34,15 @@ std::string SessionLabel(const std::string& path) {
          (title.empty() ? name : OneLine(title) + " (" + name + ")") + "]";
 }
 }  // namespace
+
+MailParty SessionParty(const std::string& path) {
+  const json header = SessionHeader(path);
+  return PartyFromHeader(path, header, AgentOf(header));
+}
+
+MailParty SessionParty(const std::string& path, const json& role) {
+  return PartyFromHeader(path, SessionHeader(path), role);
+}
 
 bool MayMail(const MailParty& from, const MailParty& to, bool report) {
   return (!to.parent.empty() && to.parent == from.id) ||

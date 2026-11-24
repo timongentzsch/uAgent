@@ -286,7 +286,11 @@ while chunk := os.read(3, 4096):
                 control = profile / "control-focused"
                 value = json.loads(control.read_text()) if control.exists() else None
                 result = {"result": {"value": value}}
-            elif "uagentChecked" in asked and (profile / "page-checked").exists():
+            elif "const el=document.querySelector(" in asked:
+                result = {"result": {"value": {"x": 148, "y": 203, "w": 740, "h": 465}}}
+            elif ("uagentChecked" in asked or "template#slides" in asked) and (
+                profile / "page-checked"
+            ).exists():
                 # The window the page's artboard asks for, as the test wrote it.
                 wants = json.loads((profile / "page-checked").read_text())
                 result = {"result": {"value": wants}}

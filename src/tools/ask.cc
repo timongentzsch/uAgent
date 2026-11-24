@@ -164,16 +164,14 @@ Tool AskTool(AskPerson ask, AskImage image) {
         bool eof = false;
         const json answers = json::parse(
             ask(ShownQuestions(questions, image, notes), &eof), nullptr, false);
-        if (eof || !answers.is_array()) {
-          return ToolSuccess(
-              "The user did not answer; decide yourself or ask in your "
-              "reply." +
-              notes);
-        }
+        const bool recorded = !eof && answers.is_array();
         std::string out;
+        json rows = json::array();
+        int64_t answered = 0;
         for (size_t index = 0; index < questions.size(); ++index) {
-          const json answer =
-              index < answers.size() ? answers[index] : json::object();
+          const json answer = recorded && index < answers.size()
+                                  ? answers[index]
+                                  : json::object();
           std::string chosen, labels;
           const auto add = [&chosen](const std::string& part) {
             chosen += (chosen.empty() ? "" : "; ") + part;
@@ -193,10 +191,23 @@ Tool AskTool(AskPerson ask, AskImage image) {
               Attachments().Add(theirs, context.call_id).Ok()) {
             add("an image, readable in your next step");
           }
-          out += JsonValue(questions[index], "question", "") + "\n→ " +
-                 (chosen.empty() ? "(no answer)" : chosen) + "\n";
+          const std::string question =
+              JsonValue(questions[index], "question", "");
+          if (chosen.empty())
+            chosen = "(no answer)";
+          else
+            ++answered;
+          rows.push_back({question, chosen});
+          out += question + "\n→ " + chosen + "\n";
         }
-        return ToolSuccess(out + notes);
+        if (!recorded)
+          out =
+              "The user did not answer; decide yourself or ask in your reply.";
+        ToolResult result = ListResult(out + notes, answered, "answer");
+        if (!notes.empty()) rows.push_back({"Notes", notes});
+        result.parts = json::array({FieldsPart(std::move(rows))});
+        result.body_kind = "fields";
+        return result;
       });
   tool.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
     if (auto issue = AskQuestionsIssue(JsonValue(a, "questions", json()))) {
@@ -214,6 +225,9 @@ Tool AskTool(AskPerson ask, AskImage image) {
                         ? JsonValue((*questions)[0], "question", "")
                         : ""};
   };
+  // The pending interaction presents the questions. Its settled receipt
+  // pairs them with their answers.
+  tool.present = [](const json&) { return json::array(); };
   return tool;
 }
 

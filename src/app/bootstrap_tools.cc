@@ -21,7 +21,6 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
-#include "include/core/sandbox.h"
 #include "include/core/workspace.h"
 #include "include/mcp/discover.h"
 #include "include/mcp/register.h"
@@ -208,20 +207,6 @@ std::vector<Tool> BuildTools(AppContext& context,
       return (tool.capabilities & Capability(ToolCapability::kMutate)) &&
              !(tool.capabilities & Capability(ToolCapability::kExecute));
     });
-  }
-  // A command in the readonly sandbox changes nothing, so it needs no
-  // approval.
-  const SandboxStatus& sandbox = SandboxRuntime();
-  if (sandbox.mode == SandboxMode::kEnforced && sandbox.policy.read_only) {
-    for (Tool& tool : tools) {
-      if (tool.name != "run") continue;
-      tool.mutating = false;
-      tool.mutates = nullptr;
-      // A refused connection reads like a name that does not resolve.
-      tool.description +=
-          " Commands here only read: they write nothing but temporary "
-          "files and reach no network.";
-    }
   }
   std::vector<std::string> tool_names = ToolNames(tools);
   KeepSupportedSkills(skills, tool_names);

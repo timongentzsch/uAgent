@@ -298,6 +298,7 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   record.metadata.turns = header[kSessionHeaderTurns].get<int64_t>();
   record.metadata.title = header[kSessionHeaderTitle].get<std::string>();
   record.metadata.custom_title = JsonValue(header, "custom_title", false);
+  record.metadata.memory = JsonValue(header, "memory", true);
   record.metadata.suggestion = JsonValue(header, "suggestion", json(nullptr));
   record.metadata.parent_session_id =
       JsonValue(header, kSessionHeaderParent, "");
@@ -493,7 +494,9 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.cost = JsonValue(header, "cost", 0.0);
         item.tokens = JsonValue(header, "tokens", int64_t{0});
         item.todo = JsonValue(header, "todo", json(nullptr));
-        item.parent = JsonValue(AgentOf(header), "parent", "");
+        const json agent = AgentOf(header);
+        item.parent = JsonValue(agent, "parent", "");
+        item.agent_edits = JsonValue(agent, "edits", "");
         item.memory = JsonValue(header, "memory", true);
         if (JsonValue(header, "format", int64_t{0}) != kSessionFormat) {
           item.error = "unsupported session format";

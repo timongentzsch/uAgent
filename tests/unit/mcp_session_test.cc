@@ -561,17 +561,19 @@ TEST_CASE(TestScopedBaseAndMemory) {
 
   // A global memory lands in the home directory even from inside a workspace.
   MemoryEvent memory_event;
-  CHECK(ExtractedMemoryAction("set", "global/prefers-tabs",
-                              std::string("The user prefers tabs."), workspace,
-                              "/tmp/source-session.json", &memory_event)
+  ObservedMemories observed;
+  CHECK(SaveExtractedMemory("global/prefers-tabs", "The user prefers tabs.", "",
+                            workspace, "/tmp/source-session.json", observed,
+                            memory_event)
             .output.starts_with("wrote "));
   CHECK(memory_event.action == "created");
   CHECK(memory_event.key == "global/prefers-tabs");
   CHECK(memory_event.automatic);
   CHECK(memory_event.source_session == WorkspaceId("/tmp/source-session.json"));
-  CHECK(ExtractedMemoryAction("set", "global/prefers-tabs",
-                              std::string("The user prefers tabs."), workspace,
-                              "/tmp/source-session.json", &memory_event)
+  LoadMemoryIndex(workspace, KiB(4), {}, &observed);
+  CHECK(SaveExtractedMemory("global/prefers-tabs", "The user prefers tabs.", "",
+                            workspace, "/tmp/source-session.json", observed,
+                            memory_event)
             .output.starts_with("unchanged "));
   CHECK(memory_event.action == "unchanged");
   std::vector<MemoryEvent> memory_events = LoadMemoryEvents();

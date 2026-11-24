@@ -6,6 +6,7 @@
 // /memory read, and the control requests clients send.
 
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,9 +29,15 @@ std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
                                       size_t limit = 0);
 // Where Claude Code keeps the memories of the folder `cwd` belongs to.
 std::filesystem::path ClaudeMemoryPath(const std::filesystem::path& cwd);
+struct ObservedMemory {
+  std::string revision;
+  bool whole = false;
+};
+using ObservedMemories = std::map<std::string, ObservedMemory>;
 // One line per memory within `max_bytes`, without the files in `inlined`.
 MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes,
-                            const std::vector<std::string>& inlined = {});
+                            const std::vector<std::string>& inlined = {},
+                            ObservedMemories* observed = nullptr);
 // The full content of global-scope memories, capped at `max_bytes`.
 MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
                                size_t max_bytes);
@@ -40,13 +47,13 @@ MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
 std::string StartMemoryExtractor(Agent& agent, const Api& api,
                                  const std::filesystem::path& cwd,
                                  const std::string& current_session);
-// A write on a background extraction's behalf, from the session `source`.
-ToolResult ExtractedMemoryAction(const std::string& action,
-                                 const std::string& key,
-                                 const std::optional<std::string>& content,
-                                 const std::filesystem::path& cwd,
-                                 const std::string& source,
-                                 MemoryEvent* written = nullptr);
+// Commit one reply against the evidence supplied to the extractor.
+ToolResult SaveExtractedMemory(const std::string& key, const std::string& note,
+                               const std::string& folded,
+                               const std::filesystem::path& cwd,
+                               const std::string& source,
+                               const ObservedMemories& observed,
+                               MemoryEvent& written);
 
 }  // namespace uagent
 

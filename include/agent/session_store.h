@@ -53,6 +53,7 @@ struct SessionInfo {
   std::filesystem::file_time_type mtime;
   std::string error;
   std::string parent;  // the session id of whoever started it, for an agent
+  std::string agent_edits = {};  // delegated scope from the same header
   bool memory = true;
   std::string host = {};
   json suggestion = nullptr;

@@ -97,14 +97,24 @@ and to update the note that already covers a topic.
 `memory.enabled` and `memory.generate` on, `StartMemoryExtractor` looks for
 one older conversation of the same folder that had memory on, has at least
 2 turns, has been idle `memory.idleHours`, is younger than `history.days`
-and is not waiting to be filed. It claims it with a marker in
-`~/.uagent/memory/.processed/` (a stale claim expires after 15 min) and
-sends one request: rules, the memory index, and the newest 32 KiB of user
-and assistant text, redacted. The reply is `none` or `key: …` and a note,
-saved through the same path as the tool. When a scope is three-quarters
-full the request also carries that scope's notes, and a `merge: <key>` line
-folds one of them into the new note. The conversation shows a notice only
-when a note was created, updated or the extraction failed.
+and is not waiting to be filed. It claims the conversation under `~/.uagent/memory/.processed/` and
+remembers its source revision while the request runs. A stale claim
+expires after 15 minutes.
+One request carries the rules, the memory index and up to 32 KiB of
+redacted user and assistant text, newest exchanges first in the budget
+and in conversation order on the wire. Long messages keep their opening
+and closing text. When a scope is three-quarters full, complete notes
+eligible for consolidation share a further 32 KiB allowance.
+
+The extractor can return `none` or write one note. Replacing an
+existing note requires its complete text to have been supplied. An optional
+`merge: <key>` folds a complete note supplied in that request into its
+same-scope destination. Before committing, the runtime rechecks the
+source conversation and the observed notes. A stale reply leaves the
+user’s edits and deletions intact. Completed claims identify the source
+version that was read. A conversation saved with memory off stays
+ineligible for automatic extraction after resume. The conversation shows
+a notice when a note was created, updated or extraction failed.
 
 **Opening a skill.** The `skill` tool's description lists names and
 descriptions within 8,000 characters, shortening descriptions first. A call

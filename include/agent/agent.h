@@ -474,6 +474,8 @@ class Agent {
   mutable SavedFile saved_file_;
   std::string session_title_;
   bool custom_title_ = false;
+  // A saved transcript containing a memory-off run stays out of extraction.
+  bool memory_source_ = true;
   // Fork lineage, kept across load and save.
   std::string parent_session_id_;
   int64_t forked_at_turn_ = 0;

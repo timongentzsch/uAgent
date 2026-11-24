@@ -28,44 +28,40 @@ the other options.
 
 ## Current measurements
 
-### v1.11.0 release measurements
+### v1.12.0 release measurements
 
-The 2026-11-24 measurements use the published **1.11.0** archives at commit
-`6a4e1c10`. Each archive matched the checksum in the release. Sizes below use
-decimal MB (1,000,000 bytes). [Release and checksums](https://github.com/timongentzsch/uAgent/releases/tag/v1.11.0) · [Package measurements](results/packages-2026-11-24.json)
+The published v1.12.0 archives at commit `d312c15c` matched the release
+checksums on 2026-11-24. Sizes use decimal MB (1,000,000 bytes).
+[Release and checksums](https://github.com/timongentzsch/uAgent/releases/tag/v1.12.0) · [Exact bytes and hashes](results/packages-v1.12.0.json)
 
-| Target | Main binary | Complete installation | Remote binary | Remote transfer with resources |
+| Target | Download (MB) | Executable (MB) | Installed (MB) | SSH gateway transfer (MB) |
 | --- | ---: | ---: | ---: | ---: |
-| Linux x86_64 | 7.60 MB | 20.36 MB | 5.03 MB | 2.40 MB |
-| Linux ARM64 | 6.63 MB | 19.39 MB | 4.14 MB | 2.18 MB |
-| macOS ARM64 | 10.90 MB | 23.65 MB | 8.34 MB | 4.35 MB |
+| Linux x86_64 | 15.13 | 7.78 | 20.76 | 2.47 |
+| Linux ARM64 | 14.90 | 6.82 | 19.80 | 2.25 |
+| macOS ARM64 | 17.09 | 11.05 | 24.03 | 4.43 |
 
-Complete installation sums unpacked regular files, including documentation,
-skills and all three compressed gateway payloads. Remote transfer measures the
-compressed archive containing the worker, skills and licenses. The totals
-exclude filesystem allocation and system libraries.
+Installed size sums regular files, including documentation, skills and all
+three compressed gateway payloads. An SSH workspace receives the gateway
+archive for its target. System libraries and filesystem allocation are
+excluded. The initial web JavaScript and CSS totaled **206,393 bytes**
+under gzip. All shipped web assets, including optional renderers, totaled
+**2,368,284 bytes** under the same build-time estimate.
 
-The release web bundle's initial JavaScript and CSS total **192,520 bytes**
-when gzip-compressed. All shipped web assets total **2,353,507 bytes** under
-the same calculation, including optional renderers. These are build-time
-compression estimates. The sheet engine ships beside the executable and counts
-toward installation size. [Web asset breakdown](results/packages-2026-11-24.json)
+The solo probe used a Linux ARM64 container on Apple M1 Pro with two CPUs,
+4 GiB of memory and external networking disabled. Across five trials,
+median idle memory was **26.7 MiB** (RSS summed across two processes), and
+median local CPU time per headless turn was **17.8 ms**. Each turn returned
+the scripted loopback reply `ok`. With the package on the container's own
+filesystem, the hermetic evaluation passed 110/110 checks across 16 variants and all 17 baseline and variant
+comparisons. [Samples and environment](results/release-probe-1.12.0-linux-arm64.json)
 
-A fresh-home headless turn of the installed Linux ARM64 release advertised
-**13 tools**. The benchmark counts **2,852 tool-schema tokens** plus **627
-system-instruction tokens**, or **3,479 combined**, using `o200k_base`.
-For comparison across CLIs, the counter reserializes each tool list with
-Python’s default JSON formatting. The compact tool array in this POST counted
-2,396 tokens, or 3,023 with system instructions. Both estimates exclude
-user-role environment context, the prompt and protocol framing. The full
-Chat Completions POST was 13,829 bytes. A loopback script returned `ok`. [Captured request](results/first-request-2026-11-24.json)
-
-With the same package and scripted Chat Completions reply, median process-tree RSS was
-**26.6 MiB idle**, and a headless one-word turn used **21 ms of local CPU**.
-All five idle sessions settled, each with two processes. All five headless
-commands returned exactly `ok`. This solo probe mounted the package read-only
-from the host. The Linux ARM64 container ran on Apple M1 Pro with 2 CPUs,
-4 GiB RAM and external networking disabled. [Samples and provenance](results/release-probe-2026-11-24.json)
+The first Chat Completions request in a fresh home advertised **13 tools**
+and carried 13,829 bytes of JSON. With `o200k_base`, the compact tool array
+(UTF-8 JSON without formatting whitespace) used 2,396 tokens and the
+system instructions used 627, totaling **3,023 tokens**. For comparisons
+across CLIs, the counter below uses Python's default JSON formatting for the
+tool array, yielding **3,479 tokens** including the instructions. Both counts exclude user-role context, the
+prompt and protocol framing. [Captured request](results/first-request-1.12.0-linux-arm64.json)
 
 To repeat the release probe, extract the verified Linux ARM64 archive first.
 Set `PACKAGE_DIR` to the extracted directory containing `bin/` and `share/`.
@@ -83,13 +79,9 @@ docker run --rm --init --platform linux/arm64 --cpus=2 --memory=4g \
 uv run --with tiktoken==0.14.0 python benchmarks/first_request.py count out/first-request.json
 ```
 
-The release-tag hermetic evaluation passed **110/110 checks across 16
-variants**, plus all 17 baseline and variant comparisons, with the package
-installed on the container's Linux filesystem. The same package at the
-same path on a Docker Desktop host bind passed 109/110. The background
-activity’s sandboxed log pump received a permission error on that mount.
-Copying the binary and resources onto Linux storage restored the expected
-marker. [Both evaluation runs](results/release-probe-2026-11-24.json)
+The earlier v1.11.0 release reports retain its archive sizes, solo probe and
+the evaluation's Linux-storage versus macOS bind-mount results.
+[v1.11.0 packages](results/packages-2026-11-24.json) · [Solo measurements](results/release-probe-2026-11-24.json) · [First request](results/first-request-2026-11-24.json)
 
 ### Historical native samples
 
@@ -130,32 +122,36 @@ matching gateway manifest.
 
 ## Footprint comparison
 
-The **2026-11-24** run measured five Linux ARM64 CLIs on an Apple M1 Pro in
-a container limited to 2 CPUs and 4 GiB of memory. External networking was
-disabled. Each CLI received the same prompt and a scripted one-word answer
-over loopback. The table gives the median of five samples per CLI and metric.
-[All samples, versions and distribution hashes](results/comparison-scripted-2026-11-24.json)
+The **2026-11-24** run compared five CLIs on Apple M1 Pro in a
+Linux ARM64 container with 2 CPUs, 4 GiB of memory and external networking
+disabled. The table gives medians of five settled interactive sessions and
+five headless turns per CLI. Separate passes interleaved the five tools for
+idle and headless measurements. Every headless turn returned exactly `ok` from
+a scripted loopback provider.
+[Samples, versions and distribution hashes](results/comparison-scripted-1.12.0-linux-arm64.json)
 
-![Idle process-tree memory and client CPU per scripted one-word turn, measured November 24](../docs/images/comparison-scripted.svg)
+![Idle process-tree memory and client CPU per scripted one-word turn](../docs/images/comparison-scripted-1.12.0-linux-arm64.svg)
 
 | Tool | Version | Idle memory (MiB) | CPU per scripted turn (ms) |
 | --- | --- | ---: | ---: |
-| µAgent | 1.11.0 | 27.3 | 21 |
-| Claude Code | 2.1.331 | N/A | 409 |
-| Codex CLI | 0.172.0 | 176.9 | 147 |
-| omp | 19.1.1 + Bun 1.4.5 | 337.1 | 1,773 |
-| OpenCode | 1.19.6 | 569.2 | 2,296 |
+| µAgent | 1.12.0 | 27.4 | 19 |
+| Claude Code | 2.1.331 | 217.9 | 374 |
+| Codex CLI | 0.172.0 | 165.1 | 110 |
+| omp | 19.1.1 + Bun 1.4.5 | 345.1 | 1,577 |
+| OpenCode | 1.19.6 | 700.9 | 2,231 |
 
-Claude Code exited before settling in each of five offline interactive
-starts. A diagnostic rerun reported a DNS failure for `api.anthropic.com`. Its idle memory is unavailable. The other four CLIs settled in all
-five samples. The recorded startup diagnostics are in the report.
+Claude Code used a disposable gateway bearer credential. The harness completed
+normal onboarding and folder trust, typed a draft in the command composer
+and cleared it before each idle window. [Startup evidence](results/claude-startup-2.1.331.json) · [Claude Code gateway authentication](https://code.claude.com/docs/en/llm-gateway-connect)
 
 µAgent and Codex CLI used the Responses API. Claude Code, omp and OpenCode
-used Anthropic Messages. Each of the 25 headless turns returned exactly
-`ok`. OpenCode made one additional small-model request per turn. The server
-handled 30 requests in total and performed no inference. Client CPU includes
-the work of those extra requests. This measures local client overhead for a
-short text reply. [Scripted server](scripted_provider.py)
+used Anthropic Messages. OpenCode made one extra small-model request per turn.
+The fixture answered all 30 requests locally without model inference. [Scripted provider](scripted_provider.py)
+
+The earlier five-CLI run used µAgent 1.11.0. In that run Claude Code 2.1.331
+exited before each idle sample. A diagnostic launch reported a DNS failure
+for `api.anthropic.com`.
+[Earlier samples](results/comparison-scripted-2026-11-24.json) · [Earlier chart](../docs/images/comparison-scripted.svg)
 
 ### Earlier live-provider comparison
 
@@ -216,8 +212,9 @@ between the tools so background load affects all of them:
   it, as Claude Code's and OpenCode's executables embed their own.
 - **`--version`:** 30 runs after 3 warm-ups; wall and CPU time.
 - **Idle session:** 10 s in a 120×40 pseudo-terminal after the screen settles,
-  with the provider's model list cached, at the folder-trust prompt where a
-  tool asks. Resident memory is summed over the tool's own processes, helpers
+  with the provider's model list cached. For the scripted run Claude Code
+  reaches its composer. Other tools can settle at a folder-trust prompt.
+  Resident memory is summed over the tool's own processes, helpers
   included. Codex CLI's interactive UI cannot skip the user config, so its row
   counts only Codex's own executables.
 - **Headless turn:** one one-word prompt. Claude Code runs with
@@ -235,30 +232,37 @@ counts in full.
 
 ### Reproduce the scripted comparison
 
-Build the image on Linux ARM64 or pass `--platform linux/arm64` to Docker.
-Select the published µAgent package to match the recorded release. The
-Dockerfile pins the comparator versions and includes omp's dependency lock.
+Use a clean checkout with this report. Build the image from harness revision
+`4bb3df93`, which pins the comparator versions, then return to the checkout
+with the raw samples. Use a Linux ARM64 builder or pass `--platform linux/arm64` to Docker.
 Use an otherwise idle host, and make the output directory writable by the
 image's `bench` user.
 
 ```sh
+git switch --detach 4bb3df93fe3bc1712348af5f030acce89422ed12
 docker build --platform linux/arm64 -f benchmarks/footprint.Dockerfile \
-  --build-arg UAGENT_STAGE=published -t uagent-footprint .
-mkdir -p out
-docker run --rm --init --platform linux/arm64 --network=none \
-  --cpus=2 --memory=4g --memory-swap=4g -v "$PWD/out:/out" \
-  uagent-footprint --scripted --machine "YOUR CPU, Linux ARM64 container, 2 CPU / 4 GiB"
+  --build-arg UAGENT_STAGE=published --build-arg UAGENT_VERSION=1.12.0 -t uagent-footprint .
+git switch -
+mkdir -p out/idle out/headless
+run_footprint() {
+  output_dir=$1
+  shift
+  docker run --rm --init --platform linux/arm64 --network=none \
+    --cpus=2 --memory=4g --memory-swap=4g -v "$PWD/out/$output_dir:/out" \
+    uagent-footprint --scripted --machine "YOUR CPU, Linux ARM64 container, 2 CPU / 4 GiB" "$@"
+}
+run_footprint idle
+run_footprint headless --skip idle --version-runs=0 --warmups=0 --session-runs=5
 ```
 
-The container writes raw samples to `out/footprint.json` and exits nonzero if
-a metric fails, as Claude Code idle did in the recorded run. Inspect the
-errors before rendering a partial report. These commands reproduce the
-published chart, including its unavailable value.
+Use the idle samples from `out/idle/footprint.json` and the CPU samples from
+`out/headless/footprint.json`. Each run exits nonzero if a metric fails.
+The published samples can also regenerate the chart.
 
 ```sh
 python3 benchmarks/compare_agents.py \
-  --from-report benchmarks/results/comparison-scripted-2026-11-24.json \
-  --chart docs/images/comparison-scripted.svg
+  --from-report benchmarks/results/comparison-scripted-1.12.0-linux-arm64.json \
+  --chart docs/images/comparison-scripted-1.12.0-linux-arm64.svg
 ```
 
 The loopback server speaks both Responses and Anthropic Messages. For a live-provider
@@ -273,10 +277,9 @@ verified matching gateway bundle as described in the install guide.
 
 ## Outside contacts and first request
 
-The published 1.11.0 Linux ARM64 release was measured **2026-11-24** in a
-network-isolated container. Its resolver, `dns_sink.py`, logged DNS queries
-and pointed IPv4 lookups at a loopback sink. Direct IP connections do not
-appear in a DNS log. [Release DNS results and method](results/egress-2026-11-24.json)
+The published v1.12.0 Linux ARM64 release ran in a network-isolated
+container. Its loopback resolver recorded DNS requests. Direct IP
+connections and live-browser traffic fall outside this probe. [v1.12.0 DNS results](results/egress-1.12.0-linux-arm64.json) · [v1.11.0 DNS results](results/egress-2026-11-24.json)
 
 `egress_record.py` drives µAgent through nine situations with its model
 endpoint a scripted server on 127.0.0.1:
@@ -309,7 +312,7 @@ The 2026-11-18 headless comparison used a fresh home for each tool and
 | Claude Code 2.1.327 | `api.anthropic.com` | 12 | 7,522 | 3,987 | 11,509 |
 
 The historical token columns use the same normalized `o200k_base` counting
-method as the v1.11.0 release probe on the first request carrying tools. Claude
+method as the release probe on the first request carrying tools. Claude
 Code deferred some tools. After a refusal it sent all 22 (21,495 tokens).
 This snapshot covers the named headless versions and configurations.
 The 2026-11-18 report retains aggregate counts and DNS host lists. The

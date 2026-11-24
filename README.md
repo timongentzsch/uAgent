@@ -7,15 +7,15 @@
 
 ![A stock reservation review with a SQL example in chat and an editable two-slide deck beside it](docs/images/workspace.png)
 
-*A sample inventory review in the v1.12 web client. The two-slide deck is an editable workspace file.*
+*A sample inventory review in the v1.12 web client. Each slide is an editable HTML file in the workspace.*
 
 ## What you can do
 
 - **Pick your model.** Connect OpenAI, Anthropic, OpenRouter or a compatible local endpoint. Switch models per conversation. The runtime speaks OpenAI Responses, Chat Completions and Anthropic Messages. [Provider setup](docs/manual.md#models-and-providers)
 - **Follow a turn across devices in real time.** Replies, tool calls and approval requests update in the terminal and on paired browsers. Start work at your desk, approve a tool call from your phone and reconnect later. An always-on host keeps the turn running when you close a client. [Pair a device](docs/operations/remote-access.md#pair-a-device)
-- **Work over SSH with your API keys on one host.** The host keeps the transcript, chooses the model and evaluates tool approvals. The remote worker receives the file, Git, shell or terminal operations it needs to execute. Their results return to the host and can become context for the model. [Remote workspaces](docs/architecture/execution-gateway.md) · [What leaves the machine](SECURITY.md#what-leaves-the-machine)
-- **Use a signed-in Chrome browser.** On a Linux web host, watch the agent work in a persistent Chrome profile or give it a disposable browser for research. Chrome can fill a saved login while keeping the password out of the tool response. Take over from a paired device for sign-in or MFA, then hand the browser back. [Browser controls](docs/manual.md#the-agents-browser)
-- **Edit artifacts beside the chat.** Open a slide deck, document, spreadsheet, design or whiteboard as a workspace file. Select a passage or slide element to ask for a change, edit it in place, or export the result. Documents support Markdown export, decks support PDF and sheets support Excel and CSV. [Artifact workflow](docs/manual.md#artifacts)
+- **Work over SSH with your API keys on one host.** The host stores the transcript, calls your chosen model and evaluates tool approvals. The remote worker receives the file, Git, shell or terminal operations it needs to execute. Their results return to the host and can become context for the model. [Remote workspaces](docs/architecture/execution-gateway.md) · [What leaves the machine](SECURITY.md#what-leaves-the-machine)
+- **Use a signed-in Chrome browser.** On Linux, sign in to a persistent profile in µAgent’s managed Chrome, or give the agent a disposable browser for research. Chrome can fill a saved login while keeping the password out of the tool response. Take over from a paired device for sign-in or MFA, then hand the browser back. [Browser controls](docs/manual.md#the-agents-browser)
+- **Edit artifacts beside the chat.** Open a slide deck, document, spreadsheet, design or whiteboard from your workspace. Select a passage or slide element to ask for a change, edit it in place, or export the result. Documents support Markdown export, decks support PDF and sheets support Excel and CSV. [Artifact workflow](docs/manual.md#artifacts)
 
 ## Get started
 
@@ -27,7 +27,7 @@ Run `uagent` in a project folder to open the terminal client, or `uagent --web` 
 
 ## Footprint
 
-One native executable contains the agent, terminal client and web UI. The v1.12 packages include the executable, resources and workers for all three SSH targets. In a five-run Linux ARM64 test, µAgent used 26.6 MiB of idle process-tree memory and 15.3 ms of local CPU per scripted one-word reply.
+The v1.12 executable is 6.8–11.0 MB across supported platforms and includes the agent, terminal client and web UI. The full installation is 19.8–24.0 MB with resources and workers for all three SSH targets. In a Linux ARM64 comparison with five trials per CLI, µAgent used 27.4 MiB idle and 19 ms of local CPU per scripted one-word reply. Under the same limits, Claude Code 2.1.331 used 217.9 MiB and 374 ms.
 
 [Five-agent comparison and raw samples](benchmarks/README.md#footprint-comparison) · [Package sizes and method](benchmarks/README.md#current-measurements)
 

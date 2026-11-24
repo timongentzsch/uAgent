@@ -2,12 +2,18 @@
 # Runs the footprint comparison inside footprint.Dockerfile's image. Every
 # tool talks to the one endpoint at PROXY_URL, with the key in PROXY_KEY.
 set -euo pipefail
+if [[ ${1:-} == --scripted ]]; then
+  shift
+  export UAGENT_APPROVAL=ask OMP_MODEL=anthropic/claude-haiku-4-5-20251001
+  exec python3 /opt/bench/scripted_provider.py bash "$0" \
+    --scripted-provider "$@"
+fi
 : "${PROXY_URL:?set PROXY_URL}" "${PROXY_KEY:?set PROXY_KEY}"
 model=${MODEL:-claude-haiku-5-5}
 
 mkdir -p ~/.uagent/config ~/.codex
 cat >~/.uagent/config/settings.json <<JSON
-{"format": 3, "all": {"model": "proxy/$model", "approval.mode": "yolo",
+{"format": 3, "all": {"model": "proxy/$model", "approval.mode": "${UAGENT_APPROVAL:-yolo}",
  "providers": {"proxy": {"base_url": "$PROXY_URL/v1", "api_key": "$PROXY_KEY",
  "wire_api": "responses"}}}, "projects": {}}
 JSON
@@ -36,6 +42,6 @@ cd ~
 exec python3 /opt/bench/compare_agents.py \
   --uagent /opt/uagent/bin/uagent --uagent-model "proxy/$model" \
   --claude ~/.local/bin/claude --codex ~/codex/bin/codex --codex-config \
-  --omp ~/omp/node_modules/.bin/omp --omp-model "$model" \
+  --omp ~/omp/node_modules/.bin/omp --omp-model "${OMP_MODEL:-$model}" \
   --opencode ~/.opencode/bin/opencode --opencode-model "$opencode_model" \
   --chart /out/footprint.svg --output /out/footprint.json "$@"

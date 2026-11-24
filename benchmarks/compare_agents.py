@@ -2,7 +2,7 @@
 """Compare the footprint of coding-agent CLIs the same way for each.
 
 Measures size on disk, `--version` start-up, an idle interactive session in a
-pseudo-terminal, and one tiny headless turn against the tool's real provider.
+pseudo-terminal, and one tiny headless turn against a configured provider.
 """
 
 import argparse
@@ -13,6 +13,7 @@ import os
 import pathlib
 import platform
 import pty
+import re
 import select
 import shutil
 import signal
@@ -379,13 +380,24 @@ def measure_headless(tool, project):
     reaped = (usage.ru_utime + usage.ru_stime) * 1000
     # Detached helpers are not in the reaped usage: add their last CPU time.
     detached = sum(c for pid, c in attribution.last.items() if pid not in attribution.descendants)
+    text = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", output.decode(errors="replace")).strip()
+    if tool["name"] == "uagent":
+        try:
+            answer = json.loads(text).get("answer", "")
+        except (ValueError, AttributeError):
+            answer = ""
+    else:
+        answer = text.splitlines()[-1] if text else ""
     return {
         "wall_ms": wall * 1000,
         "cpu_ms": reaped + detached * 1000,
         "detached_cpu_ms_seen": detached * 1000,
         "peak_rss_kib": peak,
         "tree_at_peak": tree,
-        "ok": os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0 and b"ok" in output.lower(),
+        "ok": os.WIFEXITED(status)
+        and os.WEXITSTATUS(status) == 0
+        and isinstance(answer, str)
+        and answer.lower() == "ok",
         "left_running": left,
     }
 
@@ -576,14 +588,27 @@ def chart_svg(tools, report):
         )
     ]
     machine = report["_machine"]
+    scripted = machine.get("provider") == "scripted"
+    notes = [
+        f"{machine['date']} · medians of {machine['runs']['session']} runs · {machine['chip']}"
+    ]
+    if scripted:
+        notes.append("Scripted loopback provider · fixed one-word answer · client CPU")
+        versions = []
+        for tool in tools:
+            name = tool["name"]
+            version = re.search(r"\d+\.\d+\.\d+", report[name]["version_string"])
+            versions.append(
+                f"{DISPLAY_NAMES[name]} {version[0] if version else report[name]['version_string']}"
+            )
+        notes.append(" · ".join(versions))
+    else:
+        notes.append("Same model endpoint · CPU excludes model/network waiting · lower is better")
+    notes.append("Versions, workload and limitations: benchmarks/README.md")
     return bars(
-        "Memory and CPU usage",
+        "Coding agent footprint with a scripted provider" if scripted else "Memory and CPU usage",
         panels,
-        [
-            f"{machine['date']} · medians of {machine['runs']['session']} runs · {machine['chip']}",
-            "Same model endpoint · CPU excludes model/network waiting · lower is better",
-            "Versions, workload and limitations: benchmarks/README.md",
-        ],
+        notes,
     )
 
 
@@ -624,6 +649,9 @@ def main():
     parser.add_argument("--warmups", type=int, default=3)
     parser.add_argument("--session-runs", type=int, default=5, help="idle and headless runs")
     parser.add_argument("--skip", action="append", default=[], choices=["idle", "headless"])
+    parser.add_argument(
+        "--scripted-provider", action="store_true", help="label a scripted comparison"
+    )
     parser.add_argument("--chart", type=pathlib.Path, help="also write an SVG bar chart here")
     parser.add_argument(
         "--from-report", type=pathlib.Path, help="render saved measurements without running tools"
@@ -674,6 +702,8 @@ def main():
         "date": time.strftime("%Y-%m-%d"),
         "runs": {"version": args.version_runs, "session": args.session_runs},
     }
+    if args.scripted_provider:
+        report["_machine"]["provider"] = "scripted"
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(table(tools, report))
     for tool in tools:

@@ -1544,16 +1544,25 @@ TEST_CASE(TestBrowserToolLook) {
         "Part 3 of 12; part=4-11 shows the next.");
   CHECK(!look("memo.html", "13", memo).Ok());
   CHECK(!look("memo.html", "4-2", memo).Ok());
-  CHECK(
-      look("slide.html", "", R"({"w":1920,"h":1080,"fits":false,"tall":1080})")
-          .output == "Part 1 of 1.");
-  ToolResult deck = look("deck", "", R"({"parts":2,"w":1452,"h":435,"slides":[
+  ToolResult page = look(
+      "slide.html", "",
+      R"({"w":1920,"h":1080,"fits":false,"tall":1080,"problems":["clipped heading"]})");
+  CHECK(page.output == "Part 1 of 1.\n  - clipped heading");
+  CHECK(page.parts.empty());
+  ToolResult deck = look("deck", "", R"({"parts":3,"w":1452,"h":435,"slides":[
       {"file":"01.html","title":"The plan","problems":[]},
-      {"file":"02.html","title":"Evidence","problems":["missing value"]}]})");
+      {"file":"02-R&D #2.html","title":"Evidence","problems":["clipped heading","missing value"]},
+      {"file":"03.html","title":"Next","problems":[]}]})");
   CHECK(deck.output ==
-        "Parts 1-2 of 2.\n1. The plan (01.html)\n2. Evidence (02.html)\n  - "
-        "missing value");
+        "Parts 1-3 of 3.\n1. The plan (01.html)\n2. Evidence (02-R&D #2.html)"
+        "\n  - clipped heading\n  - missing value\n3. Next (03.html)");
   CHECK(!deck.hint.empty() && deck.hint.find('\n') == std::string::npos);
+  REQUIRE(deck.parts.size() == 3);
+  CHECK(deck.parts.front() == FieldsPart({{"Reviewed", "Parts 1-3 of 3."}}));
+  CHECK(deck.parts[1] ==
+        LinkPart("file", "deck/02-R&D #2.html", "Slide 2 · clipped heading"));
+  CHECK(deck.parts[2] ==
+        LinkPart("file", "deck/02-R&D #2.html", "Slide 2 · missing value"));
   // A page that only fixes its width is cut into windows of its height.
   const std::string tall = R"({"w":1440,"h":600,"fits":true,"tall":7000})";
   CHECK(look("tall.html", "", tall).output ==
@@ -1590,6 +1599,7 @@ TEST_CASE(TestBrowserToolLook) {
   const ToolResult single = observing.get();
   CHECK(single.Ok());
   CHECK(single.output == "Part 1 of 1.\n1. Evidence (01.html)");
+  CHECK(single.parts.empty());
   fake.Stop();
   std::vector<json> navigated, clips;
   std::ifstream log(fake.data / "profile" / "cdp.jsonl");

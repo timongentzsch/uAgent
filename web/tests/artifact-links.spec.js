@@ -2,12 +2,65 @@ import {
   test,
   expect,
   openFiles,
+  openSession,
   slide,
   viewerOf,
   writeFiles,
 } from "./fixtures.js";
 
 test.use({ serviceWorkers: "block" });
+
+test("a recorded layout finding opens its exact slide without another tool call", async ({
+  page,
+  host,
+  session,
+}) => {
+  const second = "decks/review/02-R&D #2.html";
+  await writeFiles(host.project, {
+    "decks/review/01-intro.html": slide("Opening"),
+    [second]: slide("Results"),
+    "decks/review/03-next.html": slide("Next steps"),
+  });
+  await page.route(`**/api/sessions/${session.id}`, async (route) => {
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    snapshot.state.view.nodes = [
+      {
+        id: "finding",
+        parent: null,
+        kind: "call",
+        tool: "browser",
+        state: "ok",
+        headline: { verb: "Reviewed", target: "three slides" },
+        body: { kind: "fields", text: "Parts 1-3 of 3." },
+        parts: [
+          {
+            kind: "link",
+            to: "file",
+            id: second,
+            label: "Slide 2 · Clipped title",
+          },
+        ],
+      },
+    ];
+    await route.fulfill({ response, json: snapshot });
+  });
+  await openSession(page, session);
+  await page.getByRole("button", { name: /Reviewed three slides/ }).click();
+  const requests = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/command") {
+      requests.push(request.postDataJSON()?.kind);
+    }
+  });
+  await page.getByRole("button", { name: "Slide 2 · Clipped title" }).click();
+  const pane = page.getByRole("region", { name: "Files" });
+  await expect(viewerOf(pane).count).toHaveText("2 / 3");
+  await expect(pane.getByRole("heading").getByRole("link")).toContainText(
+    "02-R&D #2.html",
+  );
+  expect(requests).not.toContain("submit");
+});
 
 test("a copied slide link opens the same slide on a paired device and after reload", async ({
   page,

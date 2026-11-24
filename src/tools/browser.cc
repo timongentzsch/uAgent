@@ -568,7 +568,8 @@ std::string Settle(const BrowserAccess& access, const ToolContext& context) {
 
 // Where the web host serves `path`, a file or folder within this
 // conversation's folder; empty for any other.
-std::string Served(const std::string& path) {
+std::string Served(const std::string& path,
+                   std::filesystem::path* relative = nullptr) {
   const std::string served = EnvStr("UAGENT_INTERNAL_PREVIEW");
   const size_t split = served.find('\n');
   const std::filesystem::path folder =
@@ -589,7 +590,9 @@ std::string Served(const std::string& path) {
   if (!base.starts_with("http://127.0.0.1:") || !base.ends_with("/")) {
     return "";
   }
-  return base + PercentEncode(file.lexically_relative(folder).string(), "/");
+  const auto target = file.lexically_relative(folder);
+  if (relative) *relative = target;
+  return base + PercentEncode(target.string(), "/");
 }
 
 // open with a path: a page of this conversation's folder is served by the
@@ -626,7 +629,8 @@ ToolResult Look(const json& args, const ToolContext& context) {
   const std::string kind = file.extension().string();
   std::error_code error;
   const bool deck = std::filesystem::is_directory(file, error);
-  const std::string url = Served(path);
+  std::filesystem::path relative;
+  const std::string url = Served(path, &relative);
   if (url.empty() ||
       !(deck || ((kind == ".html" || kind == ".htm") &&
                  std::filesystem::is_regular_file(file, error)))) {
@@ -708,11 +712,23 @@ ToolResult Look(const json& args, const ToolContext& context) {
                                        (next < parts ? " shows the next."
                                                      : " shows the rest.")
                                  : ".");
-  const auto issues = [&](const json& row) {
+  // The model keeps the complete review. A receipt links each finding to the
+  // workspace file, independent of the temporary preview grant.
+  json findings = json::array();
+  const std::string reviewed = looked.output;
+  const auto issues = [&](const json& row, const std::string& label,
+                          const std::filesystem::path& target) {
     if (const json* problems = JsonArray(row, "problems")) {
       for (const json& issue : *problems) {
         if (issue.is_string()) {
-          looked.output += "\n  - " + issue.get<std::string>();
+          const auto& text = issue.get_ref<const std::string&>();
+          looked.output += "\n  - " + text;
+          if (!target.empty()) {
+            findings.push_back(LinkPart("file", target.generic_string(),
+                                        label + " · " + text));
+          } else if (slides) {
+            findings.push_back(FieldsPart({{label, text}}));
+          }
         }
       }
     }
@@ -722,12 +738,23 @@ ToolResult Look(const json& args, const ToolContext& context) {
     for (const json& slide : *slides) {
       const std::string title = JsonValue(slide, "title", "");
       const std::string name = JsonValue(slide, "file", "");
+      const std::string label = "Slide " + std::to_string(number);
       looked.output += "\n" + std::to_string(number++) + ". " + title;
       if (!name.empty() && name != title) looked.output += " (" + name + ")";
-      issues(slide);
+      const std::filesystem::path leaf(name);
+      const bool slide_file =
+          !leaf.has_parent_path() &&
+          (leaf.extension() == ".html" || leaf.extension() == ".htm");
+      issues(slide, label,
+             slide_file ? relative / leaf : std::filesystem::path{});
     }
   } else {
-    issues(shot);
+    issues(shot, "", {});
+  }
+  if (!findings.empty()) {
+    findings.insert(findings.begin(), FieldsPart({{"Reviewed", reviewed}}));
+    looked.parts = std::move(findings);
+    looked.body_kind = "fields";
   }
   return looked;
 }

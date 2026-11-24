@@ -153,7 +153,7 @@ export interface FilePart {
 }
 export interface LinkPart {
   kind: "link";
-  to: "agent" | "activity" | "memory" | "browser";
+  to: "agent" | "activity" | "memory" | "browser" | "file";
   state?: string;
   report?: string;
   id: string | number;

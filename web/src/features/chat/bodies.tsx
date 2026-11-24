@@ -60,7 +60,7 @@ function Parts({
   online: boolean;
 }) {
   const host = useContext(HostContext);
-  const { activity } = useContext(MessageActions);
+  const { activity, openFile } = useContext(MessageActions);
   return parts.map((part, index) => {
     switch (part.kind) {
       case "command":
@@ -122,7 +122,9 @@ function Parts({
         const open =
           part.to === "browser"
             ? host && (() => host.setModal({ type: "browser" }))
-            : activity && (() => activity(linkTarget(node, part)));
+            : part.to === "file"
+              ? openFile && (() => openFile({ path: String(part.id) }))
+              : activity && (() => activity(linkTarget(node, part)));
         return open ? (
           <Button
             key={index}
@@ -311,7 +313,7 @@ export function NodeBody({
       case "file":
         return !!part.id;
       case "link":
-        return ["activity", "memory", "browser"].includes(part.to);
+        return ["activity", "memory", "browser", "file"].includes(part.to);
       default:
         return false;
     }

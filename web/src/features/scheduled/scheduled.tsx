@@ -15,7 +15,7 @@ import type {
   ScheduledState,
   ScheduleRule,
 } from "../../shared/types.ts";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Plus, Play, Square, ChevronLeft } from "lucide-preact";
 import {
   Cluster,
@@ -119,6 +119,18 @@ export default function Scheduled({
   const { run: act, busy, error, setError } = useAction();
   const [confirm, setConfirm] = useState(false);
   const [editing, setEditing] = useState(false);
+  const nameField = useRef<HTMLInputElement>(null);
+  const newTaskButton = useRef<HTMLButtonElement>(null);
+  const editTaskButton = useRef<HTMLButtonElement>(null);
+  const focusName = useRef(false);
+  useLayoutEffect(() => {
+    // New task is available while the list loads. Give focus to the live
+    // field after the inert loading form has been replaced.
+    if (focusName.current && scheduled && nameField.current) {
+      nameField.current.focus();
+      focusName.current = false;
+    }
+  });
 
   const current = scheduled?.tasks?.find((entry) => entry.id === task?.id);
   const changed =
@@ -176,6 +188,9 @@ export default function Scheduled({
     drafts.forget(task?.id);
     setEditing(false);
     setTask(current || null);
+    requestAnimationFrame(() =>
+      (current ? editTaskButton : newTaskButton).current?.focus(),
+    );
   }
   const edit = (value: Partial<ScheduledTask>) =>
     setTask((old) => (old ? { ...old, ...value } : old));
@@ -213,8 +228,10 @@ export default function Scheduled({
         </p>
         <Button
           variant="primary"
+          buttonRef={newTaskButton}
           disabled={!online || busy}
           onClick={() => {
+            focusName.current = true;
             chooseTask(blank(cwd || projects[0] || "", host));
           }}
         >
@@ -309,6 +326,7 @@ export default function Scheduled({
                         <div class="field-row">
                           <Field label="Name">
                             <Input
+                              inputRef={nameField}
                               value={task.name}
                               onInput={(event) =>
                                 edit({ name: event.currentTarget.value })
@@ -641,7 +659,15 @@ export default function Scheduled({
                       Cancel
                     </Button>
                   ) : (
-                    <Button onClick={() => setEditing(true)}>Edit task</Button>
+                    <Button
+                      buttonRef={editTaskButton}
+                      onClick={() => {
+                        focusName.current = true;
+                        setEditing(true);
+                      }}
+                    >
+                      Edit task
+                    </Button>
                   )}
                   {task.id && (
                     <Button

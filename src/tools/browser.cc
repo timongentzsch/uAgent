@@ -692,8 +692,9 @@ ToolResult Look(const json& args, const ToolContext& context) {
   const auto issues = [&](const json& row) {
     if (const json* problems = JsonArray(row, "problems")) {
       for (const json& issue : *problems) {
-        if (issue.is_string())
+        if (issue.is_string()) {
           looked.output += "\n  - " + issue.get<std::string>();
+        }
       }
     }
   };
@@ -762,8 +763,9 @@ ToolResult Query(const BrowserAccess& access, const json& args,
         }
         rows.push_back({title, JsonValue(tab, "url", "")});
       }
-      if (!rows.empty())
+      if (!rows.empty()) {
         result.parts = json::array({FieldsPart(std::move(rows))});
+      }
     } else if (answer.contains("closed")) {
       result.parts =
           GenericInputParts(JsonPick(answer, {"closed", "selected"}));

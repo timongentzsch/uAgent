@@ -2683,7 +2683,7 @@ test("find follows what the agent rewrites while it is open", async ({
   await selectProbeModel(command, session, { yolo: true });
   await app.locator("#prompt").fill("Design probe");
   await app.locator("#prompt").press("Enter");
-  await expect(app.getByText("Wrote design/01-hero-a.html")).toBeVisible();
+  await expect(app.getByText("Replaced design/01-hero-a.html")).toBeVisible();
   release();
   // The page it rewrote is read again, and holds the words now.
   await expect(bar).toContainText("1 of 1");

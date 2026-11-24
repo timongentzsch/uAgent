@@ -110,16 +110,19 @@ void RestorePatch(json& record, const json& facts, const std::string& response,
   for (const auto& [id, row] : facts.items()) {
     const auto* subcall = JsonStringRef(row, "call_id");
     if (!subcall || !subcall->starts_with(prefix) ||
-        JsonValue(row, "response_id", "") != response)
+        JsonValue(row, "response_id", "") != response) {
       continue;
+    }
     const auto* name = JsonStringRef(row, "name");
     if (!name || (*name != "write_file" && *name != "edit_file" &&
-                  *name != "delete_file"))
+                  *name != "delete_file")) {
       continue;
+    }
     int64_t order = 0;
     if (!ParseInt64(subcall->c_str() + prefix.size(), order) || order < 1 ||
-        id != DetailId(response, *subcall))
+        id != DetailId(response, *subcall)) {
       continue;
+    }
     parts.emplace(order, id);
     failed |= JsonValue(row, "state", "") == "failed";
   }

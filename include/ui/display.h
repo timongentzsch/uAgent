@@ -175,9 +175,10 @@ inline std::string TurnStatusBar(const TurnStatusView& view) {
   const size_t reserve = DisplayWidth(prefix + " · " + mode + " · Esc stop");
   const size_t room = width > reserve ? width - reserve : 6;
   std::string background_hint = "Ctrl+B background";
-  if (view.foreground > 1)
+  if (view.foreground > 1) {
     background_hint +=
         " " + FmtCount(static_cast<int64_t>(view.foreground)) + " commands";
+  }
   return FitStatus({
       {0, prefix + StatusLabel(state, std::min<size_t>(64, room))},
       {1, mode},

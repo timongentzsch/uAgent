@@ -116,17 +116,19 @@ void LabelAgent(json& node, const AgentLabels& labels) {
   } else if (JsonValue(node, "origin", "") == "message") {
     const json* body = JsonObject(node, "body");
     const auto* text = body ? JsonStringRef(*body, "text") : nullptr;
-    constexpr std::string_view prefix = "[agent ";
-    if (text && text->starts_with(prefix)) {
+    constexpr std::string_view kPrefix = "[agent ";
+    if (text && text->starts_with(kPrefix)) {
       const std::string_view rest =
-          std::string_view(*text).substr(prefix.size());
+          std::string_view(*text).substr(kPrefix.size());
       if (rest.size() >= kAgentNameChars + 2 &&
-          rest.substr(kAgentNameChars, 2) == " \"")
+          rest.substr(kAgentNameChars, 2) == " \"") {
         id = rest.substr(0, kAgentNameChars);
+      }
     }
   }
-  if (auto found = labels.find(id); found != labels.end())
+  if (auto found = labels.find(id); found != labels.end()) {
     node["agent_label"] = std::string(found->second);
+  }
 }
 
 // `nodes` with the work and group nodes they sit under, each before its

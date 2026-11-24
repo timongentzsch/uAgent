@@ -625,8 +625,9 @@ ToolResult ToolGrep(ActivitySupervisor& supervisor, const std::string& pattern,
                       : std::string("grep -r -n -H -I --exclude-dir=.git");
     command += literal ? " -F" : (ripgrep ? "" : " -E");
     if (matching_files) command += " -l";
-    if (!matching_files)
+    if (!matching_files) {
       command += ripgrep ? " --with-filename --null" : " --null";
+    }
     if (context_lines > 0 && !matching_files) {
       command += ripgrep ? " --context " : " -C ";
       command += std::to_string(context_lines);

@@ -633,12 +633,14 @@ json LinkPart(std::string to, json id, std::string label) {
 json SourcePart(const std::string& url, const std::string& title,
                 const std::string& excerpt) {
   json part = {{"kind", "source"}, {"url", url}};
-  if (!title.empty())
+  if (!title.empty()) {
     part["title"] =
         Utf8Trunc(title.substr(0, kStatusLabelBytes + 1), kStatusLabelBytes);
-  if (!excerpt.empty())
+  }
+  if (!excerpt.empty()) {
     part["excerpt"] = Utf8Trunc(excerpt.substr(0, kSourceExcerptChars + 1),
                                 kSourceExcerptChars);
+  }
   return part;
 }
 

@@ -57,8 +57,8 @@ add and delete what is on a slide.
   elements, citations in notes and live data bindings through revisions.
 - Before building out a new deck, make the slide that best tests the
   design: for a product walkthrough, the control and outcome a new reader
-  needs to recognize. Use the shared stylesheet. Present that page as an
-  early preview while you continue building the deck. For a focused edit,
+  needs to recognize. Write it with the shared stylesheet. Once the write
+  succeeds, observe its HTML path and present it as an early preview. For a focused edit,
   work directly on the affected slides.
 - Plan a short sequence with one point per slide. Give the most important
   evidence room. A recap can show the decision reached or the result

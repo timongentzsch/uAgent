@@ -61,8 +61,9 @@ std::string ScheduledTime(int64_t at) {
 std::string TaskWhen(const json& task) {
   if (!JsonValue(task, "enabled", true)) return "Paused";
   const json* times = JsonArray(task, "upcoming");
-  if (!times || times->empty() || !times->front().is_number_integer())
+  if (!times || times->empty() || !times->front().is_number_integer()) {
     return "";
+  }
   return ScheduledTime(times->front().get<int64_t>());
 }
 
@@ -142,8 +143,9 @@ ToolResult Schedule(const json& arguments, const std::string& model) {
     for (const json& task : *tasks) {
       std::string detail = TaskWhen(task);
       const std::string workspace = JsonValue(task, "cwd", "");
-      if (!workspace.empty())
+      if (!workspace.empty()) {
         detail += (detail.empty() ? "" : " · ") + workspace;
+      }
       rows.push_back({JsonValue(task, "name", ""), std::move(detail)});
     }
     if (tasks->empty()) rows.push_back({"Scheduled tasks", "None"});
@@ -161,8 +163,9 @@ ToolResult Schedule(const json& arguments, const std::string& model) {
     rows.push_back({"Deleted", JsonValue(out, "deleted", "")});
   }
   if (!rows.empty()) {
-    if (const std::string error = JsonValue(out, "error", ""); !error.empty())
+    if (const std::string error = JsonValue(out, "error", ""); !error.empty()) {
       rows.push_back({"Error", error});
+    }
     if (!hosted) rows.push_back({"Host", out["note"]});
     receipt.parts = json::array({FieldsPart(std::move(rows))});
     receipt.body_kind = "fields";
@@ -315,13 +318,13 @@ ToolResult Show(const json& arguments,
       const char* label;
       const char* detail;
     };
-    constexpr Catalogue catalogues[] = {
+    constexpr Catalogue kCatalogues[] = {
         {"skills", nullptr, "skill", "name", "description"},
         {"mcp", "servers", "server", "name", "state"},
         {"cli", "flags", "flag", "usage", "description"},
         {"commands", "commands", "command", "usage", "description"},
         {"tools", "tools", "tool", "name", "description"}};
-    for (const auto& catalogue : catalogues) {
+    for (const auto& catalogue : kCatalogues) {
       if (asked != catalogue.topic) continue;
       const json* items =
           catalogue.array ? JsonArray(value, catalogue.array) : &value;
@@ -334,8 +337,9 @@ ToolResult Show(const json& arguments,
         if (label.empty()) continue;
         rows.push_back({label, JsonValue(item, catalogue.detail, "")});
       }
-      if (!rows.empty())
+      if (!rows.empty()) {
         result.parts = json::array({FieldsPart(std::move(rows))});
+      }
       break;
     }
   }

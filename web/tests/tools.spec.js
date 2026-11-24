@@ -164,7 +164,7 @@ test("a long diff shows whole on its row, live and after a reload", async ({
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Long diff probe");
   await prompt.press("Enter");
-  const write = await openRow(page, "Wrote long.txt");
+  const write = await openRow(page, "Created long.txt");
   await expect(write.locator(".node-row")).toContainText("+2001 −0");
   const diff = write.locator(".diff");
   await expect(diff.locator("span")).toHaveCount(2001);

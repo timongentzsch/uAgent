@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { FunctionComponent } from "preact";
 import { BookOpen, ChevronDown, Brain, FileText, Plus } from "lucide-preact";
 import { useApi } from "../../state/api.ts";
@@ -159,6 +159,23 @@ export default function Library({
   const [importing, setImporting] = useState<"memory" | "skill" | null>(null);
   const [deleting, setDeleting] = useState(false);
   const selection = useSelection();
+  const list = useRef<HTMLDivElement>(null);
+  const selectButton = useRef<HTMLButtonElement>(null);
+  const wasSelecting = useRef(false);
+  useLayoutEffect(() => {
+    // Select and Done replace each other. Move focus when the old control
+    // disappeared; a modifier-clicked row keeps the focus it already has.
+    if (
+      selection.selecting !== wasSelecting.current &&
+      globalThis.document.activeElement === globalThis.document.body
+    ) {
+      const target = selection.selecting
+        ? list.current?.querySelector<HTMLInputElement>(".row-check")
+        : selectButton.current;
+      target?.focus();
+    }
+    wasSelecting.current = selection.selecting;
+  }, [selection.selecting]);
   const moved = usePushDirection(!!selected);
   // Workspaces first, then folders, each by name, as the sidebar lists them.
   const places = [...(listing.value?.places ?? [])].sort(
@@ -528,7 +545,10 @@ export default function Library({
             ))}
           </div>
         </nav>
-        <div class={moved ? "management-list push" : "management-list"}>
+        <div
+          class={moved ? "management-list push" : "management-list"}
+          ref={list}
+        >
           {selection.selecting ? (
             <SelectionBar selection={selection}>
               <Button
@@ -545,6 +565,7 @@ export default function Library({
               <Button
                 variant="quiet"
                 size="compact"
+                buttonRef={selectButton}
                 onClick={() => selection.start()}
               >
                 Select

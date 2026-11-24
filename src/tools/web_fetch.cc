@@ -177,8 +177,9 @@ struct Section {
     if (end) return;
     if (!closing) {
       if (depth++ == 0) begin = close + 1;
-    } else if (depth && --depth == 0) {
-      if (open > begin) end = open;
+    } else if (depth) {
+      --depth;
+      if (depth == 0 && open > begin) end = open;
     }
   }
   std::string_view Content(std::string_view html) const {
@@ -194,10 +195,10 @@ struct PageSections {
 // Read whole attributes so a quoted value or data-role cannot manufacture a
 // landmark.
 bool HasMainRole(std::string_view attributes) {
-  constexpr std::string_view space = " \t\n\r\f";
+  constexpr std::string_view kSpace = " \t\n\r\f";
   auto skip_space = [&] {
     attributes.remove_prefix(
-        std::min(attributes.find_first_not_of(space), attributes.size()));
+        std::min(attributes.find_first_not_of(kSpace), attributes.size()));
   };
   skip_space();
   while (!attributes.empty()) {
@@ -215,7 +216,7 @@ bool HasMainRole(std::string_view attributes) {
       attributes.remove_prefix(1);
       end = attributes.find(quote);
     } else {
-      end = attributes.find_first_of(space);
+      end = attributes.find_first_of(kSpace);
     }
     auto value = attributes.substr(0, end);
     if (SameName(name, "role") && SameName(value, "main")) return true;
@@ -294,8 +295,9 @@ std::string RenderHtml(std::string_view html,
         sections->landmark_tag = name;
       }
       if (!sections->landmark_tag.empty() &&
-          SameName(name, sections->landmark_tag))
+          SameName(name, sections->landmark_tag)) {
         sections->landmark.Visit(closing, at, end);
+      }
     }
     at = end + 1;
   }
@@ -348,14 +350,17 @@ ToolResult ReadFetchedPage(const std::string& url, WebResponse page,
   }
   ToolResult result = ToolSuccess(std::move(text));
   result.body_kind = "markdown";
-  std::string title = RenderHtml(sections.title.Content(page.body));
+  std::string title;
   std::string excerpt;
   if (html) {
+    title = RenderHtml(sections.title.Content(page.body));
     excerpt = RenderHtml(sections.main.Content(page.body));
-    if (excerpt.empty())
+    if (excerpt.empty()) {
       excerpt = RenderHtml(sections.landmark.Content(page.body));
-    if (excerpt.empty())
+    }
+    if (excerpt.empty()) {
       excerpt = RenderHtml(sections.article.Content(page.body));
+    }
   }
   result.parts = json::array(
       {SourcePart(page.effective_url.empty() ? url : page.effective_url, title,

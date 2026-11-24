@@ -789,8 +789,9 @@ Tool AgentsTool() {
     if (action == "list") return Headline{"Listing", "Listed", "agents"};
     if (action == "read") {
       const std::string part = JsonValue(a, "part", "");
-      if (part == "search")
+      if (part == "search") {
         return Headline{"Searching agents for", "Searched agents for", target};
+      }
       return Headline{"Reading", "Read", part + " from " + target};
     }
     if (action == "stop") return Headline{"Stopping", "Stopped", target};
@@ -862,21 +863,26 @@ void AddAgentTools(std::vector<Tool>& tools, const Api& api,
 }
 
 bool AgentsOwe(const std::string& path) {
-  // Looked at in the order the work moves, so nothing slips between two
-  // looks: an agent mails its report before it shows idle, and the mail is
-  // taken before it is acknowledged.
   const std::vector<SessionInfo> children = Children(path);
+  const std::string box = SessionIdFor(path);
+  const auto from_parent = [&](const Mail& mail) { return mail.from == box; };
   std::set<std::string> senders;
   for (const SessionInfo& info : children) {
+    const std::string child = SessionIdFor(info.path);
+    senders.insert(child);
     const std::string status = RuntimeStatus(info.path);
-    // One just started is idle until its brief arrives.
-    if (status == "working" || (status == "idle" && info.turns == 0)) {
+    if (status == "working") return true;
+    if (status != "idle") continue;
+    // Check again after the inbox: this child might have started a turn and
+    // acknowledged its guidance since the first status check. It mails its
+    // report before returning to idle.
+    if (info.turns == 0 ||
+        std::ranges::any_of(PendingMail(child), from_parent) ||
+        MailTaken(child) || RuntimeStatus(info.path) == "working") {
       return true;
     }
-    senders.insert(SessionIdFor(info.path));
   }
   // Mail from anyone else may never be taken, and is not waited for.
-  const std::string box = SessionIdFor(path);
   return std::ranges::any_of(
              PendingMail(box),
              [&](const Mail& mail) { return senders.contains(mail.from); }) ||

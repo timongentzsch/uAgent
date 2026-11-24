@@ -342,10 +342,11 @@ TEST_CASE(TestUagentWritesWhatWasApproved) {
                        text.substr(0, text.find('\n'))) != std::string::npos);
     const ToolResult committed = tool.run(arguments, {});
     CHECK(committed.Ok());
-    if (arguments["file"] == "mcp")
+    if (arguments["file"] == "mcp") {
       CHECK(committed.diff.empty());
-    else
+    } else {
       CHECK(committed.body_kind == "diff" && !committed.diff.empty());
+    }
     CHECK(ReadFile(path.string(), 4096) == text);
     CHECK(!tool.run(arguments, {}).Ok());
     arguments["text"] = text + "\n";

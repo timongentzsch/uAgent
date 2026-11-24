@@ -1567,6 +1567,15 @@ TEST_CASE(TestBrowserToolLook) {
                {});
   CHECK(!outside.Ok() &&
         outside.output.find("this conversation's folder") != std::string::npos);
+  const ToolResult empty = look("deck", "", R"({"parts":0})");
+  CHECK(!empty.Ok());
+  CHECK(empty.output.find("No slides to review in this folder") !=
+        std::string::npos);
+  const ToolResult single =
+      look("deck", "", R"({"parts":1,"w":1920,"h":1080,"slides":[
+      {"file":"01.html","title":"Evidence","problems":[]}]})");
+  CHECK(single.Ok());
+  CHECK(single.output == "Part 1 of 1.\n1. Evidence (01.html)");
   fake.Stop();
   std::vector<json> navigated, clips;
   std::ifstream log(fake.data / "profile" / "cdp.jsonl");
@@ -1583,8 +1592,8 @@ TEST_CASE(TestBrowserToolLook) {
     }
   }
   // The memo's 8 + 4 + 1 pages, the slide, one deck overview, the tall page's
-  // 8 + 1 windows and one element crop.
-  REQUIRE(clips.size() == 25);
+  // 8 + 1 windows, one element crop and the single-slide deck.
+  REQUIRE(clips.size() == 26);
   CHECK(clips[0] == json({{"x", 0.0},
                           {"y", 0.0},
                           {"width", 794.0},
@@ -1605,7 +1614,7 @@ TEST_CASE(TestBrowserToolLook) {
                            {"width", 740},
                            {"height", 465},
                            {"scale", 1.0}}));
-  REQUIRE(navigated.size() == 10);
+  REQUIRE(navigated.size() == 12);
   CHECK(navigated[5] == navigated[4]);
   CHECK(navigated[6].value("url", "") ==
         "http://127.0.0.1:1/preview/t/deck/?deck&review");

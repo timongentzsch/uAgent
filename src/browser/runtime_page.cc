@@ -602,6 +602,7 @@ constexpr char kReviewDeck[] = R"js((async (first, last) => {
   const frames = document.querySelector('template#slides')?.content.children;
   if (!frames) return {error: 'The host did not return the deck manifest.'};
   const parts = frames.length;
+  if (!parts) return {parts};
   if (first > parts) return {error: 'part ' + first + ' is past the last, ' + parts};
   const selected = Array.from(frames).slice(first - 1, last);
   const overview = selected.length > 1;
@@ -704,8 +705,13 @@ json Runtime::Look(const json& command) {
                                  std::to_string(last) + ")";
       json deck = Awaited(session, script, kCdpIoMs - 500);
       if (deck.contains("error")) return deck;
-      if (!JsonArray(deck, "slides"))
+      if (JsonValue(deck, "parts", -1) == 0)
+        return {{"error",
+                 "No slides to review in this folder. Save a slide "
+                 "HTML file here or observe an existing slide by its path."}};
+      if (!JsonArray(deck, "slides")) {
         return {{"error", "The deck did not finish loading."}};
+      }
       const double w = JsonValue(deck, "w", 1.0), h = JsonValue(deck, "h", 1.0);
       size(w, h);
       // Resizing exposes previously off-screen, separately composited frames.
@@ -714,8 +720,9 @@ json Runtime::Look(const json& command) {
               "new Promise(done => { requestAnimationFrame(() => "
               "requestAnimationFrame(done)); setTimeout(done, 300); })",
               kCheckedMs);
-      if (const auto error = capture(0, 0, w, h); !error.empty())
+      if (const auto error = capture(0, 0, w, h); !error.empty()) {
         return {{"error", error}};
+      }
       return {{"ok", true},
               {"pictures", std::move(pictures)},
               {"parts", deck["parts"]},
@@ -728,8 +735,9 @@ json Runtime::Look(const json& command) {
       Call("Page.navigate", {{"url", JsonValue(command, "url", "")}}, session);
       drawn = Awaited(session, kDrawn, kCdpIoMs);
     }
-    if (!drawn.is_object())
+    if (!drawn.is_object()) {
       return {{"error", "The artifact did not finish loading."}};
+    }
     const double width = std::clamp(JsonValue(drawn, "w", 1.0), 1.0, kMost);
     const double high = std::clamp(JsonValue(drawn, "h", 1.0), 1.0, kMost);
     const double length = std::min(JsonValue(drawn, "tall", 0.0), kMost);
@@ -758,8 +766,9 @@ json Runtime::Look(const json& command) {
                                 "done(document.documentElement.scrollHeight), "
                                 "{once:true}); location.hash = next; })",
                             kCheckedMs);
-        if (tall.is_number())
+        if (tall.is_number()) {
           h = std::max(high, std::min(tall.get<double>(), kMost));
+        }
       } else {
         h = std::max(high, length);
       }
@@ -777,9 +786,10 @@ json Runtime::Look(const json& command) {
             session);
         const json* box = RemoteValue(reply);
         if (!box || JsonValue(*box, "w", 0.0) <= 0 ||
-            JsonValue(*box, "h", 0.0) <= 0)
+            JsonValue(*box, "h", 0.0) <= 0) {
           return {
               {"error", "The selector does not identify a visible element."}};
+        }
         x = JsonValue(*box, "x", 0.0);
         y = JsonValue(*box, "y", 0.0);
         w = std::min(JsonValue(*box, "w", 0.0), kMost);
@@ -792,8 +802,9 @@ json Runtime::Look(const json& command) {
     }
     json result = {
         {"ok", true}, {"pictures", std::move(pictures)}, {"parts", parts}};
-    if (drawn.contains("problems"))
+    if (drawn.contains("problems")) {
       result["problems"] = std::move(drawn["problems"]);
+    }
     return result;
   });
 }

@@ -209,7 +209,10 @@ test("scheduled tasks run, report and pause", async ({
   await expect(connected(page)).toBeVisible();
   const nav = page.getByRole("complementary");
   await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
-  await page.getByRole("button", { name: "New task", exact: true }).click();
+  await page
+    .getByRole("button", { name: "New task", exact: true })
+    .press("Enter");
+  await expect(page.getByLabel("Name", { exact: true })).toBeFocused();
   await page
     .getByLabel("Name", { exact: true })
     .fill("Browser scheduled review");

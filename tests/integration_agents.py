@@ -103,12 +103,13 @@ def test_a_waited_agent_answers_inline_and_keeps_its_conversation(root, home, *,
         if len(results) == 1:
             rows = json.loads(results[0])
             return tool_call("agent_send", {"id": rows[0]["id"], "text": "once more"})
-        return event({"content": "parent done"})
+        heard_report = "again: ok" in text_of(body)
+        return event({"content": "heard the second report" if heard_report else "message sent"})
 
     with Server([route]) as server:
         result = run(root, base_env(home, server.url), "-p", "ask an agent", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "parent done", result.stdout)
+        assert_true(result.stdout.strip() == "heard the second report", result.stdout)
         started = next(results_of(b)[0] for _, b in server.requests if len(results_of(b)) == 1)
         (row,) = json.loads(started)
         assert_true(row["state"] == "completed", row)
@@ -128,7 +129,6 @@ def test_a_waited_agent_answers_inline_and_keeps_its_conversation(root, home, *,
         assert_true(role["parent"] in parents, role)
         # agent_send started a turn on the saved agent; its report woke the
         # headless parent, which waited for it before it answered.
-        assert_true(any("again: ok" in text_of(b) for _, b in server.requests), "no 2nd turn")
         assert_true(header(agent)["turns"] == 2, header(agent))
 
 

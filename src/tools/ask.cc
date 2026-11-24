@@ -193,16 +193,18 @@ Tool AskTool(AskPerson ask, AskImage image) {
           }
           const std::string question =
               JsonValue(questions[index], "question", "");
-          if (chosen.empty())
+          if (chosen.empty()) {
             chosen = "(no answer)";
-          else
+          } else {
             ++answered;
+          }
           rows.push_back({question, chosen});
           out += question + "\n→ " + chosen + "\n";
         }
-        if (!recorded)
+        if (!recorded) {
           out =
               "The user did not answer; decide yourself or ask in your reply.";
+        }
         ToolResult result = ListResult(out + notes, answered, "answer");
         if (!notes.empty()) rows.push_back({"Notes", notes});
         result.parts = json::array({FieldsPart(std::move(rows))});

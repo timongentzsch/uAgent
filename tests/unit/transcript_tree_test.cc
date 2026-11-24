@@ -764,10 +764,11 @@ TEST_CASE(TestTranscriptBodyPreservesFieldsAndExactPreview) {
     SetBody(node, "text", text);
     CHECK(JsonValue(node["body"], "truncated", false) ==
           (size > kPreviewChars));
-    if (size <= kPreviewChars)
+    if (size <= kPreviewChars) {
       CHECK(node["body"]["text"] == text);
-    else
+    } else {
       CHECK(node["body"]["text"].get<std::string>().size() == kPreviewChars);
+    }
   }
 }
 
@@ -845,8 +846,9 @@ TEST_CASE(TestWorkNoticesKeepTheirPlaceAcrossSteeringAndReload) {
     CHECK(nodes.back()["id"] == idle);
     if (!legacy) {
       for (const auto& node : turn.Live()) {
-        if (node["kind"] == "notice")
+        if (node["kind"] == "notice") {
           CHECK(std::ranges::find(nodes, node) != nodes.end());
+        }
       }
     }
   }

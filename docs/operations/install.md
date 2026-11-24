@@ -10,6 +10,8 @@ web host from other devices is in [Remote access](remote-access.md).
 curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | sh
 ```
 
+Prebuilt archives are available from [GitHub Releases](https://github.com/timongentzsch/uAgent/releases/latest).
+
 Piped to `sh` it installs a release; `./install.sh` in a checkout builds
 that checkout. It asks on `/dev/tty`: *container* or *here* (where `docker
 info` answers), Chrome and TigerVNC via `apt-get`, the Chrome policy, a
@@ -30,7 +32,8 @@ Archives exist for `linux-x86_64` and `linux-arm64` (glibc 2.38 or newer)
 and `macos-arm64` (macOS 15 or newer). Elsewhere, or when the unpacked
 binary fails `uagent --version` (a missing library), the installer clones
 that release's tag into `~/.local/share/uagent/src` and builds it: git,
-CMake 3.21+, a C++20 compiler, libcurl 7.66+, zlib, OpenSSL 3 and Node.js.
+CMake 3.21+, a C++20 compiler, libcurl 7.66+, zlib and OpenSSL 3. To build
+the web client from source, use Node.js 24 and npm as CI does.
 
 ## What is installed where
 
@@ -46,17 +49,24 @@ New `share/` trees are copied in full before the old ones are replaced.
 
 ## Verify a release
 
-Beside each archive is a `.sha256`, which is all the installer checks.
-`SHA256SUMS` covers every archive, `SHA256SUMS.sigstore.json` is its keyless
-cosign bundle, and every file has a build attestation
-(`.github/workflows/release.yml`).
+The installer checks the package against its companion SHA-256 file. The
+release also includes a signed `SHA256SUMS` manifest covering all archives
+and a GitHub build attestation for each archive.
+
+To verify the Linux x86-64 archive, run the following in an empty directory
+with GitHub CLI and cosign installed. Change the tag or archive target to
+verify a different release.
 
 ```sh
-sha256sum -c --ignore-missing SHA256SUMS
+repo=timongentzsch/uAgent
+tag=v1.12.0
+archive="uagent-${tag#v}-linux-x86_64.tar.gz"
+gh release download "$tag" --repo "$repo" -p "$archive" -p SHA256SUMS -p SHA256SUMS.sigstore.json
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity https://github.com/timongentzsch/uAgent/.github/workflows/release.yml@refs/tags/v<version> \
+  --certificate-identity "https://github.com/$repo/.github/workflows/release.yml@refs/tags/$tag" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
-gh attestation verify uagent-<version>-linux-x86_64.tar.gz --repo timongentzsch/uAgent
+sha256sum --check --ignore-missing SHA256SUMS
+gh attestation verify "$archive" --repo "$repo" --source-ref "refs/tags/$tag"
 ```
 
 ## Build and install from source

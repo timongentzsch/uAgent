@@ -28,7 +28,7 @@ the other options.
 
 ## Current measurements
 
-### Published release
+### v1.11.0 release measurements
 
 The 2026-11-24 measurements use the published **1.11.0** archives at commit
 `6a4e1c10`. Each archive matched the checksum in the release. Sizes below use
@@ -309,7 +309,7 @@ The 2026-11-18 headless comparison used a fresh home for each tool and
 | Claude Code 2.1.327 | `api.anthropic.com` | 12 | 7,522 | 3,987 | 11,509 |
 
 The historical token columns use the same normalized `o200k_base` counting
-method as the current release probe on the first request carrying tools. Claude
+method as the v1.11.0 release probe on the first request carrying tools. Claude
 Code deferred some tools. After a refusal it sent all 22 (21,495 tokens).
 This snapshot covers the named headless versions and configurations.
 The 2026-11-18 report retains aggregate counts and DNS host lists. The

@@ -52,8 +52,15 @@ class DocsTest(unittest.TestCase):
         self.assertIn('| `kMarker` | `".done"` |  |', page)
 
     def test_links_resolve(self):
-        for page in PAGES:
-            for link in LINK.findall(FENCE.sub("", page.read_text())):
+        # Check historical and skill documentation too. Historical code names
+        # can legitimately be absent from the current tree.
+        tracked = subprocess.check_output(
+            ["git", "ls-files", "-z", "--", "*.md"], cwd=ROOT, text=True
+        )
+        for page in (ROOT / name for name in tracked.split("\0") if name):
+            prose = FENCE.sub("", page.read_text())
+            prose = re.sub(r"(?<!`)(`+)(?!`)[^\n]*?(?<!`)\1(?!`)", "", prose)
+            for link in LINK.findall(prose):
                 if re.match(r"[a-z]+:", link):
                     continue
                 path, _, anchor = link.partition("#")

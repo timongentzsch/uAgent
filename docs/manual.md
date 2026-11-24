@@ -120,7 +120,7 @@ folded rows to reach a match.
 conversation**, **Statistics**, **Tools**, **Export transcript**,
 **Detail**, **Compact**, **Restart**, **Close conversation** and
 **Delete**. Fork waits for a running turn. **Move to…** moves a Local
-conversation and its agents to another folder or workspace; its files stay
+conversation, its attached side chats and its agents to another folder or workspace; its files stay
 where they were. Earlier file references open in their original workspace.
 New copied file links retain their workspace after a move. An older path-only
 link opens when exactly one workspace contains that path. If several contain

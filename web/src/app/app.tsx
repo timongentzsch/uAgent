@@ -604,7 +604,9 @@ function App({ host, bindResult, reading }: HostAppProps) {
       quote={quote}
       shown={!!terminalShown}
       expanded={terminalExpanded}
-      expand={compact ? undefined : () => setTerminalExpanded(!terminalExpanded)}
+      expand={
+        compact ? undefined : () => setTerminalExpanded(!terminalExpanded)
+      }
       hide={hideTerminal}
       close={() => setTerminalShown(undefined)}
       report={report}

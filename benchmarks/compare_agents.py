@@ -24,6 +24,7 @@ import sys
 import tempfile
 import termios
 import time
+from functools import partial
 
 from charts import bars
 
@@ -383,7 +384,7 @@ def measure_idle(tool, project):
     return result
 
 
-def measure_headless(tool, project):
+def measure_headless(tool, project, *, scripted=False):
     process = spawn(
         tool["headless"],
         project,
@@ -435,16 +436,15 @@ def measure_headless(tool, project):
             answer = ""
     else:
         answer = text.splitlines()[-1] if text else ""
+    matches = answer == "ok" if scripted else isinstance(answer, str) and answer.lower() == "ok"
     return {
+        **({"answer": answer} if scripted else {}),
         "wall_ms": wall * 1000,
         "cpu_ms": reaped + detached * 1000,
         "detached_cpu_ms_seen": detached * 1000,
         "peak_rss_kib": peak,
         "tree_at_peak": tree,
-        "ok": os.WIFEXITED(status)
-        and os.WEXITSTATUS(status) == 0
-        and isinstance(answer, str)
-        and answer.lower() == "ok",
+        "ok": os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0 and matches,
         "left_running": left,
     }
 
@@ -736,7 +736,8 @@ def main():
                 report[tool["name"]]["version"].append(
                     measure_version(tool, projects[tool["name"]])
                 )
-        for metric, function in (("idle", measure_idle), ("headless", measure_headless)):
+        headless = partial(measure_headless, scripted=args.scripted_provider)
+        for metric, function in (("idle", measure_idle), ("headless", headless)):
             if metric in args.skip:
                 continue
             for _ in range(args.session_runs):

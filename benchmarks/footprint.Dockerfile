@@ -23,7 +23,7 @@ RUN cmake -S . -B /tmp/build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
 
 # Select this stage to measure a published, checksum-verified release.
 FROM ubuntu:24.04 AS published
-ARG UAGENT_VERSION=1.11.0
+ARG UAGENT_VERSION=1.12.0
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl
 COPY install.sh /tmp/install.sh
 RUN UAGENT_PREFIX=/opt/uagent UAGENT_NONINTERACTIVE=1 UAGENT_VERSION="$UAGENT_VERSION" sh /tmp/install.sh

@@ -117,11 +117,15 @@ class Attribution:
         while changed:
             changed = False
             for pid, row in table.items():
-                if pid in self.pids or pid in self.before:
+                if pid in self.pids:
                     continue
                 if row["ppid"] in self.descendants:
                     self.descendants.add(pid)
-                elif row["ppid"] != 1 or not row["command"].startswith(self.markers):
+                elif (
+                    pid in self.before
+                    or row["ppid"] != 1
+                    or not row["command"].startswith(self.markers)
+                ):
                     continue
                 self.pids.add(pid)
                 changed = True
@@ -272,6 +276,33 @@ def drain(master, state, terminal_replies=True):
     state["burst_end"] = now
 
 
+def prepare_claude_prompt(master, state, sent):
+    """Complete the pinned CLI's first-run screens in this disposable git project."""
+    tail = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b" ", state.get("tail", b""))
+    visible = b" ".join(tail.lower().split())
+    marker = b"benchmarkready"
+    if (
+        marker in visible
+        and b"for shortcuts" in sent
+        and not termios.tcgetattr(master)[3] & termios.ECHO
+    ):
+        os.write(master, b"\x15")  # Clear the draft without submitting a model request.
+        return True
+    for label, keys in (
+        (b"choose the text style", b"\r"),
+        (b"press enter to continue", b"\r"),
+        ("❯ no, exit".encode(), b"\x1b[B"),
+        ("❯ yes, i trust this folder".encode(), b"\r"),
+        (b"for shortcuts", marker),
+    ):
+        if label in visible and label not in sent:
+            time.sleep(0.15)
+            os.write(master, keys)
+            sent.add(label)
+            break
+    return False
+
+
 def measure_idle(tool, project):
     master, slave = pty.openpty()
     winsize(slave)
@@ -289,30 +320,46 @@ def measure_idle(tool, project):
     attribution = Attribution(process.pid, own_markers(tool))
     state = {}
     result = {}
+    sent = set()
+    verify_prompt = tool.get("verify_prompt", False)
+    ready = not verify_prompt
     try:
         while True:
             now = time.monotonic()
             drain(master, state)
             attribution.sample()
+            if not ready:
+                ready = prepare_claude_prompt(master, state, sent)
             quiet = now - state.get("last_output", started)
             if process.poll() is not None:
                 raise RuntimeError(
                     f"the UI exited before it settled: {state.get('tail', b'')[-200:]!r}"
                 )
-            if (state and quiet >= QUIET_SECONDS) or now - started >= SETTLE_LIMIT:
+            if state and ready and quiet >= QUIET_SECONDS:
                 break
+            if now - started >= SETTLE_LIMIT:
+                raise RuntimeError(
+                    f"interactive UI did not settle: {state.get('tail', b'')[-240:]!r}"
+                )
+        if verify_prompt:
+            result["draft_echo_verified"] = True
         first = state.get("first_screen") or state.get("burst_end")
         result["first_screen_ms"] = None if first is None else (first - started) * 1000
-        result["settled"] = bool(state) and now - started < SETTLE_LIMIT
+        result["settled"] = True
         start_cpu = {pid: row["cpu"] for pid, row in attribution.sample().items()}
         samples = []
+        sample_started = time.time()
         window_end = time.monotonic() + IDLE_SECONDS
         while time.monotonic() < window_end:
             drain(master, state)
             live = attribution.sample()
+            if process.poll() is not None or not live:
+                raise RuntimeError("the interactive process exited during its idle sample")
             samples.append(sum(row["rss_kib"] for row in live.values()))
             time.sleep(0.9)
         end_cpu = dict(attribution.last)
+        result["sample_elapsed_seconds"] = time.time() - sample_started
+        result["rss_samples_kib"] = samples
         result["rss_kib"] = statistics.median(samples)
         result["idle_cpu_ms"] = (
             sum(c - start_cpu.get(pid, 0.0) for pid, c in end_cpu.items()) * 1000
@@ -457,6 +504,11 @@ def build_tools(args):
             {
                 "name": "claude",
                 "path": args.claude,
+                # The loopback fixture supplies a synthetic gateway bearer token.
+                "env": {"ANTHROPIC_API_KEY": "", "ANTHROPIC_AUTH_TOKEN": os.environ["PROXY_KEY"]}
+                if args.scripted_provider and os.environ.get("PROXY_KEY")
+                else {},
+                "verify_prompt": args.scripted_provider,
                 "headless": [str(args.claude), *BARE_FLAGS["claude"], "-p", PROMPT],
             }
         )

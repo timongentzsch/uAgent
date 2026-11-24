@@ -598,11 +598,22 @@ def test_openrouter_named_search_contract_and_errors(root, home, *, binary):
             ]
         ) as model_server:
             env = search_env(home, model_server, search_server)
-            result = run(root, env, "--yolo", "--json", "-p", "search", binary=binary)
-            envelope = json.loads(result.stdout)
-            assert_true(result.returncode == 0, (result.stderr, envelope))
-            assert_true(envelope["answer"] == "search-contract-ok", envelope)
-            assert_true(envelope["usage"]["web_searches"] == 2, envelope)
+            result = run(root, env, "--yolo", "--json-stream", "-p", "search", binary=binary)
+            records = [json.loads(line) for line in result.stdout.splitlines()]
+            assert_true(result.returncode == 0, (result.stderr, records))
+            assert_true(records[-1]["data"]["answer"] == "search-contract-ok", records[-1])
+            usage = next(r["data"]["usage"] for r in records if r["type"] == "usage")
+            assert_true(usage["web_searches"] == 2, usage)
+            receipt = next(r["data"] for r in records if r["type"] == "tool.result")
+            assert_true(receipt["body_kind"] == "link", receipt)
+            assert_true(receipt["parts"][0]["kind"] == "markdown", receipt)
+            assert_true("grounded answer" in receipt["parts"][0]["text"], receipt)
+            assert_true(
+                receipt["parts"][1]
+                == {"kind": "source", "url": "https://example.com/current", "title": "Current"},
+                receipt,
+            )
+            assert_true("Source evidence:" in receipt["result"], receipt)
             assert_true(
                 all(
                     function_names(body) >= {"web_search"}

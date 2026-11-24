@@ -10,9 +10,17 @@ from pathlib import Path
 
 def classify(paths):
     docs = {"README.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "LICENSE"}
+    # These files also ship with the worker and contribute to its build ID.
+    worker_inputs = {
+        "docs/architecture/overview.md",
+        "web/public/design-helper.js",
+        "web/public/deck-print.js",
+        "web/src/shared/styles/tokens.css",
+    }
     # docs/interfaces is checked against the binary (tests/reference_docs.py).
     native = any(
-        path.startswith("docs/interfaces/")
+        path in worker_inputs
+        or path.startswith("docs/interfaces/")
         or not (path.startswith(("web/", "docs/")) or path in docs)
         for path in paths
     )
@@ -83,16 +91,18 @@ def tidy(paths):
         or path in ("CMakeLists.txt", "CMakePresets.json", ".dockerignore")
         for path in paths
     )
+    if wide:
+        return "all"
     units = [
         path
         for path in paths
         if path.endswith(".cc") and path.startswith(("src/", "tests/", "benchmarks/"))
     ]
-    return "all" if wide else " ".join(units)
+    return json.dumps(units) if units else ""
 
 
 def tidy_files(entries, units, shard="0/1"):
-    """The run-clang-tidy.py patterns for what tidy() chose. "all" deals the
+    """One file-selection regex for run-clang-tidy.py. "all" deals the
     units round robin and keeps the `shard` ("index/count") share."""
     files = sorted(
         {
@@ -106,8 +116,9 @@ def tidy_files(entries, units, shard="0/1"):
         index, count = map(int, shard.split("/"))
         files = files[index::count]
     else:
-        files = [file for file in files if any(file.endswith("/" + unit) for unit in units.split())]
-    return " ".join(re.escape(file) + "$" for file in files)
+        suffixes = tuple("/" + unit for unit in json.loads(units or "[]"))
+        files = [file for file in files if file.endswith(suffixes)]
+    return "|".join(re.escape(file) + "$" for file in files)
 
 
 def selection(event, paths):
@@ -137,6 +148,18 @@ def selection(event, paths):
     return everything
 
 
+def changed_paths(base, cwd=None):
+    """Include unstaged and untracked sources in local checks. A rename selects
+    the checks for both its old and its new path."""
+    paths = subprocess.check_output(
+        ["git", "diff", "--name-only", "--no-renames", "-z", base], cwd=cwd
+    )
+    paths += subprocess.check_output(
+        ["git", "ls-files", "--others", "--exclude-standard", "-z"], cwd=cwd
+    )
+    return [os.fsdecode(path) for path in paths.split(b"\0") if path]
+
+
 if __name__ == "__main__" and sys.argv[1:2] == ["--tidy-files"]:
     # --tidy-files BUILD_DIR UNITS [INDEX/COUNT]
     build, units, *shard = sys.argv[2:]
@@ -149,19 +172,7 @@ elif __name__ == "__main__":
     known = base.strip("0") and (
         subprocess.run(["git", "cat-file", "-e", f"{base}^{{commit}}"]).returncode == 0
     )
-    # No rename detection: both the old and the new path are listed. The
-    # working tree is compared, so ci-local.sh sees uncommitted changes.
-    paths = (
-        [
-            os.fsdecode(path)
-            for path in subprocess.check_output(
-                ["git", "diff", "--name-only", "--no-renames", "-z", base]
-            ).split(b"\0")
-            if path
-        ]
-        if known
-        else None
-    )
+    paths = changed_paths(base) if known else None
     result = selection(os.environ.get("GITHUB_EVENT_NAME", ""), paths)
     result["matrix"] = build_matrix(result["heavy"] or result["bundle"])
     output = "".join(

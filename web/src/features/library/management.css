@@ -119,7 +119,7 @@
   flex: 1;
   max-width: var(--sheet);
 }
-.library-place {
+.library-filters {
   display: none;
 }
 .library-rail {
@@ -212,6 +212,7 @@
   gap: var(--pad);
 }
 .library-pages figure {
+  position: relative;
   margin: 0;
   display: flex;
   flex-direction: column;
@@ -258,34 +259,42 @@
   .management-body:not(.has-selection):has(.schedule-editor) .management-list {
     flex: none;
   }
-  /* On a phone the kinds are a row of chips over the list, and the place
-     a field in the toolbar. */
   .library .management-body {
     flex-direction: column;
   }
   .library-rail {
-    flex: none;
-    flex-direction: row;
-    padding: var(--bar-pad);
-    border-right: 0;
-    border-bottom: var(--border);
-  }
-  .library-kinds {
-    flex-direction: row;
-  }
-  .library-rail h2,
-  .library-where,
-  .library .has-selection .library-rail {
     display: none;
   }
-  .library-rail button {
-    flex: none;
-  }
-  .library-place {
+  .library-filters {
     display: block;
   }
   .library .management-editor {
     flex: 1;
     border-left: 0;
   }
+}
+
+.schedule-editor {
+  padding: 0;
+  overflow: hidden;
+  gap: 0;
+}
+.schedule-fields {
+  min-height: 0;
+  overflow: auto;
+  padding: var(--pad);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.schedule-fields > * {
+  flex: none;
+}
+.schedule-editor > .editor-actions {
+  flex: none;
+  padding: var(--bar-pad);
+  border-top: var(--border);
+}
+.schedule-options > :not(summary) {
+  margin-top: var(--gap);
 }

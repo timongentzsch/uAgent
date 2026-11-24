@@ -541,7 +541,12 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
                     state = resumed.until(again, lambda value: value["state"].get("permissions"))
                     assert_true(
                         state["state"]["permissions"]
-                        == {"mode": "ask", "effective": "ask", "default": "yolo"},
+                        == {
+                            "mode": "ask",
+                            "effective": "ask",
+                            "default": "yolo",
+                            "source": "conversation",
+                        },
                         state["state"]["permissions"],
                     )
                     # Closed, it shows the model and mode it resumes with.

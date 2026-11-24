@@ -156,13 +156,22 @@ void RegisterActivityTool(std::vector<Tool>& tools,
         "activity " + std::to_string(JsonValue(a, "id", int64_t{0}));
     if (operation == "list") return Headline{"Listing", "Listed", "activities"};
     if (operation == "wait") {
-      return Headline{"Waiting for", "Waited for", "activities"};
+      const json* ids = JsonArray(a, "ids");
+      return Headline{"Waiting for", "Waited for",
+                      ids && ids->size() == 1 && (*ids)[0].is_number_integer()
+                          ? "activity " + (*ids)[0].dump()
+                      : ids && !ids->empty() ? Plural(ids->size(), "activity")
+                                             : "activities"};
     }
     if (operation == "stop") return Headline{"Stopping", "Stopped", target};
-    if (operation == "write" || operation == "resize") {
+    if (operation == "resize") return Headline{"Resizing", "Resized", target};
+    if (operation == "write") {
       return Headline{"Sending input to", "Sent input to", target};
     }
     return Headline{"Checking", "Checked", target};
+  };
+  activity.present = [](const json& a) {
+    return GenericInputParts(a, {"operation", "id"});
   };
 }
 

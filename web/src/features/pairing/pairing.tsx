@@ -26,17 +26,27 @@ export default function Pairing({
   report: (error: unknown) => void;
 }) {
   const [code, setCode] = useState("");
+  const [online, setOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const changed = () => setOnline(navigator.onLine);
+    addEventListener("online", changed);
+    addEventListener("offline", changed);
+    return () => {
+      removeEventListener("online", changed);
+      removeEventListener("offline", changed);
+    };
+  }, []);
   // The host refused the code: used, mistyped or too old.
-  const [expired, setExpired] = useState(false);
+  const [rejected, setRejected] = useState(false);
   const { run, busy } = useAction({
     report: (error) => {
-      if (failure(error).status === 403) setExpired(true);
+      if (failure(error).status === 403) setRejected(true);
       else report(error);
     },
   });
   const pair = (value: string) =>
     run(async () => {
-      setExpired(false);
+      setRejected(false);
       await api(routes.auth, {
         code: value.trim(),
         name: /iPhone|iPad/.test(navigator.userAgent)
@@ -57,7 +67,7 @@ export default function Pairing({
   return (
     <main class="pairing">
       <Mark className="wordmark" />
-      <h1>Your local coding agent.</h1>
+      <h1>Connect device</h1>
       <p>
         Connect this device to the µAgent host. Run <code>uagent --web</code> on
         that computer for a fresh pairing code, or open the link it prints.
@@ -74,29 +84,28 @@ export default function Pairing({
             autoComplete="off"
             spellcheck={false}
             value={code}
-            aria-invalid={expired || undefined}
-            aria-describedby={expired ? "pairing-expired" : undefined}
+            aria-invalid={rejected || undefined}
+            aria-describedby={rejected ? "pairing-rejected" : undefined}
             onInput={(event) => {
               setCode(event.currentTarget.value);
-              setExpired(false);
+              setRejected(false);
             }}
             required
           />
         </label>
-        {expired && (
-          <Notice tone="error" id="pairing-expired">
-            Expired — run <code>uagent --web</code> again for a new code.
+        {rejected && (
+          <Notice tone="error" id="pairing-rejected">
+            This code wasn’t accepted. Run <code>uagent --web</code> for a new
+            code.
           </Notice>
         )}
-        <Button
-          type="submit"
-          variant="primary"
-          busy={busy}
-          disabled={!navigator.onLine}
-        >
+        <Button type="submit" variant="primary" busy={busy} disabled={!online}>
           Connect device
         </Button>
       </form>
+      {!online && (
+        <Notice tone="warning">Reconnect to pair this device.</Notice>
+      )}
       <p class="muted">
         The host must remain awake and reachable. An installed app may need its
         own pairing code.

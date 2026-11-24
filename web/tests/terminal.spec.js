@@ -41,6 +41,15 @@ test("terminal tabs run commands and quote their text in the draft", async ({
   expect(quoted).not.toMatch(/second-6/);
   await expect(page.getByLabel("Message or guidance")).toBeFocused();
 
+  const before = await dock.boundingBox();
+  await dock.getByRole("button", { name: "Terminal menu" }).click();
+  await page.getByRole("menuitem", { name: "Expand terminal" }).click();
+  await expect
+    .poll(async () => (await dock.boundingBox()).height)
+    .toBeGreaterThan(before.height);
+  await expect(shown.locator(".xterm-rows")).toContainText("first-42");
+  await dock.getByRole("button", { name: "Terminal menu" }).click();
+  await page.getByRole("menuitem", { name: "Restore dock" }).click();
   // Hidden, its shells run on: shown again it has what they printed, and
   // the keys.
   await dock.getByRole("button", { name: "Hide the terminal" }).click();
@@ -53,9 +62,7 @@ test("terminal tabs run commands and quote their text in the draft", async ({
 
   // Its last tab closed, the panel goes, and the next one starts anew.
   for (const number of [2, 1])
-    await dock
-      .getByRole("button", { name: `Close Terminal ${number}` })
-      .click();
+    await dock.getByRole("button", { name: `Stop Terminal ${number}` }).click();
   await expect(dock).toHaveCount(0);
   await headerAction(page, "Terminal");
   await expect(dock.locator(".terminal-tab")).toHaveCount(1);
@@ -75,7 +82,7 @@ test("a terminal keeps its number, and a new one takes the lowest free", async (
   await dock.getByRole("button", { name: "New terminal" }).click();
   await expect(dock.locator(".terminal-tab")).toHaveCount(2);
   await expect(place).toHaveText(/^Terminal 2 · /);
-  await dock.getByRole("button", { name: "Close Terminal 1" }).click();
+  await dock.getByRole("button", { name: "Stop Terminal 1" }).click();
   await expect(dock.locator(".terminal-tab")).toHaveCount(1);
   await expect(place).toHaveText(/^Terminal 2 · /);
   await dock.getByRole("button", { name: "New terminal" }).click();
@@ -93,7 +100,7 @@ test("Quote is in the menu only with a conversation to quote in", async ({
   await expect(dock.locator(".terminal-place")).toHaveText("Terminal 1 · ~");
   await dock.getByRole("button", { name: "Terminal menu" }).click();
   await expect(
-    page.getByRole("menuitem", { name: "Close terminal" }),
+    page.getByRole("menuitem", { name: "Stop terminal" }),
   ).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Quote" })).toHaveCount(0);
 });
@@ -112,16 +119,14 @@ test("a folder's terminal opens in the page, keeps running and closes", async ({
   await shell.locator(".xterm").click();
   await page.keyboard.type("echo kept-$((5*5))\n");
   await expect(shell.locator(".xterm-rows")).toContainText("kept-25");
-  await page
-    .locator(".session", { hasText: session.title || "" })
-    .first()
-    .click();
+  await shell.getByRole("button", { name: "Hide the terminal" }).click();
   await expect(shell).toHaveCount(0);
   const row = page.locator(".place-body .session", { hasText: "Terminal" });
   await row.click();
   await expect(shell.locator(".xterm-rows")).toContainText("kept-25");
   await expect(row).toHaveAttribute("aria-current", "page");
-  await shell.getByRole("button", { name: "Close terminal" }).click();
+  await shell.getByRole("button", { name: "Terminal menu" }).click();
+  await page.getByRole("menuitem", { name: "Stop terminal" }).click();
   await expect(
     page.getByRole("region", { name: /^Overview of / }),
   ).toBeVisible();
@@ -169,7 +174,9 @@ test("a folder's terminal has a name and a menu to rename, pin and close it", as
     nav.locator(".place-body .session-row", { hasText: "Build" }),
   ).toHaveCount(0);
   await pinned.getByRole("button", { name: "Terminal menu for Build" }).click();
-  await page.getByRole("menuitem", { name: "Close", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "Stop terminal", exact: true })
+    .click();
   await expect(
     page.getByRole("region", { name: /^Overview of / }),
   ).toBeVisible();

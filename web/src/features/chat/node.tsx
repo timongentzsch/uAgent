@@ -1,11 +1,18 @@
 import "./node.css";
 import { Component, createContext } from "preact";
 import type { TargetedKeyboardEvent } from "preact";
-import { useCallback, useContext, useMemo, useState } from "preact/hooks";
+import {
+  useCallback,
+  useContext,
+  useId,
+  useMemo,
+  useState,
+} from "preact/hooks";
 import { ChevronRight } from "lucide-preact";
 import { Button, ErrorBoundary } from "../../shared/ui.tsx";
 import { devicePrefs } from "../../shared/device-prefs.ts";
 import { maxRememberedToggles, maxShownSteps } from "../../shared/limits.ts";
+import { capitalize } from "../../shared/display.ts";
 import { plural } from "../../shared/quantities.ts";
 import { useElapsed } from "../../shared/time.ts";
 import { useLatest } from "../../shared/use-latest.ts";
@@ -24,6 +31,8 @@ import {
   detailLevels,
 } from "../../shared/tree.ts";
 import type { Node, SessionRef } from "../../shared/types.ts";
+import { agentLink, agentReport } from "../../shared/message-view.ts";
+import { AgentSender } from "./agent-sender.tsx";
 import { NodeBody } from "./bodies.tsx";
 import { Refusal, refusalOf } from "./refusal.tsx";
 import { MessageView } from "./message.tsx";
@@ -103,21 +112,28 @@ function Nodes({
   scope,
   ...props
 }: Scope & { items: Item[]; scope: string }) {
-  return (
-    <>
-      {list.map((item) => (
-        <NodeView
-          key={`${scope}${rowKey(item.branch.node)}`}
-          {...props}
-          {...item}
-          scope={scope}
-        />
-      ))}
-    </>
-  );
+  // Only label the parent when the speaker switches back from a child. Work
+  // rows between their replies do not interrupt the conversation.
+  let afterAgent = false;
+  return list.map((item) => {
+    const node = item.branch.node;
+    const parentReply =
+      afterAgent && node.role === "assistant" && !!node.body?.text;
+    if (parentReply || node.kind === "turn" || node.role === "user")
+      afterAgent = !!agentReport(node);
+    return (
+      <NodeView
+        key={`${scope}${rowKey(node)}`}
+        {...props}
+        {...item}
+        scope={scope}
+        parentReply={parentReply}
+      />
+    );
+  });
 }
 
-type NodeProps = Scope & Item & { scope: string };
+type NodeProps = Scope & Item & { scope: string; parentReply: boolean };
 
 // One node. A message or footer renders again only when its own node (or a
 // footer's answer) changed; a row also when what is under it did.
@@ -129,6 +145,7 @@ class NodeView extends Component<NodeProps> {
         ? next.branch !== prior.branch
         : next.branch.node !== prior.branch.node) ||
       next.answer !== prior.answer ||
+      next.parentReply !== prior.parentReply ||
       next.since !== prior.since ||
       next.online !== prior.online ||
       next.session.id !== prior.session.id ||
@@ -147,6 +164,7 @@ class NodeView extends Component<NodeProps> {
           <MessageView
             node={node}
             answer={props.answer}
+            parentReply={props.parentReply}
             online={props.online}
             session={props.session}
           />
@@ -193,8 +211,11 @@ function RowNode({
   const node = branch.node;
   const key = `${session.id}:${node.id}`;
   const [open, setOpen] = useState(
-    () => remembered(key) ?? opens(depth, level),
+    () =>
+      remembered(key) ??
+      (node.kind === "call" ? level === Infinity : opens(depth, level)),
   );
+  const bodyId = useId();
   const latest = useLatest({ open, key });
   const toggle = useCallback((next?: boolean) => {
     const value = next ?? !latest.current.open;
@@ -233,6 +254,7 @@ function RowNode({
     <div
       class={`node ${node.state || ""}`}
       data-kind={node.kind}
+      data-tool={node.tool}
       data-message-id={node.id}
       data-sequence={node.sequence}
       data-sequences={(!open && sequencesOf(kids)) || undefined}
@@ -241,6 +263,7 @@ function RowNode({
         node={node}
         open={open}
         openable={openable}
+        bodyId={bodyId}
         toggle={toggle}
         thinking={thinking}
         step={!open && node.state === "running" ? currentStep(branch) : ""}
@@ -257,6 +280,22 @@ function RowNode({
           scope={scope}
         />
       )}
+      {!open &&
+        (node.kind === "work" ? kids.map((kid) => kid.node) : [node]).flatMap(
+          (call) =>
+            call.parts
+              ?.filter(agentLink)
+              .map((link) => (
+                <AgentSender
+                  key={call.id + ":" + link.id}
+                  id={String(link.id)}
+                  title={link.label}
+                  live
+                  waitingOnly
+                  online={online}
+                />
+              )) || [],
+        )}
       {thought && <Thought node={thought} online={online} session={session} />}
       {refused.map((kid) => (
         <Refusal
@@ -268,7 +307,7 @@ function RowNode({
         />
       ))}
       {open && openable && (
-        <div class="node-open">
+        <div class="node-open" id={bodyId}>
           <NodeBody node={node} online={online} session={session} />
           {kids.length > 0 && (
             <Kids
@@ -354,6 +393,7 @@ class NodeRow extends Component<{
   node: Node;
   open: boolean;
   openable: boolean;
+  bodyId: string;
   toggle: (next?: boolean) => void;
   thinking: boolean;
   step: string | undefined;
@@ -379,6 +419,7 @@ function RowLine({
   node,
   open,
   openable,
+  bodyId,
   toggle,
   thinking,
   step,
@@ -391,7 +432,17 @@ function RowLine({
   const headline = [headlineOf(node, thinking), step]
     .filter(Boolean)
     .join(" · ");
-  const word = [node.result?.word, elapsed].filter(Boolean).join(" · ");
+  const callState = node.kind === "call" && node.state;
+  const outcome =
+    node.result?.word ||
+    (callState === "ok"
+      ? "Completed"
+      : callState && callState !== "running"
+        ? capitalize(callState)
+        : "");
+  const word = [callState === "running" && "Running", outcome, elapsed]
+    .filter(Boolean)
+    .join(" · ");
   const content = (
     <>
       <ChevronRight class="row-chevron" aria-hidden="true" />
@@ -399,7 +450,11 @@ function RowLine({
         {node.state === "failed" && <span class="sr-only">Failed: </span>}
         {headline}
       </span>
-      {word && <small class="node-word">{word}</small>}
+      {word && (
+        <small class="node-word" title={word}>
+          {word}
+        </small>
+      )}
     </>
   );
   return openable ? (
@@ -407,6 +462,7 @@ function RowLine({
       variant="quiet"
       class="node-row"
       aria-expanded={open}
+      aria-controls={open ? bodyId : undefined}
       onClick={() => toggle()}
       onKeyDown={(event) => arrows(event, open, toggle)}
     >

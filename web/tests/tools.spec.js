@@ -143,6 +143,14 @@ test("a to-do list reads as its progress and stays above the composer", async ({
   );
   await page.reload();
   await expect(todo.getByRole("listitem")).toHaveCount(3);
+  await prompt.fill("Todo probe: finish");
+  await prompt.press("Enter");
+  const completed = page.locator(".node-row").filter({ hasText: "3/3 done" });
+  await expect(completed).toBeVisible();
+  await expect(todo).toHaveCount(0);
+  await page.reload();
+  await expect(completed).toBeVisible();
+  await expect(todo).toHaveCount(0);
 });
 
 test("a long diff shows whole on its row, live and after a reload", async ({
@@ -156,7 +164,7 @@ test("a long diff shows whole on its row, live and after a reload", async ({
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Long diff probe");
   await prompt.press("Enter");
-  const write = await openRow(page, "Wrote long.txt");
+  const write = await openRow(page, "Created long.txt");
   await expect(write.locator(".node-row")).toContainText("+2001 −0");
   const diff = write.locator(".diff");
   await expect(diff.locator("span")).toHaveCount(2001);

@@ -364,7 +364,15 @@ std::string ToolAction(const Tool& t, const json& args);
 json ToolView(const Tool* tool, const json& args);
 json CommandPart(std::string text);
 json CodePart(std::string text, std::string language, std::string label = "");
+// A bounded preview of string [label, value] pairs, in display order.
+json FieldsPart(json rows);
+// Nested pairs in braces ordinarily construct a JSON object and sort its keys.
+inline json FieldsPart(json::initializer_list_t rows) {
+  return FieldsPart(json::array(rows));
+}
 json LinkPart(std::string to, json id, std::string label);
+json SourcePart(const std::string& url, const std::string& title,
+                const std::string& excerpt);
 // A headline with a fixed verb pair and the default target.
 Tool::Headlines Verbs(std::string present, std::string past);
 // Generic parts for `args`, leaving out the arguments named in `skip`.

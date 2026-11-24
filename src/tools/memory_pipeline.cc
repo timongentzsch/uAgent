@@ -1,15 +1,10 @@
 // Copyright 2026 Timon Gentzsch
 
-#include <fcntl.h>
 #include <unistd.h>
 
 #include <algorithm>
-#include <cerrno>
 #include <chrono>
-#include <cstdio>
-#include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -24,10 +19,12 @@
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
-#include "include/core/fd.h"
+#include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/lease.h"
 #include "include/core/limits.h"
+#include "include/core/output_buffer.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/providers/providers.h"
@@ -48,115 +45,123 @@ std::string MarkerPath(const std::string& source,
   return workspace + "/" + WorkspaceId(source) + ".state";
 }
 
-bool Claim(const std::string& source, const std::filesystem::path& cwd,
-           std::string& error) {
-  namespace fs = std::filesystem;
-  std::string marker = MarkerPath(source, cwd);
-  std::error_code code;
-  if (fs::exists(marker, code)) {
-    std::ifstream input(marker);
-    std::string state;
-    std::getline(input, state);
-    std::error_code marker_error, source_error;
-    auto marker_time = fs::last_write_time(marker, marker_error);
-    auto source_time = fs::last_write_time(source, source_error);
-    // A marker that cannot be compared stays: clearing it would re-extract a
-    // session that has already been processed.
-    if (marker_error || source_error) return false;
-    bool done = Trim(state) == "done";
-    if (done && marker_time >= source_time) return false;
-    auto age = fs::file_time_type::clock::now() - marker_time;
-    if (!done && age < kStaleClaim) return false;
-    fs::remove(marker, code);
-    if (code) {
-      error = "cannot clear stale memory claim: " + code.message();
-      return false;
+// A completed marker describes the version read, including replacements with
+// the same timestamp. Older markers contain just "done" and use their mtime.
+std::string DoneMarker(const FileStamp& stamp) {
+  return "done\n" +
+         JsonDump(json::array({stamp.device, stamp.inode, stamp.size,
+                               stamp.modified_seconds,
+                               stamp.modified_nanoseconds})) +
+         "\n";
+}
+
+struct ExtractionSource {
+  std::string path, marker;
+  FileStamp version, ownership;
+
+  bool OwnsMarker() const {
+    return !marker.empty() && SnapshotFile(marker) == ownership;
+  }
+
+  // Called under the source writer lease, like claiming and committing.
+  void Settle(bool done) {
+    if (OwnsMarker()) {
+      std::string error;
+      if (!done || !WritePrivateFile(marker, DoneMarker(version), error)) {
+        unlink(marker.c_str());
+        if (!error.empty()) DebugLog("memory_claim_error", {{"error", error}});
+      }
     }
+    marker.clear();
   }
 
-  Fd fd(open(marker.c_str(), O_WRONLY | O_CREAT | O_EXCL, kPrivateFileMode));
-  if (!fd) {
-    if (errno != EEXIST) error = strerror(errno);
-    return false;
+  ~ExtractionSource() {
+    if (marker.empty()) return;
+    FileLease guard;
+    std::string ignored;
+    if (guard.Acquire(SessionLockPath(path), ignored)) Settle(false);
   }
-  constexpr std::string_view kProcessing = "processing\n";
-  ssize_t written = write(fd.Get(), kProcessing.data(), kProcessing.size());
-  int close_error = fd.Close();
-  if (written != static_cast<ssize_t>(kProcessing.size()) || close_error != 0) {
-    fs::remove(marker, code);
-    error = "cannot persist memory claim";
-    return false;
-  }
-  return true;
-}
+};
 
-void ReleaseClaim(const std::string& source, const std::filesystem::path& cwd) {
-  std::error_code ignored;
-  std::filesystem::remove(MarkerPath(source, cwd), ignored);
-}
-
-std::string ClaimCandidate(const std::filesystem::path& cwd,
-                           const std::string& excluded, std::string& error) {
-  auto now = std::filesystem::file_time_type::clock::now();
-  auto idle = std::chrono::seconds(MemoryIdleSeconds());
-  auto oldest = std::chrono::hours(24 * std::max(int64_t{1}, HistoryDays()));
+std::shared_ptr<ExtractionSource> ClaimCandidate(
+    const std::filesystem::path& cwd, const std::string& excluded,
+    FileLease& reading, std::string& error) {
+  namespace fs = std::filesystem;
+  const auto now = fs::file_time_type::clock::now();
+  const auto idle = std::chrono::seconds(MemoryIdleSeconds());
+  const auto oldest =
+      std::chrono::hours(24 * std::max(int64_t{1}, HistoryDays()));
   for (const SessionInfo& session : ListSessions()) {
-    auto age = now - session.mtime;
-    // One waiting to be filed is read after it is: its lesson belongs with
-    // the folder it moves to.
+    const auto age = now - session.mtime;
     if (session.path == excluded || !session.memory ||
         session.turns < kMinimumTurns || age < idle || age > oldest ||
         OpenSuggestion(session.suggestion)) {
       continue;
     }
-    if (Claim(session.path, cwd, error)) return session.path;
-    if (!error.empty()) return {};
+    FileLease guard;
+    std::string held;
+    if (!guard.Acquire(SessionLockPath(session.path), held)) continue;
+    std::error_code ec;
+    if (fs::last_write_time(session.path, ec) != session.mtime || ec) continue;
+    const FileStamp version = SnapshotFile(session.path);
+    if (version.size < 0) continue;
+    const std::string marker = MarkerPath(session.path, cwd);
+    if (fs::exists(marker, ec)) {
+      const auto state = ReadFile(marker, 512);
+      const auto modified = fs::last_write_time(marker, ec);
+      if (!state || ec || *state == DoneMarker(version) ||
+          (Trim(*state) == "done" && modified >= session.mtime) ||
+          (!state->starts_with("done\n") && now - modified < kStaleClaim)) {
+        continue;
+      }
+    }
+    if (!WritePrivateFile(marker, "processing\n", error)) return {};
+    auto source = std::make_shared<ExtractionSource>();
+    source->path = session.path;
+    source->marker = marker;
+    source->version = version;
+    source->ownership = SnapshotFile(marker);
+    reading.Swap(guard);
+    return source;
   }
   return {};
 }
 
 std::string FilteredTranscript(const SessionRecord& session) {
   std::vector<std::string> rows;
-  size_t count = std::min(session.state.messages.size(),
-                          session.state.message_kinds.size());
-  for (size_t index = 0; index < count; ++index) {
-    MessageKind kind = session.state.message_kinds[index];
+  size_t remaining = kMemoryExtractBytes;
+  for (size_t end = std::min(session.state.messages.size(),
+                             session.state.message_kinds.size());
+       end > 0 && remaining > 0; --end) {
+    MessageKind kind = session.state.message_kinds[end - 1];
     if (kind != MessageKind::kUser && kind != MessageKind::kAssistant) {
       continue;
     }
-    const json& message = session.state.messages[index];
-    if (!message.is_object()) continue;
-    std::string content = JsonValue(message, "content", "");
-    if (content.empty()) continue;
-    rows.push_back(
-        RedactMemorySecrets(JsonDump({{"role", JsonValue(message, "role", "")},
-                                      {"content", std::move(content)}})));
+    const std::string* body =
+        JsonStringRef(session.state.messages[end - 1], "content");
+    if (!body || body->empty()) continue;
+    // Keep both ends of a long correction, and leave room for the preceding
+    // exchange. Redact before cutting so a partial credential cannot survive.
+    const std::string content = RedactMemorySecrets(*body);
+    const auto role = kind == MessageKind::kUser ? "user" : "assistant";
+    size_t cap = std::min({content.size(), remaining, kMemoryExtractBytes / 2});
+    std::string row;
+    while (cap > 0) {
+      row = JsonDump({{"role", role}, {"content", HeadTail(content, cap)}});
+      if (row.size() + 1 <= remaining) break;
+      cap /= 2;  // Allow for JSON escaping and the role envelope.
+    }
+    if (cap == 0) break;
+    remaining -= row.size() + 1;
+    rows.push_back(std::move(row));
   }
-
-  size_t limit = kMemoryExtractBytes;
-  std::vector<std::string> kept;
-  size_t used = 0;
-  for (auto row = rows.rbegin(); row != rows.rend(); ++row) {
-    size_t add = row->size() + 1;
-    if (add > limit - std::min(used, limit)) continue;
-    kept.push_back(*row);
-    used += add;
-  }
-  std::reverse(kept.begin(), kept.end());
   std::string transcript;
-  for (const std::string& row : kept) transcript += row + '\n';
-  return transcript;
-}
-
-// `done`: read, whatever it held; otherwise free for another try.
-void Settle(const std::string& source, const std::filesystem::path& cwd,
-            bool done) {
-  std::string error;
-  if (!done) {
-    ReleaseClaim(source, cwd);
-  } else if (!WritePrivateFile(MarkerPath(source, cwd), "done\n", error)) {
-    DebugLog("memory_claim_error", {{"error", error}});
+  transcript.reserve(kMemoryExtractBytes - remaining);
+  for (auto row = rows.rbegin(); row != rows.rend(); ++row) {
+    transcript += *row;
+    transcript += '\n';
   }
+  return transcript;
 }
 
 constexpr std::string_view kExtractionRules =
@@ -177,7 +182,8 @@ constexpr std::string_view kExtractionRules =
 
 // The notes of every scope of ours that is nearly full, whole: only then may
 // an extraction fold one of them into what it writes.
-std::string CrowdedMemories(const std::filesystem::path& cwd) {
+std::string CrowdedMemories(const std::filesystem::path& cwd,
+                            ObservedMemories& observed) {
   std::string bodies;
   const std::vector<MemoryEntry> memories = ListMemories(cwd);
   for (const std::string scope : {"global/", "project/"}) {
@@ -191,12 +197,22 @@ std::string CrowdedMemories(const std::filesystem::path& cwd) {
     }
     for (const MemoryEntry& memory : memories) {
       std::string body, ignored;
-      if (!ours(memory) || !ReadRegularFile(memory.path, MemoryBytes(), body,
-                                            ignored, /*prefix=*/true)) {
+      if (!ours(memory) ||
+          !ReadRegularFile(
+              memory.path,
+              std::min(MemoryBytes(), kMemoryExtractBytes - bodies.size()),
+              body, ignored)) {
         continue;
       }
-      bodies += "<memory key=\"" + memory.key + "\">\n" +
-                RedactMemorySecrets(std::move(body)) + "\n</memory>\n";
+      const auto revision = DocumentRevision(memory.path, body);
+      std::string block = "<memory key=\"" + memory.key + "\">\n" +
+                          RedactMemorySecrets(std::move(body)) +
+                          "\n</memory>\n";
+      if (block.size() > kMemoryExtractBytes - bodies.size()) continue;
+      auto& seen = observed[memory.key];
+      if (!seen.revision.empty() && seen.revision != revision) continue;
+      bodies += block;
+      seen = {revision, true};
     }
   }
   return bodies;
@@ -216,11 +232,10 @@ std::string TakeLine(std::string& text, std::string_view label) {
 
 // Ends one extraction: a failure frees the session for another try and is
 // journaled, since nothing else was; only a change or a failure is shown.
-void Finish(Agent& agent, const std::filesystem::path& cwd,
-            const std::string& source, MemoryEvent event) {
+void Finish(Agent& agent, ExtractionSource& source, MemoryEvent event) {
   const bool failed = event.action == "failed";
   event.automatic = true;
-  event.source_session = WorkspaceId(source);
+  event.source_session = WorkspaceId(source.path);
   if (failed) {
     event.timestamp = UtcStamp();
     std::string error;
@@ -228,7 +243,7 @@ void Finish(Agent& agent, const std::filesystem::path& cwd,
       DebugLog("memory_event_write_error", {{"error", error}});
     }
   }
-  Settle(source, cwd, !failed);
+  source.Settle(!failed);
   if (failed || event.action == "created" || event.action == "updated") {
     agent.RecordMemory(event);
   }
@@ -247,7 +262,7 @@ MemoryEvent Failed(const std::string& why, const std::string& key = "") {
 }
 
 MemoryEvent Save(const std::filesystem::path& cwd, const std::string& source,
-                 const ChatResult& result) {
+                 const ChatResult& result, const ObservedMemories& observed) {
   if (!result.error.empty()) return Failed(result.error);
   MemoryEvent event;
   event.action = "no_change";
@@ -255,15 +270,9 @@ MemoryEvent Save(const std::filesystem::path& cwd, const std::string& source,
   const std::string key = TakeLine(text, kKeyLine);
   const std::string folded = TakeLine(text, kMergeLine);
   if (key.empty() || Trim(text).empty()) return event;
-  ToolResult saved =
-      ExtractedMemoryAction("set", key, Trim(text), cwd, source, &event);
+  ToolResult saved = SaveExtractedMemory(key, Trim(text), folded, cwd, source,
+                                         observed, event);
   if (!saved.Ok()) return Failed(saved.output, key);
-  if (!folded.empty() && folded != key &&
-      ScopePrefix(folded) == ScopePrefix(key) &&
-      ExtractedMemoryAction("forget", folded, std::nullopt, cwd, source).Ok()) {
-    event.action = "updated";
-    event.preview = "Merged " + folded + " into " + key;
-  }
   return event;
 }
 
@@ -277,25 +286,37 @@ std::string StartMemoryExtractor(Agent& agent, const Api& api,
     return {};
   }
   std::string error;
-  const std::string source = ClaimCandidate(cwd, current_session, error);
-  if (source.empty()) return error;
+  FileLease reading;
+  const auto source = ClaimCandidate(cwd, current_session, reading, error);
+  if (!source) return error;
 
-  SessionLoadResult loaded = SessionStore::Load(source, cwd.string());
+  SessionLoadResult loaded = SessionStore::Load(source->path, cwd.string());
   if (!loaded.status.Ok() || !loaded.record) {
-    Finish(agent, cwd, source,
+    Finish(agent, *source,
            Failed("cannot load memory source: " + loaded.status.message));
+    return {};
+  }
+  const auto& meta = loaded.record->metadata;
+  if (!meta.memory || !meta.agent.empty() || meta.turns < kMinimumTurns ||
+      OpenSuggestion(meta.suggestion) ||
+      SnapshotFile(source->path) != source->version) {
+    source->Settle(false);
     return {};
   }
   const std::string transcript = FilteredTranscript(*loaded.record);
   if (transcript.empty()) {
-    Settle(source, cwd, true);
+    source->Settle(true);
     return {};
   }
+  reading.Reset();  // A session can be resumed while the provider is answering.
   std::string rules(kExtractionRules);
-  std::string evidence = "<memories>\n" +
-                         LoadMemoryIndex(cwd, kMemoryExtractBytes).text +
-                         "</memories>\n";
-  if (const std::string crowded = CrowdedMemories(cwd); !crowded.empty()) {
+  ObservedMemories observed;
+  std::string evidence =
+      "<memories>\n" +
+      LoadMemoryIndex(cwd, kMemoryExtractBytes, {}, &observed).text +
+      "</memories>\n";
+  if (const std::string crowded = CrowdedMemories(cwd, observed);
+      !crowded.empty()) {
     rules +=
         " Memory is nearly full: when your note and one memory given whole "
         "below say overlapping things, add a second line `merge: <its key>` "
@@ -303,26 +324,24 @@ std::string StartMemoryExtractor(Agent& agent, const Api& api,
     evidence += crowded;
   }
   evidence += "<filtered_session>\n" + transcript + "</filtered_session>";
-  // A request cut off before its reply frees the session for another try.
-  struct Claimed {
-    std::string source;
-    std::filesystem::path cwd;
-    bool answered = false;
-    ~Claimed() {
-      if (!answered) ReleaseClaim(source, cwd);
-    }
-  };
-  auto claimed = std::make_shared<Claimed>(source, cwd);
   // A small, bounded summarization pass, so it can run on a cheaper or local
   // route than the conversation.
   const bool started = agent.StartSide(
       Agent::kMemoryPurpose, SettingText(Cfg("UAGENT_MEMORY_MODEL")),
       json::array({{{"role", "system"}, {"content", std::move(rules)}},
                    {{"role", "user"}, {"content", std::move(evidence)}}}),
-      kMemoryExtractSeconds, [&agent, claimed](const ChatResult& result) {
-        claimed->answered = true;
-        Finish(agent, claimed->cwd, claimed->source,
-               Save(claimed->cwd, claimed->source, result));
+      kMemoryExtractSeconds,
+      [&agent, source, cwd,
+       observed = std::move(observed)](const ChatResult& result) {
+        FileLease writing;
+        std::string held;
+        if (!writing.Acquire(SessionLockPath(source->path), held)) return;
+        if (!source->OwnsMarker() ||
+            SnapshotFile(source->path) != source->version) {
+          source->Settle(false);
+          return;
+        }
+        Finish(agent, *source, Save(cwd, source->path, result, observed));
       });
   return started ? "" : "no route for memory extraction";
 }

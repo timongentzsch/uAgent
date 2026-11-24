@@ -274,6 +274,7 @@ void Agent::Reset() {
   DropSideCalls();
   session_title_.clear();
   custom_title_ = false;
+  memory_source_ = true;
   suggestion_ = nullptr;
   placement_asked_ = false;
   session_id_ = MakeSessionId();
@@ -411,7 +412,7 @@ SessionRecord Agent::Snapshot() const {
                      .forked_at_turn = forked_at_turn_,
                      .forked_at_time = forked_at_time_,
                      .agent = AgentOf(session_role_),
-                     .memory = api_.config.memory_enabled,
+                     .memory = memory_source_ && api_.config.memory_enabled,
                      .suggestion = suggestion_};
   json parts = ContextParts();
   record.state = {.context_tokens = parts["tokens"],
@@ -504,6 +505,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   DropSideCalls();
   session_title_ = std::move(record.metadata.title);
   custom_title_ = record.metadata.custom_title;
+  memory_source_ = record.metadata.memory;
   suggestion_ = std::move(record.metadata.suggestion);
   placement_asked_ = !suggestion_.is_null();
   parent_session_id_ = std::move(record.metadata.parent_session_id);

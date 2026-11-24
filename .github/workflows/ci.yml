@@ -42,13 +42,14 @@ jobs:
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: python3 .github/changes.py
 
-  # Embedded by the native builds, which are its only readers: a change to
-  # the web alone is built by the web job itself.
+  # Native tests, browser shards and release packaging consume the same bundle.
   web-dist:
     needs: changes
-    if: needs.changes.outputs.native == 'true'
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      playwright: ${{ steps.playwright.outputs.version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -58,6 +59,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci --prefix web
       - run: npm run build --prefix web
+      - run: npm run size --prefix web
+      - id: playwright
+        run: echo "version=$(jq -r '.packages["node_modules/@playwright/test"].version' web/package-lock.json)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web-dist
@@ -308,31 +312,17 @@ jobs:
       - run: .github/lint.sh
 
   web:
-    needs: changes
+    needs: [changes, web-dist]
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
-    outputs:
-      playwright: ${{ steps.playwright.outputs.version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci --prefix web
-      - run: npm run format:check --prefix web
-      - run: npm run lint --prefix web
-      - run: npm run test --prefix web
-      - name: Build bundle and check its size
-        run: |
-          npm run build --prefix web
-          npm run size --prefix web
       # Only the host the browser tests drive. Configured as in build-and-test
       # and in the same directory, so the objects that job cached are reused.
       - uses: ./.github/actions/native-setup
         with:
+          web-dist: true
           ccache: release
           ccache-save: false
           ccache-size: 300M
@@ -340,29 +330,22 @@ jobs:
         run: |
           cmake --preset release -B build
           cmake --build build --target uagent --parallel 4 && ccache --show-stats
-      # Some specs read the bundle's files, .vite/manifest.json among them.
-      - name: Hand the host and bundle to the browser shards
+      - name: Hand the host to the browser shards
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web-host
           path: |
             build/uagent
             build/share
-            web/dist
-          include-hidden-files: true
           retention-days: 1
-      # The browser shards run in Playwright's image for this version, which
-      # carries the browsers and the system libraries they need.
-      - id: playwright
-        run: echo "version=$(jq -r '.packages["node_modules/@playwright/test"].version' web/package-lock.json)" >> "$GITHUB_OUTPUT"
 
   web-browser:
-    needs: [changes, web]
+    needs: [changes, web-dist, web]
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     container:
-      image: mcr.microsoft.com/playwright:v${{ needs.web.outputs.playwright }}-noble
+      image: mcr.microsoft.com/playwright:v${{ needs.web-dist.outputs.playwright }}-noble
       options: --ipc=host
     # Each browser in halves: Playwright cuts a shard from the list in
     # project order, so a shard across both would hold most of WebKit's slower
@@ -377,14 +360,29 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: web-host
+          path: build
+      # Native fixtures and browser assertions also read the unpacked bundle.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-dist
+          path: web/dist
       - run: chmod +x build/uagent && npm ci --prefix web
+      # One already-provisioned shard runs the checks that need no native host.
+      # Their runtime stays off the release builds' critical path.
+      - name: Check client code
+        if: matrix.project == 'chromium' && matrix.shard == 1
+        working-directory: web
+        run: |
+          npm run format:check
+          npm run lint
+          npm test
       - name: Browser integration against native host
         working-directory: web
         run: npx playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/2
         env:
           UAGENT_TEST_BINARY: ../build/uagent
       - name: Retain browser failure evidence
-        if: ${{ !cancelled() }}
+        if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: browser-failure-${{ matrix.project }}-${{ matrix.shard }}
@@ -424,7 +422,7 @@ jobs:
           files=$(python3 .github/changes.py --tidy-files build/tidy "$UNITS" ${{ matrix.shard }}/3)
           test -n "$files" || exit 0
           uvx --from clang-tidy==22.1.8 run-clang-tidy.py -p build/tidy \
-            -header-filter='.*/(include|src|tests|benchmarks)/.*' $files
+            -header-filter='.*/(include|src|tests|benchmarks)/.*' "$files"
 
   # The image a release publishes is otherwise first built after its tag.
   # Started under compose's seccomp profile, which can stop it starting.

@@ -86,7 +86,10 @@ void AgentLink::Ask(const std::string& interaction, const std::string& kind,
                    "should.",
            .id = RandomToken(8),
            .report = true,
-           .state = "needs decision"},
+           .state = "needs decision",
+           .agent = {{"session", id_},
+                     {"title", OneLine(title)},
+                     {"outcome", "needs decision"}}},
           reaching_, escalate);
 }
 

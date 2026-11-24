@@ -1,0 +1,393 @@
+import {
+  test,
+  expect,
+  openFiles,
+  openSession,
+  savedConversation,
+  slide,
+  viewerOf,
+  writeFiles,
+} from "./fixtures.js";
+
+test.use({ serviceWorkers: "block" });
+
+test("a recorded layout finding opens its exact slide without another tool call", async ({
+  page,
+  host,
+  session,
+}) => {
+  const second = "decks/review/02-R&D #2.html";
+  await writeFiles(host.project, {
+    "decks/review/01-intro.html": slide("Opening"),
+    [second]: slide("Results"),
+    "decks/review/03-next.html": slide("Next steps"),
+  });
+  await page.route(`**/api/sessions/${session.id}`, async (route) => {
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    snapshot.state.view.nodes = [
+      {
+        id: "finding",
+        parent: null,
+        kind: "call",
+        tool: "browser",
+        state: "ok",
+        headline: { verb: "Reviewed", target: "three slides" },
+        body: { kind: "fields", text: "Parts 1-3 of 3." },
+        parts: [
+          {
+            kind: "link",
+            to: "file",
+            id: second,
+            label: "Slide 2 · Clipped title",
+          },
+        ],
+      },
+    ];
+    await route.fulfill({ response, json: snapshot });
+  });
+  await openSession(page, session);
+  await page.getByRole("button", { name: /Reviewed three slides/ }).click();
+  const requests = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/command") {
+      requests.push(request.postDataJSON()?.kind);
+    }
+  });
+  await page.getByRole("button", { name: "Slide 2 · Clipped title" }).click();
+  const pane = page.getByRole("region", { name: "Files" });
+  await expect(viewerOf(pane).count).toHaveText("2 / 3");
+  await expect(pane.getByRole("heading").getByRole("link")).toContainText(
+    "02-R&D #2.html",
+  );
+  expect(requests).not.toContain("submit");
+});
+
+test("a copied slide link opens the same slide on a paired device and after reload", async ({
+  page,
+  context,
+  host,
+  session,
+}) => {
+  const first = "decks/notes/01-intro.html";
+  const second = "decks/notes/02-R&D #2 + 50%.html";
+  await writeFiles(host.project, {
+    [first]: slide("Opening"),
+    [second]: slide("Results"),
+  });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: {
+        writeText: async (text) => {
+          window.copiedLink = text;
+        },
+      },
+    });
+  });
+  const pane = await openFiles(page, session, second);
+  const headingLink = pane.getByRole("heading").getByRole("link");
+  const href = await headingLink.getAttribute("href");
+  const url = new URL(href);
+  expect(url.origin).toBe(host.origin);
+  expect(url.pathname).toBe("/");
+  expect(url.search).toBe("");
+  expect(Object.fromEntries(new URLSearchParams(url.hash.slice(1)))).toEqual({
+    session: session.id,
+    file: second,
+    origin: expect.stringMatching(/^[a-f0-9]+$/),
+  });
+  const { count } = viewerOf(pane);
+  await expect(count).toHaveText("2 / 2");
+  const more = pane.getByRole("button", { name: "More tools" });
+  if (await more.isVisible()) {
+    await more.click();
+    await pane.getByRole("menuitem", { name: "Export" }).click();
+  } else await pane.getByRole("button", { name: "Export" }).click();
+  await pane.getByRole("menuitem", { name: "Copy link" }).click();
+  expect(await page.evaluate(() => window.copiedLink)).toBe(href);
+
+  const paired = await context.browser().newContext({
+    storageState: { cookies: await context.cookies(), origins: [] },
+  });
+  try {
+    const secondDevice = await paired.newPage();
+    await secondDevice.goto(href);
+    const files = secondDevice.getByRole("region", { name: "Files" });
+    await expect(viewerOf(files).count).toHaveText("2 / 2");
+    await secondDevice.reload();
+    await expect(viewerOf(files).count).toHaveText("2 / 2");
+    await expect(files.getByRole("heading")).toHaveText(second);
+    await files
+      .getByRole("button", { name: "Previous slide", exact: true })
+      .click();
+    await expect(viewerOf(files).count).toHaveText("1 / 2");
+    await expect
+      .poll(() =>
+        new URLSearchParams(new URL(secondDevice.url()).hash.slice(1)).get(
+          "file",
+        ),
+      )
+      .toBe(first);
+    await secondDevice.reload();
+    await expect(files.getByRole("heading")).toHaveText(first);
+  } finally {
+    await paired.close();
+  }
+});
+
+test("file links follow browser history and missing targets stay missing", async ({
+  page,
+  session,
+  host,
+}) => {
+  await writeFiles(host.project, {
+    "src/a.txt": "first",
+    "src/b.txt": "second",
+    "archive/missing.txt": "another file",
+  });
+  const url = (file) =>
+    `/#${new URLSearchParams({ session: session.id, ...(file && { file }) })}`;
+  const title = page.locator(".files-title");
+  await page.goto(url());
+  await page.goto(url("src/a.txt"));
+  await expect(title).toHaveText("src/a.txt");
+  await page.goto(url("src/b.txt"));
+  await expect(title).toHaveText("src/b.txt");
+  await page.goBack();
+  await expect(title).toHaveText("src/a.txt");
+  await page.goBack();
+  await expect(title).toHaveCount(0);
+  await page.goForward();
+  await expect(title).toHaveText("src/a.txt");
+  await page.goto(url("missing.txt"));
+  await expect(
+    page.getByText("missing.txt is not in this folder."),
+  ).toBeVisible();
+  await page.goto(url("../outside.txt"));
+  await expect(title).toHaveCount(0);
+});
+
+test("closing a linked file on a phone returns to a reloadable conversation", async ({
+  page,
+  host,
+  session,
+}) => {
+  await writeFiles(host.project, {
+    "deck/01-start.html": slide("Start"),
+    "deck/02-end.html": slide("Finish"),
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${session.id}&file=deck%2F01-start.html`);
+  const files = page.getByRole("dialog", { name: "Files" });
+  await expect(viewerOf(files).count).toHaveText("1 / 2");
+  await files.getByRole("button", { name: "Next slide" }).click();
+  await expect(viewerOf(files).count).toHaveText("2 / 2");
+  await files.getByRole("button", { name: "Close files" }).click();
+  await expect(files).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`#session=${session.id}$`));
+  await page.reload();
+  await expect(page.getByLabel("Message or guidance")).toBeVisible();
+  await expect(files).toHaveCount(0);
+});
+
+test("a linked file follows the session's execution host when the address omits it", async ({
+  page,
+  host,
+  session,
+}) => {
+  await writeFiles(host.project, { "host.txt": "the session workspace" });
+  const owner = "c".repeat(32);
+  await page.route("**/api/hosts", (route) =>
+    route.fulfill({
+      json: {
+        hosts: [
+          {
+            id: owner,
+            address: "test-workspace",
+            phase: "connected",
+            error: "",
+          },
+        ],
+      },
+    }),
+  );
+  await page.route(/\/api\/sessions(?:\?.*)?$/, async (route) => {
+    const reply = await route.fetch();
+    const catalogue = await reply.json();
+    catalogue.sessions.find((row) => row.id === session.id).host = owner;
+    await route.fulfill({ json: catalogue });
+  });
+  await page.goto(`/#session=${session.id}&file=host.txt`);
+  const heading = page.locator(".files-title");
+  await expect(heading).toHaveText("host.txt");
+  const address = () =>
+    Object.fromEntries(new URLSearchParams(new URL(page.url()).hash.slice(1)));
+  const expected = { session: session.id, host: owner, file: "host.txt" };
+  await expect.poll(address).toEqual(expected);
+  const href = await heading.getByRole("link").getAttribute("href");
+  expect(
+    Object.fromEntries(new URLSearchParams(new URL(href).hash.slice(1))),
+  ).toEqual({ ...expected, origin: expect.stringMatching(/^[a-f0-9]+$/) });
+  await page.reload();
+  await expect(page.locator(".code-view")).toContainText(
+    "the session workspace",
+  );
+});
+
+test("earlier file references and links survive two chat moves without opening a same-named file", async ({
+  page,
+  host,
+  request,
+  command,
+}) => {
+  const middle = host.project + "/second";
+  const last = host.project + "/third";
+  const path = "notes/source.md";
+  await writeFiles(host.project, {
+    [path]: "Original workspace contents",
+    "notes/only-old.md": "Only in original",
+  });
+  await writeFiles(middle, { [path]: "Middle workspace contents" });
+  await writeFiles(last, {
+    [path]: "Wrong destination contents",
+    "notes/new.md": "Wrong source",
+  });
+  const source = await savedConversation(host, request, "Original workspace");
+  const chat = await savedConversation(
+    host,
+    request,
+    "Moved chat",
+    "Read `notes/source.md:1`.",
+  );
+  const snap = async () =>
+    (await (await request.get(`/api/sessions/${chat.id}`)).json()).metadata;
+  const first = await snap();
+  expect(first.file_origin).toBeTruthy();
+  for (const cwd of [middle, last]) {
+    const meta = await snap();
+    await command("move", {
+      session_id: chat.id,
+      generation: meta.generation || "",
+      cwd,
+    });
+  }
+  const link = (file, origin) =>
+    `/#${new URLSearchParams({ session: chat.id, file, ...(origin && { origin }) })}`;
+  await openSession(page, chat);
+  const lookup = page.waitForRequest((req) =>
+    new URL(req.url()).pathname.endsWith("/file-origin"),
+  );
+  await page.locator(".transcript .file-ref").click();
+  const query = new URL((await lookup).url()).searchParams;
+  expect(query.get("path")).toBe(path);
+  expect(Number(query.get("sequence"))).toBeGreaterThan(0);
+  const files = page.getByRole("region", { name: "Files" });
+  await expect(
+    files.getByText("Original workspace contents", { exact: true }),
+  ).toBeVisible();
+  await expect(files.getByText("Wrong destination contents")).toHaveCount(0);
+  await page.goto(link(path, first.file_origin));
+  await expect(files.getByRole("heading").first()).toContainText(path);
+  await expect(
+    files.getByText("Original workspace contents", { exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      new URLSearchParams(new URL(page.url()).hash.slice(1)).get("session"),
+    )
+    .toBe(source.id);
+  await page.reload();
+  await expect(
+    files.getByText("Original workspace contents", { exact: true }),
+  ).toBeVisible();
+  await page.goto(link(path));
+  const picker = page.getByRole("dialog", { name: "Choose a workspace" });
+  await expect(picker.getByText(/multiple workspaces/i)).toBeVisible();
+  await expect(
+    picker.getByRole("button", { name: host.project, exact: true }),
+  ).toBeVisible();
+  await expect(
+    picker.getByRole("button", { name: middle, exact: true }),
+  ).toBeVisible();
+  await expect(files).toHaveCount(0);
+  await picker.getByRole("button", { name: "Cancel" }).click();
+  await expect(picker).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp("#session=" + chat.id + "$"));
+  await expect(files).toHaveCount(0);
+  const submissions = [];
+  page.on("request", (req) => {
+    if (
+      req.method() === "POST" &&
+      new URL(req.url()).pathname === "/api/command" &&
+      req.postDataJSON()?.kind === "submit"
+    )
+      submissions.push(req);
+  });
+  for (const [folder, contents] of [
+    [middle, "Middle workspace contents"],
+    [host.project, "Original workspace contents"],
+    [last, "Wrong destination contents"],
+  ]) {
+    await page.goto(link(path));
+    const match = picker.getByRole("button", { name: folder, exact: true });
+    await match.focus();
+    await page.keyboard.press("Enter");
+    await expect(picker).toHaveCount(0);
+    await expect(files.getByText(contents, { exact: true })).toBeVisible();
+    await expect
+      .poll(() =>
+        new URLSearchParams(new URL(page.url()).hash.slice(1)).get("origin"),
+      )
+      .toBeTruthy();
+    await page.reload();
+    await expect(files.getByText(contents, { exact: true })).toBeVisible();
+  }
+  expect(submissions).toHaveLength(0);
+  await page.goto(link("notes/only-old.md"));
+  await expect(
+    files.getByText("Only in original", { exact: true }),
+  ).toBeVisible();
+  await page.goto(link("notes/new.md", first.file_origin));
+  await expect(files.getByText(/new.md is not in this folder/)).toBeVisible();
+  await expect(files.getByText("Wrong source")).toHaveCount(0);
+});
+
+test("a paired file link reopens the original folder when it has no remaining chat", async ({
+  page,
+  host,
+  request,
+  command,
+}) => {
+  const cwd = host.project + "/later";
+  const path = "brief.txt";
+  await writeFiles(host.project, { [path]: "The first brief" });
+  await writeFiles(cwd, { [path]: "A different brief" });
+  const chat = await savedConversation(host, request, "Only conversation");
+  const origin = chat.file_origin;
+  expect(origin).toBeTruthy();
+  await command("move", {
+    session_id: chat.id,
+    generation: chat.generation || "",
+    cwd,
+  });
+  const created = page.waitForRequest(
+    (req) =>
+      req.method() === "POST" &&
+      new URL(req.url()).pathname === "/api/command" &&
+      req.postDataJSON()?.kind === "create",
+  );
+  await page.goto(
+    "/#" + new URLSearchParams({ session: chat.id, file: path, origin }),
+  );
+  expect((await created).postDataJSON().cwd).toBe(host.project);
+  const files = page.locator(".code-view");
+  await expect(files).toContainText("The first brief");
+  const address = () =>
+    Object.fromEntries(new URLSearchParams(new URL(page.url()).hash.slice(1)));
+  await expect
+    .poll(address)
+    .toEqual({ session: expect.any(String), file: path, origin });
+  expect(address().session).not.toBe(chat.id);
+  await page.reload();
+  await expect(files).toContainText("The first brief");
+});

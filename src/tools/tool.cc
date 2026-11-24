@@ -196,12 +196,13 @@ const char* RowState(const ToolResult& result) {
 std::string ResultWord(const ResultFacts& facts, std::string_view state,
                        double duration_ms) {
   std::string word;
-  if (!facts.outcome.empty()) {
+  if (!facts.outcome.empty() && facts.outcome != "created" &&
+      facts.outcome != "replaced") {
     word = facts.outcome;
     std::ranges::replace(word, '_', ' ');
     if (!facts.reason.empty()) word += ": " + facts.reason;
   } else if (facts.exit && facts.exit->signal != 0) {
-    word = "killed";
+    word = "signal " + std::to_string(facts.exit->signal);
   } else if (facts.exit && facts.exit->code != 0) {
     word = "exit " + std::to_string(facts.exit->code);
   } else if (facts.added.value_or(0) != 0 || facts.removed.value_or(0) != 0) {
@@ -211,6 +212,8 @@ std::string ResultWord(const ResultFacts& facts, std::string_view state,
     word = "no change";
   } else if (facts.items) {
     word = Plural(*facts.items, facts.unit);
+  } else if (facts.exit) {
+    word = "exit 0";
   } else if (state == "failed" || state == "cancelled") {
     word = state;
   }
@@ -556,6 +559,28 @@ json CodePart(std::string text, std::string language, std::string label) {
   return part;
 }
 
+json FieldsPart(json rows) {
+  constexpr size_t kMaxRows = 24;
+  size_t count = 0;
+  size_t bytes = 0;
+  for (json& row : rows) {
+    if (count >= kMaxRows || bytes >= kPreviewChars) break;
+    for (json& value : row) {
+      auto& text = value.get_ref<std::string&>();
+      text = Utf8Trunc(std::move(text), 320);
+      bytes += text.size();
+    }
+    ++count;
+  }
+  if (count < rows.size()) {
+    const auto remaining = rows.size() - count;
+    rows.erase(rows.begin() + static_cast<json::difference_type>(count),
+               rows.end());
+    rows.push_back({"More", Plural(remaining, "field") + " in full details"});
+  }
+  return {{"kind", "fields"}, {"rows", std::move(rows)}};
+}
+
 json GenericInputParts(const json& args,
                        std::initializer_list<std::string_view> skip) {
   json parts = json::array();
@@ -593,8 +618,7 @@ json GenericInputParts(const json& args,
     }
   }
   if (!rows.empty()) {
-    parts.insert(parts.begin(),
-                 json{{"kind", "fields"}, {"rows", std::move(rows)}});
+    parts.insert(parts.begin(), FieldsPart(std::move(rows)));
   }
   return parts;
 }
@@ -604,6 +628,20 @@ json LinkPart(std::string to, json id, std::string label) {
           {"to", std::move(to)},
           {"id", std::move(id)},
           {"label", std::move(label)}};
+}
+
+json SourcePart(const std::string& url, const std::string& title,
+                const std::string& excerpt) {
+  json part = {{"kind", "source"}, {"url", url}};
+  if (!title.empty()) {
+    part["title"] =
+        Utf8Trunc(title.substr(0, kStatusLabelBytes + 1), kStatusLabelBytes);
+  }
+  if (!excerpt.empty()) {
+    part["excerpt"] = Utf8Trunc(excerpt.substr(0, kSourceExcerptChars + 1),
+                                kSourceExcerptChars);
+  }
+  return part;
 }
 
 Tool::Headlines Verbs(std::string present, std::string past) {

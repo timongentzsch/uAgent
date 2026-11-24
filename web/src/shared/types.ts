@@ -15,6 +15,7 @@ interface Failure extends Error {
   network?: boolean;
   status?: number;
   rejected?: boolean;
+  choices?: FileOrigin[];
 }
 export function failure(error: unknown): Failure {
   return error instanceof Error ? error : new Error(String(error));
@@ -82,7 +83,7 @@ export interface Exchange {
   generation_id?: string;
 }
 // One state vocabulary for every call and receipt.
-type RowState = "running" | "ok" | "failed" | "cancelled";
+type RowState = "running" | "ok" | "failed" | "cancelled" | "recorded";
 // What a finished call's result was. The host words it: `word` is the
 // whole subtitle ("exit 1 · 2.3s"), absent when there is none; the facts
 // behind it are for reading.
@@ -113,8 +114,16 @@ export type BodyKind =
 export type ToolPart =
   | RefusalPart
   | { kind: "command"; text: string }
-  | { kind: "code"; text: string; language?: string; label?: string }
+  | {
+      kind: "code";
+      text?: string;
+      first_line?: number;
+      language?: string;
+      label?: string;
+    }
   | { kind: "fields"; rows: [string, string][] }
+  | { kind: "source"; url: string; title?: string; excerpt?: string }
+  | { kind: "markdown"; text: string }
   | FilePart
   | ArtifactPart
   | LinkPart;
@@ -145,7 +154,9 @@ export interface FilePart {
 }
 export interface LinkPart {
   kind: "link";
-  to: "agent" | "activity" | "memory" | "browser";
+  to: "agent" | "activity" | "memory" | "browser" | "file";
+  state?: string;
+  report?: string;
   id: string | number;
   label: string;
 }
@@ -219,6 +230,7 @@ export interface Node {
   time?: string;
   state?: RowState;
   routine?: boolean;
+  tool?: string;
   headline?: { verb: string; target: string };
   result?: ResultFacts;
   body?: { kind: BodyKind; text: string; truncated?: boolean; tail?: string };
@@ -228,6 +240,8 @@ export interface Node {
   // report, finished background work, or another conversation's message.
   origin?: "tool" | "agent" | "activity" | "message";
   agent?: AgentFacts;
+  // Assignment from the retained start call, including when it is on an older page.
+  agent_label?: string;
   request_id?: string;
   incoming?: number;
   streaming?: boolean;
@@ -264,14 +278,11 @@ interface Delivery {
   delivery: string;
   path: string;
 }
-// A file a message cites, as the Files pane opens it: its lines ("12" or
-// "12-20"), or its diff: among the uncommitted changes, or what a turn
-// changed in it.
-export interface FileTarget {
-  path: string;
-  lines?: string;
-  changes?: boolean;
-  turn?: number;
+export interface FileOrigin {
+  cwd: string;
+  host: string;
+  origin: string;
+  current: boolean;
 }
 // What the inspector opens: a row's own work, or the one a link names.
 export interface ActivityTarget {
@@ -387,6 +398,7 @@ interface Permissions {
   mode: string;
   default: string;
   effective?: string;
+  source?: string;
 }
 // A rule allows the calls of `tool` that `match` covers: "*" every call,
 // "PREFIX *" a command, "DIR/" a path under it, else that exact subject.
@@ -424,6 +436,7 @@ export interface PlaceOption {
 }
 export interface Session {
   host?: string;
+  file_origin?: string;
   suggestion?: {
     options?: PlaceOption[];
     reason?: string;
@@ -436,6 +449,7 @@ export interface Session {
   cwd?: string;
   // The conversation that started this one as its agent.
   parent?: string;
+  agent_edits?: "none" | "worktree" | "folder";
   // The model its file names.
   model?: string;
   status?: SessionStatus;
@@ -463,7 +477,7 @@ export interface FolderFacts {
   changed: { files: number; added: number; removed: number };
   git?: { branch: string; uncommitted: number };
 }
-export type SessionRef = Pick<Session, "id" | "generation">;
+export type SessionRef = Pick<Session, "id" | "generation" | "file_origin">;
 export interface State {
   phase?: ExecutionPhase;
   // When the running turn started, on the host's clock.
@@ -837,7 +851,9 @@ export interface CommandResults {
   insert: never;
   reply: never;
   interrupt: never;
-  permissions: Permissions;
+  permissions: Permissions & {
+    sandbox?: { summary?: string; network?: string };
+  };
   permission_rules: PermissionRules;
   revoke_device: never;
   test_notification: never;
@@ -962,7 +978,11 @@ export interface CommandInputs {
   };
   interrupt: None;
   // A mode, or a call a review refused allowed for this conversation.
-  permissions: { mode?: string; allow?: { tool: string; match: string } };
+  permissions: {
+    mode?: string;
+    inspect?: boolean;
+    allow?: { tool: string; match: string };
+  };
   permission_rules: {
     action: string;
     tool?: string;
@@ -1044,6 +1064,13 @@ export type AppModal =
   | { type: "new"; place: "conversation" | "workspace" | "folder" }
   // `sessions`: several moved at once, from the sidebar's selection.
   | { type: "move"; session: Session; sessions?: Session[] }
+  | {
+      type: "file-origin";
+      path: string;
+      choices: FileOrigin[];
+      pick: (origin: string) => void;
+      linked: boolean;
+    }
   | { type: "delete-many"; sessions: Session[]; spaces: Space[] }
   // section: a settings section to open on, e.g. from /permissions.
   | { type: "settings"; section?: string }
@@ -1084,6 +1111,9 @@ export interface LibraryItem {
 export type LibraryKind = "memory" | "skill" | "file" | ArtifactType;
 // A folder or workspace the Library lists, with its latest conversation.
 export interface LibraryPlace {
+  // Local places use their path as the key; SSH workspaces also name the host.
+  key?: string;
+  host?: string;
   path: string;
   name: string;
   workspace: boolean;

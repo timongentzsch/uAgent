@@ -60,6 +60,7 @@ export default function Presenter({ deck }: { deck: Presenting }) {
   const [started, setStarted] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
   const broadcast = usePresentChannel(
+    deck.channel,
     ({ at }) => at && deck.slides.includes(at) && setAt(at),
   );
   useEffect(() => {

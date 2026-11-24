@@ -18,6 +18,7 @@ inline constexpr size_t MiB(size_t n) { return n * kMiB; }
 
 // Separate budgets although equal: growing one must not grow the other.
 inline constexpr size_t kPreviewChars = 4096;
+inline constexpr size_t kSourceExcerptChars = 800;
 inline constexpr size_t kCatalogueHeaderBytes = 4096;
 // The opening of a diff that a tool result carries; the rest is an artifact.
 inline constexpr size_t kChangePreviewChars = KiB(16);

@@ -7,6 +7,20 @@
   min-height: var(--control);
   overflow-anchor: none;
 }
+.side-chat {
+  --reading-left: calc(var(--column-inset) + var(--gutter-left, 0px));
+  --reading-right: calc(var(--column-inset) + var(--gutter-right, 0px));
+}
+.side-chat > :is(.composer, .filing) {
+  margin-left: var(--reading-left);
+  margin-right: var(--reading-right);
+}
 .side-chat > .find-bar {
-  padding-inline: var(--column-inset);
+  padding-left: var(--reading-left);
+  padding-right: var(--reading-right);
+}
+@container column (max-width: 43rem) {
+  .side-chat {
+    --column-inset: var(--space-4);
+  }
 }

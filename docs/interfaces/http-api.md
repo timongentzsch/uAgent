@@ -32,7 +32,13 @@ Session metadata (`SessionHost::Metadata`): `id`, `generation`, `cwd`,
 `waiting`, `running`, `processing`, `idle`), `presence` (`active` or `""`),
 `turn_active`, `needs_you` (a decision waits on a person, not on a parent
 agent) with its `pending_prompt`, `updated` (ms), and
-display fields that are not contract.
+display fields that are not contract. A child whose header records its delegated
+write scope includes `agent_edits` (`none`, `folder`, or `worktree`).
+Snapshot `permissions.source` identifies the effective setting's layer. In a
+child, `parent` means inherited at launch and `agent_default` denotes the
+compatibility default for a role saved before inheritance. A live
+`permissions` command with `inspect: true` also returns the execution
+host's command sandbox summary and network setting when available.
 
 `GET /api/sessions/<id>` (`<id>` 16 to 64 hex digits) returns a snapshot:
 `v`, `epoch`, `cursor`, `metadata`, `state`, `pending`, and `live_truncated`
@@ -153,16 +159,20 @@ Under `/api/sessions/<id>/`; an unknown conversation, or a path outside the fold
 | `GET files?read=<path>` | | `text` (at most 1 MiB, `kFileViewBytes`), `bytes`, `more`, `revision` |
 | `GET files?find=<q>` | | `paths`, `more` |
 | `GET files?changes=` / `?diff=<path>` | | `changes` (`path`, `state`), `more`, `repository` / `text`, `more` |
+| `GET files?changes=split` | | Adds optional `working` and `staged` Git status letters to each row. Untracked files are working-tree additions, unresolved merges are working-tree conflicts (`U`). |
+| `GET files?diff=<path>&scope=working` / `&scope=staged` | | `text`, `more`. Working compares the index with the working tree, staged compares HEAD with the index (empty tree before the first commit). A path without a change in that scope is 404. |
 | `GET files?raw=<path>[&download]` | | the bytes; only images are inline |
 | `GET files?png=<path>` / `?pdf=<path>` | `w`, `h`, `scale`, `part` | a page drawn by the agent's browser; 503 without one |
 | `POST files` | `{path, text, revision}`, `{path, text, create: true}`, or `{path, moves}` | `{revision, stamp}` or `{moved}`; 409 when the file changed |
 | `POST attachments?name=<name>` | the file as the body, ≤ 8 MiB | `{id, name, mime, image, bytes}` |
 | `GET assets/<asset id>[?download]` | | the stored file |
+| `GET file-origin` | `sequence` with optional `path`, `origin` alone or `path` alone | Original workspace of a transcript reference, copied link or older path-only link. Returns `cwd`, `host`, opaque `origin` and `current`. A missing match returns 404 and an ambiguous path returns 409 with matching workspaces in `choices`. Opening the folder uses normal session access. |
 | `POST preview` | | `{base: "/preview/<48 hex>/"}` |
 
 `GET /preview/<token>/<path>` needs no cookie. `?deck&w&h` returns a
-folder's slides as one page, `?sheet` wraps a `.csv` or `.xlsx` in a sheet
-page, and `~sheet/<file>` serves the sheet engine.
+folder’s printable slides as one page. Opening it with `#print` asks the
+browser to print once the included frames finish drawing. `?sheet` wraps a
+`.csv` or `.xlsx` in a sheet page, and `~sheet/<file>` serves the sheet engine.
 
 ## Other routes
 
@@ -172,8 +182,9 @@ page, and `~sheet/<file>` serves the sheet engine.
 | `GET /api/folder?path=<p>[&host=<id>]` | `spend`, `changed`, and `git` for a local folder; 404 when absent |
 | `GET /api/search?q=<≥2 chars>` | `hits` (`session_id`, `title`, `rows`, …), `scanned`, `truncated` |
 | `GET /api/search?q=…&session_id=<id>` | `hits` (up to 2,000 rows), `truncated` |
-| `GET /api/library` | `places` (`path`, `name`, `workspace`, `session`), `items`, `limits` |
-| `POST /api/library/delete` | `{kind, key, place}` or `{kind: "file", key, session_id}`; `{}` |
+| `GET /api/library` | `places` (`path`, `name`, `workspace`, `session`, plus `key` and `host` for SSH), local artifacts, knowledge and snapshot `items`, `limits` |
+| `GET /api/library?session=ID` | Live artifact `items` from that SSH session’s workspace |
+| `POST /api/library/delete` | `{kind, key, place}` with `session_id` for an SSH artifact, or `{kind: "file", key, session_id}`; `{}` |
 | `GET /api/hosts` | `hosts`: `id`, `address`, `phase`, `error`, `installing`, `version`, `round_trip_ms` |
 | `POST /api/hosts` | `{action: add, address}` or `{action: connect\|reconnect\|disconnect, id}`, ≤ 4 KiB; `{id}` |
 | `GET /api/hosts/<32 hex>/ping` | `{round_trip_ms}`; 404 for an unknown host, 503 when it does not answer |

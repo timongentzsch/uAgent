@@ -41,6 +41,14 @@ const HISTORY = Array.from({ length: 120 }, (_, index) => ({
   sequence: index + 1,
 }));
 
+// One existing child reply stays still while the next answer streams.
+HISTORY[1] = {
+  ...HISTORY[1],
+  role: "user",
+  origin: "agent",
+  agent: { session: "child", title: "Earlier research", outcome: "completed" },
+};
+
 // In the page, testSend sends the host's next event; testSince counts the
 // renders and storage writes (by key) since testMark.
 async function open(page) {
@@ -75,6 +83,17 @@ async function open(page) {
     const [, id, files] =
       /^\/api\/sessions\/(\w{32})(\/files)?$/.exec(path) || [];
     const metadata = SESSIONS.find((item) => item.id === id);
+    if (
+      metadata &&
+      files &&
+      new URL(route.request().url()).searchParams.has("read")
+    )
+      return json({
+        text: "# Project notes",
+        bytes: 15,
+        more: false,
+        revision: "1",
+      });
     if (metadata && files)
       return json({
         entries: [{ name: "notes.md", dir: false, size: 1 }],
@@ -252,7 +271,12 @@ test("streaming renders only what changed", async ({ page }) => {
   expect(counts.ChatPage).toBeLessThanOrEqual(62);
   expect(counts.MessageView).toBeLessThanOrEqual(62);
   expect(counts.RowLine).toBeLessThanOrEqual(6 * 2 + 1);
-  for (const name of ["Composer", "ModelControl", "ActivityButtonView"])
+  for (const name of [
+    "Composer",
+    "ModelControl",
+    "ActivityButtonView",
+    "AgentSender",
+  ])
     expect(counts[name] || 0, name).toBe(0);
 
   await page.evaluate(async () => {
@@ -265,7 +289,9 @@ test("streaming renders only what changed", async ({ page }) => {
         headline: { verb: "Started", target: "agent" },
         state: "ok",
         body: { kind: "text", text: "started" },
-        parts: [{ kind: "link", to: "agent", id: "child", label: "Open" }],
+        parts: [
+          { kind: "link", to: "agent", id: "child", label: "Inspect tests" },
+        ],
         sequence: testSequence,
       },
     });
@@ -289,9 +315,9 @@ test("streaming renders only what changed", async ({ page }) => {
     }
   });
   const { renders: ticks } = await page.evaluate(() => testSince());
-  await expect(page.locator('[data-message-id="spawn"]')).toContainText(
-    "Started agent",
-  );
+  await expect(
+    page.locator('[data-message-id="spawn"]').locator("> .node-row"),
+  ).toContainText("Started agent");
   expect(ticks.RowLine || 0).toBe(0);
   expect(ticks.MessageView || 0).toBe(0);
   expect(ticks.SessionRow).toBeGreaterThan(0);
@@ -336,31 +362,68 @@ test("streaming renders only what changed", async ({ page }) => {
   expect(await results.evaluate((list) => list.scrollTop)).toBe(scrolled);
 });
 
-test("typing renders the composer, not the transcript or the list", async ({
+for (const phone of [false, true])
+  test(`typing only renders the composer on ${phone ? "a phone" : "desktop beside Files"}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(
+      phone ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+    );
+    await open(page);
+    if (!phone) {
+      await page.getByRole("button", { name: "Files", exact: true }).click();
+      const files = page.getByRole("region", { name: "Files" });
+      await files.getByRole("button", { name: "notes.md" }).click();
+      await expect(files.locator(".markdown")).toContainText("Project notes");
+    }
+    const prompt = page.getByLabel("Message or guidance");
+    await prompt.focus();
+    await page.evaluate(() => testMark());
+    await prompt.pressSequentially("twenty characters!!!");
+    const { renders, writes } = await page.evaluate(() => testSince());
+    measured("typed", { renders, writes });
+    expect(renders.Composer).toBeGreaterThan(0);
+    for (const name of [
+      "HostsShell",
+      "App",
+      "ChatPage",
+      "ConversationHeader",
+      "Modals",
+      "Files",
+      "MarkdownFile",
+      "SidebarView",
+      "Chat",
+      "ModelControl",
+      "SessionSummaryView",
+      "ActivityButtonView",
+    ])
+      expect(renders[name] || 0, name).toBe(0);
+    const key = `uagent-drafts:${ID}`;
+    expect(writes[key] || 0).toBe(0);
+    await expect
+      .poll(() => page.evaluate((key) => testSince().writes[key], key))
+      .toBe(1);
+  });
+
+test("a background conversation resumes at the latest streamed reply", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await open(page);
-  const prompt = page.getByLabel("Message or guidance");
-  await prompt.focus();
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Library", exact: true }).first(),
+  ).toBeVisible();
   await page.evaluate(() => testMark());
-  await prompt.pressSequentially("twenty characters!!!");
-  const { renders, writes } = await page.evaluate(() => testSince());
-  measured("typed", { renders, writes });
-  expect(renders.Composer).toBeGreaterThan(0);
-  expect(renders.App || 0).toBeLessThanOrEqual(20);
-  expect(renders.ChatPage || 0).toBeLessThanOrEqual(20);
-  for (const name of [
-    "SidebarView",
-    "Chat",
-    "ModelControl",
-    "SessionSummaryView",
-    "ActivityButtonView",
-  ])
-    expect(renders[name] || 0, name).toBe(0);
-  expect(writes["uagent-drafts"] || 0).toBe(0);
-  await expect
-    .poll(() => page.evaluate(() => testSince().writes["uagent-drafts"]))
-    .toBe(1);
+  await streamReply(page);
+  const { renders } = await page.evaluate(() => testSince());
+  measured("background", renders);
+  // The first frame updates the catalogue; text frames only update its store.
+  expect(renders.ChatPage || 0).toBeLessThanOrEqual(1);
+  await page.goBack();
+  await expect(page.locator('[data-message-id="reply"]')).toContainText(
+    "word59",
+  );
 });
 
 test("state frames and an open dialog leave the shell alone", async ({

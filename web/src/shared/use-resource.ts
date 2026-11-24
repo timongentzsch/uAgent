@@ -7,6 +7,7 @@ export function useResource<T>(
   load: (signal: AbortSignal) => Promise<T> | undefined,
   deps: Inputs,
   initial?: () => T | undefined,
+  delay = 0,
 ) {
   const [value, setValue] = useState<T | undefined>(initial);
   const [error, setError] = useState<unknown>(null);
@@ -16,12 +17,18 @@ export function useResource<T>(
     const abort = new AbortController();
     const { signal } = abort;
     setError(null);
-    load(signal)?.then(
-      (next) => signal.aborted || setValue(() => next),
-      (failure) => signal.aborted || setError(failure),
-    );
-    return () => abort.abort();
-  }, [...deps, attempt]);
+    const start = () =>
+      load(signal)?.then(
+        (next) => signal.aborted || setValue(() => next),
+        (failure) => signal.aborted || setError(failure),
+      );
+    const timer = delay ? setTimeout(start, delay) : undefined;
+    if (!delay) start();
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
+  }, [...deps, attempt, delay]);
   return {
     value,
     error,

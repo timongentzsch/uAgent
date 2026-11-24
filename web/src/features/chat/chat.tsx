@@ -6,7 +6,8 @@ import type {
 } from "../../shared/types.ts";
 import { useAction } from "../../shared/use-action.ts";
 import { useResource } from "../../shared/use-resource.ts";
-import { useContext } from "preact/hooks";
+import { useCallback, useContext } from "preact/hooks";
+import { observeResize } from "../../shared/layout.ts";
 import {
   LoadError,
   Notice,
@@ -100,6 +101,28 @@ function Chat({
   const prepared = !!snapshot && preparedKey === selected;
   const view = snapshot?.state?.view;
   const retry = () => loadSnapshot(selected).catch(() => {});
+  const mountScroller = useCallback(
+    (box: HTMLDivElement | null) => {
+      attachScroller(box);
+      if (!box) return;
+      const pane = box.parentElement!;
+      // A classic scrollbar occupies one edge of this borderless scrollport.
+      // Keep the controls outside it on the same rails, including in RTL.
+      const measure = () => {
+        const left = box.clientLeft;
+        const right = box.offsetWidth - box.clientWidth - left;
+        pane.style.setProperty("--gutter-left", `${left}px`);
+        pane.style.setProperty("--gutter-right", `${right}px`);
+      };
+      measure();
+      const stop = observeResize(measure, box);
+      return () => {
+        stop();
+        attachScroller(null);
+      };
+    },
+    [attachScroller],
+  );
   return (
     <div
       class="transcript"
@@ -110,13 +133,23 @@ function Chat({
       aria-busy={
         (!snapshot && !loadError) || (snapshot && !prepared) || undefined
       }
-      ref={attachScroller}
+      ref={mountScroller}
       onClick={(event) => {
         const cited = (event.target as Element).closest<HTMLElement>(
           ".file-ref",
         );
-        if (cited && openFile)
-          openFile({ path: cited.dataset.file!, lines: cited.dataset.lines });
+        if (cited && openFile) {
+          // Safari leaves focus behind on a pointer click. Give the pane its
+          // actual opener so closing it returns to this finding.
+          cited.focus({ preventScroll: true });
+          const sequence =
+            cited.closest<HTMLElement>("[data-sequence]")?.dataset.sequence;
+          openFile({
+            path: cited.dataset.file!,
+            lines: cited.dataset.lines,
+            sequence: sequence ? Number(sequence) : undefined,
+          });
+        }
       }}
     >
       {/* A log a listener can browse, silent as it streams: the status

@@ -305,9 +305,8 @@ export function trackViewport() {
         `--viewport-${key}`,
         `${value}px`,
       );
-    // No transcript scrollIntoView here: the transcript hook owns its scroll.
-    // Other surfaces reveal their focused field in their own body.
-    revealFocusedField();
+    // Only text entry needs help staying above the on-screen keyboard.
+    if (editing) revealFocusedField();
   });
   return () => {
     stop();

@@ -1,3 +1,4 @@
+import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { plural } from "../../shared/quantities.ts";
 import type { ConfigSetting, Session } from "../../shared/types.ts";
@@ -42,12 +43,14 @@ export default function Configuration({
   version,
   online,
   sessions,
+  children,
 }: {
   scope: SavedScope;
   folder?: string;
   version: number;
   online: boolean;
   sessions: Session[];
+  children: ComponentChildren;
 }) {
   const config = useConfiguration(scope, folder, version);
   const whole = WHOLE[scope];
@@ -75,7 +78,7 @@ export default function Configuration({
   const failed = config.error != null && (
     <LoadError error={config.error} retry={config.retry} />
   );
-  if (!config.loaded) return failed || <SettingRowsLoading />;
+
   return (
     <section class="configuration">
       {failed}
@@ -97,15 +100,25 @@ export default function Configuration({
         <Input
           type="search"
           aria-label="Find a setting"
-          placeholder="Find a setting"
+          placeholder={
+            scope === "project"
+              ? "Find a folder setting"
+              : "Find a setting for all conversations"
+          }
           value={query}
           disabled={asFile}
           onInput={(event) => setQuery(event.currentTarget.value)}
         />
-        <Button variant="quiet" onClick={() => setAsFile(!asFile)}>
+        <Button
+          variant="quiet"
+          disabled={!config.loaded}
+          onClick={() => setAsFile(!asFile)}
+        >
           {asFile ? "Show the form" : "Show the file"}
         </Button>
       </InputRow>
+      {!asFile && !needle && children}
+      {!config.loaded && !failed && <SettingRowsLoading />}
       {asFile && (
         <Group
           title="settings.json"
@@ -164,7 +177,7 @@ export default function Configuration({
             ...own.filter(itemized).map(field),
           ];
         })}
-      {!asFile && needle && !listed.length && (
+      {config.loaded && !asFile && needle && !listed.length && (
         <p class="group-footer small">No setting matches.</p>
       )}
       {!asFile && !needle && config.file && (
@@ -173,7 +186,7 @@ export default function Configuration({
           <code>settings.schema.json</code> beside it names every setting.
         </p>
       )}
-      {!asFile && !needle && (
+      {config.loaded && !asFile && !needle && (
         <Group>
           <Row
             label={whole.reset}

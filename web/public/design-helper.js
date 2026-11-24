@@ -110,16 +110,41 @@
   addEventListener(
     "error",
     (event) => {
-      const url = event.target?.src || event.target?.href;
+      const url =
+        event.target?.getAttribute?.("src") ||
+        event.target?.getAttribute?.("href");
       if (event.target !== window && url) missing.push(url);
     },
     true,
   );
-  // The boxes of a text node's lines.
-  const lines = (node) => {
-    const range = document.createRange();
-    range.selectNodeContents(node);
-    return [...range.getClientRects()].filter((r) => r.width && r.height);
+  // A DOM range includes a font's unused ascent and descent. On tightly
+  // spaced lines those boxes can intersect while the letters stay apart.
+  const inkLines = (node, boxes, measure) => {
+    const style = getComputedStyle(node.parentElement);
+    if (!measure || style.writingMode !== "horizontal-tb") return boxes;
+    measure.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const text = node.textContent;
+    const shown =
+      style.textTransform === "uppercase"
+        ? text.toUpperCase()
+        : style.textTransform === "lowercase"
+          ? text.toLowerCase()
+          : text;
+    const metrics = measure.measureText(shown);
+    const ascent = metrics.fontBoundingBoxAscent;
+    const height = ascent + metrics.fontBoundingBoxDescent;
+    return boxes.map((box) => {
+      // Rotated, scaled or fallback-font text may have different metrics.
+      // Use the browser's box where its baseline cannot be located reliably.
+      if (!height || Math.abs(box.height - height) > 1) return box;
+      const baseline = box.top + ascent;
+      return {
+        left: box.left,
+        right: box.right,
+        top: baseline - metrics.actualBoundingBoxAscent,
+        bottom: baseline + metrics.actualBoundingBoxDescent,
+      };
+    });
   };
   const crosses = (a, b) =>
     Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
@@ -129,12 +154,19 @@
   const overlaps = () => {
     const { w, h } = artboard();
     const texts = [];
+    const range = document.createRange();
+    const measure = document.createElement("canvas").getContext("2d");
+    const ink = (run) => (run.ink ??= inkLines(run.node, run.boxes, measure));
     const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     while (walk.nextNode()) {
       const node = walk.currentNode;
       if (!node.textContent.trim() || node.parentElement.closest("aside"))
         continue;
-      texts.push({ node, boxes: lines(node) });
+      range.selectNodeContents(node);
+      const boxes = [...range.getClientRects()].filter(
+        (r) => r.width && r.height,
+      );
+      if (boxes.length) texts.push({ node, boxes });
     }
     const found = [];
     const words = (node) => `“${node.textContent.trim().slice(0, 40)}”`;
@@ -149,7 +181,10 @@
     for (let i = 0; i < texts.length && found.length < 5; i++)
       for (let j = i + 1; j < texts.length; j++)
         if (
-          texts[i].boxes.some((a) => texts[j].boxes.some((b) => crosses(a, b)))
+          texts[i].boxes.some((a) =>
+            texts[j].boxes.some((b) => crosses(a, b)),
+          ) &&
+          ink(texts[i]).some((a) => ink(texts[j]).some((b) => crosses(a, b)))
         ) {
           found.push(
             `${words(texts[i].node)} overlaps ${words(texts[j].node)}: give them room, or split the slide`,
@@ -396,6 +431,7 @@
   const base = location.pathname.replace(/^(\/preview\/[^/]+\/).*$/, "$1");
   let board;
   let boarding;
+  let cellErrors;
   addEventListener("DOMContentLoaded", () => {
     if (!document.querySelector('meta[name="board"]')) return;
     root.dataset.uagentBusy = "";
@@ -413,6 +449,10 @@
     root.dataset.uagentBusy = "";
     window.uagentReady = import(`${base}~sheet/sheet.js`)
       .then((sheet) => sheet.ready)
+      .then((errors) => {
+        cellErrors = new Set(errors);
+        return errors;
+      })
       .catch((error) => {
         // Without the engine the tables still read, formulas as text.
         const note = document.createElement("p");
@@ -450,14 +490,19 @@
     window.uagentChecked = new Promise((said) =>
       addEventListener("load", async () => {
         const here = fits();
-        if (here)
-          for (const problem of await found())
-            console.warn(`uagent page: ${problem}`);
+        const problems = here ? await found() : [];
+        for (const problem of problems) console.warn(`uagent page: ${problem}`);
         const { w, h } = artboard();
         // Its parts, each shown at "#N": a document's pages, a sheet's tabs.
         const tabs = document.querySelectorAll("table[data-sheet]").length;
         const parts = paper() ? pages : tabs || 1;
-        said({ w: w || innerWidth, h: h || innerHeight, fits: here, parts });
+        said({
+          w: w || innerWidth,
+          h: h || innerHeight,
+          fits: here,
+          parts,
+          problems,
+        });
       }),
     );
     // Alone, a document turns its own pages by the keys the pane steps with.
@@ -855,7 +900,7 @@
   // does when the page has said it: one verdict, whenever it is drawn.
   const check = async () => {
     for (const problem of await found())
-      send("error", { message: problem, line: 0 });
+      send("issue", { message: problem, cell: cellErrors?.has(problem) });
     send("checked");
   };
   addEventListener("load", async () => {
@@ -897,12 +942,14 @@
   // "#build=N", then by message; a step below 0 shows all.
   const hide = document.createElement("style");
   hide.textContent =
-    "html[data-uagent-build] [data-step]{transition:opacity .2s}" +
+    "@media (prefers-reduced-motion:no-preference){html[data-uagent-build] [data-step]{transition:opacity var(--uagent-build-duration,.2s)}}" +
     "html[data-uagent-build] [data-step]:not([data-uagent-shown]){opacity:0}";
   root.append(hide);
   const building = /^#build=(\d+)$/.exec(location.hash);
   if (building) root.toggleAttribute("data-uagent-build", true);
-  const build = (at) => {
+  const build = (at, duration) => {
+    if (Number.isFinite(duration))
+      root.style.setProperty("--uagent-build-duration", `${duration}ms`);
     root.toggleAttribute("data-uagent-build", at >= 0);
     for (const element of document.querySelectorAll("[data-step]"))
       element.toggleAttribute("data-uagent-shown", +element.dataset.step <= at);
@@ -1170,6 +1217,7 @@
     }
     if (event.data.type === "tweak")
       tweak(String(event.data.name), event.data.value);
-    if (event.data.type === "build") build(Number(event.data.at));
+    if (event.data.type === "build")
+      build(Number(event.data.at), event.data.duration);
   });
 })();

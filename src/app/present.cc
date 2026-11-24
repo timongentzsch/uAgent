@@ -34,9 +34,12 @@ json ArtifactPart(const std::string& path) {
   };
   // The listing takes a path inside the folder; one outside is a file.
   fs::path target = fs::path(path).lexically_normal();
-  if (target.is_absolute() && !RemoteWorkspace()) {
-    target =
-        fs::path(CanonicalAccessPath(path)).lexically_relative(CanonicalCwd());
+  if (target.is_absolute()) {
+    const WorkspaceIdentity workspace = Workspace();
+    // Remote paths are canonicalized by the gateway's listing, on that host.
+    if (!workspace.Remote()) target = CanonicalAccessPath(path);
+    target = target.lexically_relative(workspace.path);
+    if (target.empty() || *target.begin() == "..") return nullptr;
   }
   if (!target.has_filename()) target = target.parent_path();
   json listing = list(target);

@@ -1,3 +1,17 @@
+// A file a message cites, as the Files pane opens it: its lines ("12" or
+// "12-20"), or its diff: among the uncommitted changes, or what a turn
+// changed in it.
+export interface FileTarget {
+  path: string;
+  sequence?: number;
+  origin?: string;
+  exact?: boolean;
+  journal?: string;
+  lines?: string;
+  changes?: boolean;
+  turn?: number;
+}
+
 // Small and eager, so the renderer can tell a cited path without the
 // highlighter.
 
@@ -70,3 +84,12 @@ export function languageFor(path: string) {
 export const knownFile = (path: string) =>
   !!languageFor(path) ||
   [IMAGE, VIDEO, MARKDOWN, PLAIN].some((kind) => kind.test(nameOf(path)));
+
+// The same path reference goes into the draft from Files or the composer.
+export function fileQuote(path: string, lines = "") {
+  const value = path + (lines ? `:${lines}` : "");
+  const ticks = value.match(/`+/g);
+  if (!ticks) return "`" + value + "`";
+  const fence = "`".repeat(Math.max(...ticks.map((run) => run.length)) + 1);
+  return fence + " " + value + " " + fence;
+}

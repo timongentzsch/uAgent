@@ -279,9 +279,9 @@ TEST_CASE(TestToolResults) {
                                     {{"url", "https://example.com/source"},
                                      {"title", "Example"},
                                      {"content", "grounded excerpt"}}}}});
-  CHECK(CitationEvidence(annotations) ==
+  CHECK(CitationEvidence(CitationEntries(annotations)) ==
         "https://example.com/source\nExample\ngrounded excerpt");
-  CHECK(CitationEvidence(annotations, 5, 8) ==
+  CHECK(CitationEvidence(CitationEntries(annotations), 5, 8) ==
         "https://example.com/source\nExample\ngrounded");
 }
 

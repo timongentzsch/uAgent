@@ -139,3 +139,55 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.agent-bar,
+.agent-tabs {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--space-2);
+}
+.agent-bar {
+  border-top: var(--border);
+}
+.agent-roster .work-band {
+  width: var(--space-12);
+  margin-inline-end: 0;
+}
+.agent-tabs {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+.agent-bar .sheet-control,
+.agent-tab {
+  flex: none;
+}
+.agent-roster,
+.agent-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: var(--pane-s);
+}
+.agent-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.agent-entry .activity-text {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+.agent-entry > .agent-assignment {
+  grid-column: 1 / -1;
+  padding-inline: var(--pad);
+}
+.agent-assignment > summary {
+  align-items: baseline;
+}
+.agent-assignment[open] .truncate {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

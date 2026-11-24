@@ -11,8 +11,7 @@
 namespace uagent {
 
 struct MailParty {
-  std::string id{};  // SessionIdFor path
-  std::string path{};
+  std::string id{};      // SessionIdFor path
   std::string parent{};  // its parent's mailbox id, for an agent
   // What its header calls it, and the conversation it forked from.
   std::string identity{}, source{};
@@ -36,7 +35,7 @@ struct SessionMail {
   bool report = false;
   // What a report reports: the turn's stop reason, or "needs decision".
   std::string state{};
-  // A finished agent's report as facts: {session, title, outcome}.
+  // The reporting or requesting agent: {session, title, outcome}.
   json agent = nullptr;
 };
 

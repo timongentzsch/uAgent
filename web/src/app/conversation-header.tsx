@@ -20,9 +20,6 @@ import { useHostContext } from "../state/host-context.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { isBrowsing } from "./chat-page.tsx";
 import type { Page } from "./app.tsx";
-import type { DetailControl } from "./menus.tsx";
-import { Tabs } from "../shared/tabs.tsx";
-import { capitalize } from "../shared/display.ts";
 
 function Totals({
   session,
@@ -63,7 +60,6 @@ export default function ConversationHeader({
   openDrawer,
   choose,
   settings,
-  detail,
   menu,
 }: {
   page: Page;
@@ -82,7 +78,6 @@ export default function ConversationHeader({
   openDrawer: () => void;
   choose: (id: string) => void;
   settings: () => void;
-  detail: DetailControl;
   menu: (
     item: Session,
     withDetail?: boolean,
@@ -97,23 +92,20 @@ export default function ConversationHeader({
     "Local";
   const compact = useCompact();
   const narrow = useNarrowColumn();
-  const browsing = useSnapshots(store, (all) => isBrowsing(all[selected]));
+  const browsing = useSnapshots(
+    store,
+    (all) => browserAvailable && isBrowsing(all[selected]),
+    browserAvailable,
+  );
   const openBrowser = () => setModal({ type: "browser" });
   // A narrow column's conversation menu holds the header's other actions.
   const inMenu = narrow && page === "chat" && !!(session || opening);
   const titleOf = (item: Session) => item.title || "Conversation";
   const phoneItems = inMenu && {
-    top: (
-      <>
-        <MenuItem disabled={!session} onClick={() => setFilesOpen(!filesOpen)}>
-          Files
-        </MenuItem>
-        {terminal && (
-          <MenuItem onClick={terminal.toggle}>
-            {terminal.open ? "Hide terminal" : "Terminal"}
-          </MenuItem>
-        )}
-      </>
+    top: terminal && (
+      <MenuItem onClick={terminal.toggle}>
+        {terminal.open ? "Hide terminal" : "Terminal"}
+      </MenuItem>
     ),
     more: browserAvailable && (
       <MenuItem disabled={booting} onClick={openBrowser}>
@@ -183,25 +175,6 @@ export default function ConversationHeader({
           Merge
         </Button>
       )}
-      {!inMenu && page === "chat" && session && (
-        <>
-          <Tabs
-            label="Detail"
-            tabs={detail.levels.map((level) => ({
-              key: level,
-              label: capitalize(level),
-            }))}
-            value={detail.level}
-            to={detail.change}
-          />
-          <Button
-            aria-pressed={detail.thinking}
-            onClick={() => detail.showThinking(!detail.thinking)}
-          >
-            Thinking
-          </Button>
-        </>
-      )}
       {browserAvailable && (!inMenu || browsing) && (
         <IconButton
           label={browsing ? "Open browser, agent working" : "Open browser"}
@@ -222,10 +195,11 @@ export default function ConversationHeader({
           <Terminal />
         </IconButton>
       )}
-      {!inMenu && page === "chat" && (session || opening) && (
+      {page === "chat" && (session || opening) && (
         <IconButton
           label="Files"
           disabled={!session}
+          aria-controls={filesOpen ? "workspace-files" : undefined}
           aria-pressed={filesOpen}
           onClick={() => setFilesOpen(!filesOpen)}
         >

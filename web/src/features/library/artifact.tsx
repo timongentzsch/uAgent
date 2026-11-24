@@ -1,11 +1,8 @@
+import type { FileTarget } from "../../shared/file-types.ts";
 import { nameOf } from "../../shared/file-types.ts";
 import { ChevronLeft } from "lucide-preact";
 import { useApi } from "../../state/api.ts";
-import type {
-  FileTarget,
-  LibraryItem,
-  LibraryPlace,
-} from "../../shared/types.ts";
+import type { LibraryItem, LibraryPlace } from "../../shared/types.ts";
 import {
   Cluster,
   Bar,
@@ -25,7 +22,15 @@ import { PageThumb, usePreviewBase } from "../../shared/page-frame.tsx";
 // An artifact or a shared file, as the Library shows one: its pages
 // small, and the way to where it is worked on.
 
-function Thumbnails({ session, pages }: { session: string; pages: string[] }) {
+function Thumbnails({
+  session,
+  pages,
+  open,
+}: {
+  session: string;
+  pages: string[];
+  open: (target: FileTarget) => void;
+}) {
   const preview = usePreviewBase(session);
   if (preview.error)
     return <LoadError error={preview.error} retry={preview.retry} />;
@@ -36,6 +41,12 @@ function Thumbnails({ session, pages }: { session: string; pages: string[] }) {
         <figure key={page}>
           <PageThumb base={preview.value!.base} path={page} />
           <figcaption class="small muted">{nameOf(page)}</figcaption>
+          <Button
+            class="cover"
+            variant="quiet"
+            aria-label={`Open ${page}`}
+            onClick={() => open({ path: page })}
+          />
         </figure>
       ))}
     </div>
@@ -128,7 +139,7 @@ export default function LibraryArtifact({
         )}
       </Cluster>
       {!file && place?.session && item.pages?.length ? (
-        <Thumbnails session={place.session} pages={item.pages} />
+        <Thumbnails session={place.session} pages={item.pages} open={open} />
       ) : null}
     </div>
   );

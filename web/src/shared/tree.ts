@@ -1,5 +1,7 @@
 // The transcript as the host sends it: nodes that name their parent, drawn
 // as one tree. Nothing here knows a tool, a provider or a model.
+import { shortAgentName } from "./display.ts";
+import { agentBatch } from "./message-view.ts";
 import { plural } from "./quantities.ts";
 import type { NodePatch, Node } from "./types.ts";
 
@@ -31,11 +33,25 @@ export const visible = (node: Node, level: number, thinking: boolean) =>
 
 // A row's headline as one line: "Ran npm test". A work counts its thoughts
 // where thinking is shown.
-export const headlineOf = (node: Node, thinking = false) =>
-  [node.headline?.verb, node.headline?.target].filter(Boolean).join(" ") +
-  (thinking && node.result?.thoughts
-    ? `, ${plural(node.result.thoughts, "thought")}`
-    : "");
+export function headlineOf(node: Node, thinking = false) {
+  const batch = agentBatch(node);
+  if (batch && batch.replies.length > 1 && node.state === "ok") {
+    const started = batch.replies.filter((row) => row.link);
+    const topics = started
+      .filter(({ assignment }) => assignment && assignment !== "Open agent")
+      .slice(0, 2)
+      .map(({ assignment }) => shortAgentName(assignment));
+    return [`Started ${plural(started.length, "agent")}`, topics.join(", ")]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  return (
+    [node.headline?.verb, node.headline?.target].filter(Boolean).join(" ") +
+    (thinking && node.result?.thoughts
+      ? `, ${plural(node.result.thoughts, "thought")}`
+      : "")
+  );
+}
 
 // The newest row under a row: what a closed running row says it is doing.
 export function currentStep(branch: Branch): string | undefined {

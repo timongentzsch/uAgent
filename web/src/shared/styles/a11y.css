@@ -47,7 +47,7 @@
     background-color: transparent;
     border-color: CanvasText;
   }
-  .status-led:is(.active, .unread, .failed) {
+  .status-led:is(.active, .unread, .running, .failed) {
     background-color: CanvasText;
   }
 }

@@ -8,9 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ORDER = ["core", "api", "toolcore", "agent", "tools", "app", "web"]
-INCLUDE = re.compile(r'#include\s+"(include/[^"]+)"')
-
-KNOWN = set()
+INCLUDE = re.compile(r'#include\s+"((?:include|src)/[^"]+)"')
 
 
 def layer(path):
@@ -63,9 +61,7 @@ def upward_edges():
 
 class LayerBoundaryTest(unittest.TestCase):
     def test_no_new_upward_includes(self):
-        edges = upward_edges()
-        self.assertEqual(sorted(edges - KNOWN), [], "new upward include")
-        self.assertEqual(sorted(KNOWN - edges), [], "remove fixed edges from KNOWN")
+        self.assertEqual(sorted(upward_edges()), [], "upward include")
 
 
 if __name__ == "__main__":

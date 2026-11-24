@@ -31,6 +31,13 @@
   flex: none;
   max-width: 100%;
 }
+.files-title a {
+  color: inherit;
+  text-decoration: none;
+}
+.files-title a:is(:hover, :focus-visible) {
+  text-decoration: underline;
+}
 .files-dir {
   color: var(--muted);
   font-weight: var(--weight-regular);
@@ -82,10 +89,14 @@
   list-style: none;
 }
 .files-tree,
-.files-results {
+.files-results,
+.files-changes {
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+.files-changes section + section {
+  margin-top: var(--space-4);
 }
 .files-tree ul {
   margin-left: var(--space-6);
@@ -288,6 +299,7 @@
 .page-tools-folded {
   display: none;
 }
+.page-history,
 .page-tools-wide {
   display: contents;
 }
@@ -426,6 +438,9 @@
 .page-legend-item > .page-frame {
   outline: var(--border);
 }
+.page-legend-item[data-issue] > .page-frame {
+  outline-color: var(--warning);
+}
 .page-legend-item[data-failed] > .page-frame {
   outline-color: var(--removed);
 }
@@ -495,6 +510,9 @@
 }
 .page-legend-name > .lucide {
   margin-right: var(--space-1);
+}
+.page-legend-item[data-issue] > .page-legend-name > .lucide:first-child {
+  color: var(--warning);
 }
 .page-legend-item[data-failed] > .page-legend-name > .lucide:first-child {
   color: var(--removed);
@@ -734,6 +752,17 @@
   flex: 0 0 30%;
   margin: 0;
 }
+@media (orientation: portrait) {
+  .presenter-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 2fr) minmax(0, 3fr);
+  }
+  .presenter-side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 2fr);
+  }
+}
 /* A narrow pane stacks them: the legend a filmstrip under the stage. */
 @container files (max-width: 40rem) {
   .page-body {
@@ -744,6 +773,34 @@
     flex-direction: row;
     border-right: 0;
     border-top: var(--border);
+  }
+  /* The filmstrip shares tracks for section labels, previews and captions.
+     An unsectioned deck needs no label space. The wide vertical list and
+     the wrapping overview retain their own flow. */
+  .page-legend:not(.grid) {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: auto auto auto;
+    gap: 0 var(--space-4);
+    justify-content: start;
+  }
+  .page-legend:not(.grid) > .page-legend-item {
+    display: grid;
+    grid-row: 1 / -1;
+    grid-template-rows: subgrid;
+    align-items: start;
+    row-gap: 0;
+  }
+  .page-legend:not(.grid) .page-legend-section {
+    grid-row: 1;
+    margin-bottom: var(--space-1);
+  }
+  .page-legend:not(.grid) .page-frame {
+    grid-row: 2;
+  }
+  .page-legend:not(.grid) .page-legend-name {
+    grid-row: 3;
+    margin-top: var(--space-1);
   }
   /* Its button's panel lies along the bottom too. */
   .page-tools [aria-label="Legend"] > .lucide {
@@ -815,6 +872,9 @@
 .canvas-page {
   position: absolute;
   border: var(--border);
+}
+.canvas-page[data-issue] {
+  border-color: var(--warning);
 }
 .canvas-page[data-failed] {
   border-color: var(--removed);

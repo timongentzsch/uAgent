@@ -78,25 +78,54 @@ struct StatusView {
   size_t background = 0;
 };
 
-// One ordered list of segments, dropped by priority when the terminal is
-// too narrow.
-inline std::string StatusBar(const Usage& usage, const StatusView& view) {
-  struct Segment {
-    int priority;  // higher is dropped first
-    std::string text;
-  };
-  std::vector<Segment> segments;
-  auto add = [&segments](int priority, const std::string& text) {
-    if (!text.empty()) segments.push_back({priority, text});
-  };
+// Earlier segments win ties. The rightmost lowest-priority segment drops
+// first, leaving the text in reading order however much room the row has.
+struct StatusSegment {
+  int priority;
+  std::string text;
+};
 
+inline std::string FitStatus(std::vector<StatusSegment> segments) {
+  std::erase_if(segments,
+                [](const auto& segment) { return segment.text.empty(); });
+  if (g_tty && !segments.empty()) {
+    const size_t width = TerminalWidth(1);
+    size_t used = 3 * (segments.size() - 1);  // " · " between segments
+    for (const auto& segment : segments) used += DisplayWidth(segment.text);
+    while (used > width && segments.size() > 1) {
+      auto victim =
+          std::max_element(segments.rbegin(), segments.rend(),
+                           [](const StatusSegment& a, const StatusSegment& b) {
+                             return a.priority < b.priority;
+                           });
+      used -= 3 + DisplayWidth(victim->text);
+      segments.erase(std::next(victim).base());
+    }
+  }
+  std::string line;
+  for (const auto& segment : segments) {
+    if (!line.empty()) line += " · ";
+    line += segment.text;
+  }
+  return line;
+}
+
+inline std::string ApprovalLabel(const std::string& mode) {
+  return mode == "yolo"   ? "YOLO"
+         : mode == "auto" ? "Auto"
+         : mode == "plan" ? "Plan"
+                          : "Ask";
+}
+
+inline std::string StatusBar(const Usage& usage, const StatusView& view) {
+  std::vector<StatusSegment> segments;
+  auto add = [&segments](int priority, std::string text) {
+    segments.push_back({priority, std::move(text)});
+  };
   add(0, view.turn_status);
-  add(0, view.model);
-  add(1, view.approval == "yolo"   ? "YOLO"
-         : view.approval == "auto" ? "Auto"
-         : view.approval == "plan" ? "Plan"
-                                   : "Ask");
-  add(1, ContextLeftSummary(view.context_used, view.context_window));
+  add(1, view.model);
+  add(0, ApprovalLabel(view.approval));
+  add(2, ContextLeftSummary(view.context_used, view.context_window));
   if (usage.cost > 0) add(2, FmtCost(usage.cost));
   add(3, ContextSummary(view.context_used, view.context_window));
   if (view.background) {
@@ -109,27 +138,7 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
   if (view.detail != kDetailLevels[0]) add(6, view.detail);
   add(7, "/help for shortcuts");
 
-  auto join = [&segments] {
-    std::string line;
-    for (const Segment& segment : segments) {
-      if (!line.empty()) line += " · ";
-      line += segment.text;
-    }
-    return line;
-  };
-  std::string line = join();
-  if (!g_tty) return line;
-  // The least valuable segment goes first, the rightmost of a tie.
-  while (DisplayWidth(line) > TerminalWidth(1) && segments.size() > 1) {
-    auto victim = std::max_element(segments.rbegin(), segments.rend(),
-                                   [](const Segment& a, const Segment& b) {
-                                     return a.priority < b.priority;
-                                   });
-    if (victim->priority == 0) break;
-    segments.erase(std::next(victim).base());
-    line = join();
-  }
-  return line;
+  return FitStatus(std::move(segments));
 }
 
 // Work state for the pinned row while a turn runs. It is handed the frame
@@ -140,14 +149,14 @@ struct TurnStatusView {
   int64_t context_window = 0;
   // The active route, spelled as StatusView::model.
   std::string model{};
+  std::string approval;
   size_t background = 0;
   size_t foreground = 0;
   size_t queued = 0;
   bool interrupting = false;
 };
 
-// The working row. When it does not fit, the label is cut: the counters on
-// the right are the part that changes.
+// Reserve room for the action, effective mode and interrupt key before metrics.
 inline std::string TurnStatusBar(const TurnStatusView& view) {
   std::string seconds =
       FmtDuration(std::chrono::duration<double>(view.elapsed).count());
@@ -161,26 +170,26 @@ inline std::string TurnStatusBar(const TurnStatusView& view) {
   auto counted = [](const char* label, size_t count) {
     return count ? label + FmtCount(static_cast<int64_t>(count)) : "";
   };
-  std::string suffix =
-      " · " + JoinDot({view.model, seconds,
-                       ContextSummary(view.context_used, view.context_window),
-                       counted("act:", view.background),
-                       counted("steer:", view.queued)});
-  // The hint is the first thing a narrow terminal gives up.
-  std::string hint = " · Esc stop · Ctrl+B background";
+  const std::string mode = ApprovalLabel(view.approval);
+  const size_t width = TerminalWidth(1);
+  const size_t reserve = DisplayWidth(prefix + " · " + mode + " · Esc stop");
+  const size_t room = width > reserve ? width - reserve : 6;
+  std::string background_hint = "Ctrl+B background";
   if (view.foreground > 1) {
-    hint += " " + FmtCount(static_cast<int64_t>(view.foreground)) + " commands";
+    background_hint +=
+        " " + FmtCount(static_cast<int64_t>(view.foreground)) + " commands";
   }
-  size_t width = TerminalWidth(1);
-  size_t desired = std::min<size_t>(DisplayWidth(state), 64);
-  if (DisplayWidth(prefix) + DisplayWidth(suffix) + DisplayWidth(hint) +
-          desired <=
-      width) {
-    suffix += hint;
-  }
-  size_t reserved = DisplayWidth(prefix) + DisplayWidth(suffix);
-  size_t status_width = width > reserved ? width - reserved : 0;
-  return prefix + StatusLabel(state, status_width) + suffix;
+  return FitStatus({
+      {0, prefix + StatusLabel(state, std::min<size_t>(64, room))},
+      {1, mode},
+      {5, view.model},
+      {3, seconds},
+      {6, ContextSummary(view.context_used, view.context_window)},
+      {4, counted("act:", view.background)},
+      {4, counted("steer:", view.queued)},
+      {1, "Esc stop"},
+      {2, background_hint},
+  });
 }
 
 // Dim, clipped to the terminal, and cleared to the right so a shorter line

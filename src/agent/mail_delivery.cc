@@ -65,7 +65,10 @@ bool Agent::DeliverMail() {
     if (mail.body.contains("agent")) {
       origin["kind"] = "agent";
       origin["agent"] = mail.body["agent"];
-      if (judge_report_) text = judge_report_(mail.sender_path, text, turn_id_);
+      if (judge_report_ &&
+          JsonValue(mail.body, "state", "") != "needs decision") {
+        text = judge_report_(mail.sender_path, text, turn_id_);
+      }
     }
     Arrive(text, std::move(origin));
     DebugLog("mail_delivered", {{"id", mail.id},

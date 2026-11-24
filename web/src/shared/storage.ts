@@ -64,8 +64,36 @@ export function safeStorage(get: () => Storage | undefined): Storage {
   };
 }
 
-const storage = safeStorage(() => globalThis.localStorage);
+export const deviceStorage = safeStorage(() => globalThis.localStorage);
 export const tabStorage = safeStorage(() => globalThis.sessionStorage);
+
+// A burst of changes reaches storage once; hiding the page flushes it.
+export function scheduleSave(save: () => void, delay: number) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const flush = () => {
+    clearTimeout(timer);
+    save();
+  };
+  const hidden = () => document.visibilityState === "hidden" && flush();
+  if (delay && globalThis.document) {
+    addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", hidden);
+  }
+  return {
+    queue() {
+      clearTimeout(timer);
+      if (delay) timer = setTimeout(flush, delay);
+      else flush();
+    },
+    stop() {
+      flush();
+      if (delay && globalThis.document) {
+        removeEventListener("pagehide", flush);
+        document.removeEventListener("visibilitychange", hidden);
+      }
+    },
+  };
+}
 
 // A missing, corrupt or invalid value reads as `fallback`, and writing the
 // fallback forgets the key. Text is kept as itself, so public/theme.js reads
@@ -80,7 +108,7 @@ export function stored<T>(
       ? (value as T)
       : fallback,
   {
-    where = storage,
+    where = deviceStorage,
     delay = 0,
     kept = (value) => value,
   }: { where?: Storage; delay?: number; kept?: (value: T) => unknown } = {},
@@ -92,22 +120,13 @@ export function stored<T>(
   const forgotten = text(fallback);
   const watchers = new Set<(value: T) => void>();
   let pending: { value: T } | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const save = () => {
-    clearTimeout(timer);
+  const save = scheduleSave(() => {
     if (!pending) return;
     const value = text(pending.value);
     pending = undefined;
     if (value === forgotten) where.removeItem(key);
     else where.setItem(key, value);
-  };
-  if (delay && globalThis.document) {
-    addEventListener("pagehide", save);
-    document.addEventListener(
-      "visibilitychange",
-      () => document.visibilityState === "hidden" && save(),
-    );
-  }
+  }, delay);
   return {
     fallback,
     read(): T {
@@ -122,9 +141,7 @@ export function stored<T>(
     },
     write(value: T) {
       pending = { value };
-      clearTimeout(timer);
-      if (delay) timer = setTimeout(save, delay);
-      else save();
+      save.queue();
       for (const watcher of watchers) watcher(value);
     },
     subscribe(watcher: (value: T) => void) {

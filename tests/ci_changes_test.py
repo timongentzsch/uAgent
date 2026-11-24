@@ -2,6 +2,8 @@
 
 import json
 import runpy
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -21,10 +23,38 @@ class ChangeSelectionTest(unittest.TestCase):
         )
         self.assertTrue(classify(["docs/interfaces/settings.md"])["native"])
 
+    def test_local_checks_include_new_sources_and_both_sides_of_moves(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            def git(*args):
+                subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+
+            git("init", "-q")
+            (root / ".gitignore").write_text("ignored\n")
+            (root / "original.cc").write_text("")
+            git("add", ".")
+            git("-c", "user.name=Test", "-c", "user.email=test@localhost", "commit", "-qm", "base")
+            git("mv", "original.cc", "moved.cc")
+            (root / "new source.cc").write_text("")
+            (root / "ignored").write_text("")
+            self.assertCountEqual(
+                changes["changed_paths"]("HEAD", root),
+                [
+                    "original.cc",
+                    "moved.cc",
+                    "new source.cc",
+                ],
+            )
+
     def test_shared_code_and_unknown_paths_require_every_suite(self):
         for path in (
             "include/agent/prompt.h",
             "src/removed.cc",
+            "docs/architecture/overview.md",
+            "web/public/design-helper.js",
+            "web/public/deck-print.js",
+            "web/src/shared/styles/tokens.css",
             "CMakeLists.txt",
             "tests/web_host.py",
             ".github/workflows/ci.yml",
@@ -37,7 +67,7 @@ class ChangeSelectionTest(unittest.TestCase):
     def test_clang_tidy_reads_changed_units_unless_any_unit_may_be_affected(self):
         self.assertEqual(
             tidy(["src/app/chat.cc", "tests/unit/stream_test.cc", "docs/manual.md", "web/a.ts"]),
-            "src/app/chat.cc tests/unit/stream_test.cc",
+            json.dumps(["src/app/chat.cc", "tests/unit/stream_test.cc"]),
         )
         self.assertEqual(tidy(["tests/integration.py"]), "")
         for path in ("include/app/chat.h", ".clang-tidy", "CMakeLists.txt", ".github/changes.py"):
@@ -49,11 +79,15 @@ class ChangeSelectionTest(unittest.TestCase):
             {"file": f"/r/{path}"}
             for path in ("src/a.cc", "src/b.cc", "tests/unit/c_test.cc", "build/tidy/web_assets.cc")
         ]
-        self.assertEqual(tidy_files(entries, "src/b.cc src/gone.cc"), r"/r/src/b\.cc$")
+        self.assertEqual(tidy_files(entries, tidy(["src/b.cc", "src/gone.cc"])), r"/r/src/b\.cc$")
         self.assertEqual(
-            tidy_files(entries, "all"), r"/r/src/a\.cc$ /r/src/b\.cc$ /r/tests/unit/c_test\.cc$"
+            tidy_files(entries, "all"), r"/r/src/a\.cc$|/r/src/b\.cc$|/r/tests/unit/c_test\.cc$"
         )
         self.assertEqual(tidy_files(entries, "all", "1/2"), r"/r/src/b\.cc$")
+        self.assertEqual(
+            tidy_files([{"file": "/my project/src/a b.cc"}], tidy(["src/a b.cc"])),
+            r"/my\ project/src/a\ b\.cc$",
+        )
 
     def test_slow_legs_run_on_a_pull_request_only_where_they_matter(self):
         plain = ["src/agent/loop.cc", "tests/unit/stream_test.cc", "web/a.ts"]
@@ -97,12 +131,17 @@ class ChangeSelectionTest(unittest.TestCase):
                 "web": True,
                 "bundle": True,
                 "heavy": False,
-                "tidy": "src/app/chat.cc",
+                "tidy": json.dumps(["src/app/chat.cc"]),
             },
         )
         self.assertEqual(selection("push", ["include/app/chat.h"])["tidy"], "all")
         # Not knowing what changed, or not a push, runs everything.
-        for event, paths in (("push", None), ("schedule", None), ("workflow_dispatch", None)):
+        for event, paths in (
+            ("push", None),
+            ("schedule", None),
+            ("workflow_dispatch", None),
+            ("workflow_call", None),
+        ):
             with self.subTest(event=event):
                 self.assertEqual(selection(event, paths)["tidy"], "all")
                 self.assertTrue(selection(event, paths)["heavy"])

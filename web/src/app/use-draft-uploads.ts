@@ -8,25 +8,21 @@ import { maxDraftFiles, maxUploadBytes } from "../shared/limits.ts";
 
 // No state of its own beyond admission: the drafts are the host layer's.
 export function useDraftUploads({
-  host: { online, selected, setDrafts, report },
+  host: { online, selected, drafts, report },
   session,
-  draft,
-  uploading,
 }: {
   host: HostState;
   session: Session | undefined;
-  draft: Draft;
-  uploading: boolean;
 }) {
   const { uploadAttachment } = useApi();
   const active = useRef(new Set<string>());
   const updateDraft = useCallback(
     (id: string, change: (draft: Draft) => Draft) =>
-      setDrafts((current) => ({
+      drafts.set((current) => ({
         ...current,
         [id]: change(current[id] || emptyDraft()),
       })),
-    [setDrafts],
+    [drafts],
   );
   // `replaces` is the draft file the annotation was drawn on.
   async function attachAnnotated(file: File, replaces?: string) {
@@ -47,7 +43,12 @@ export function useDraftUploads({
       report(new Error("Not connected: nothing was attached. Add it again."));
       return false;
     }
-    if (uploading || active.current.has(selected)) return false;
+    const draft = drafts.get()[selected] ?? emptyDraft();
+    if (
+      draft.files.some((file) => file.pending) ||
+      active.current.has(selected)
+    )
+      return false;
     const id = selected;
     if (
       files.length + draft.files.length > maxDraftFiles ||

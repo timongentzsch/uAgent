@@ -1,9 +1,12 @@
 // Presenting a deck in two windows, the slides and the presenter's view: one
 // BroadcastChannel keeps them on the same slide, and either moves both.
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
+import { useLatest } from "../../shared/use-latest.ts";
+import { requestId } from "../../state/api.ts";
 
 export interface Presenting {
   session: string;
+  channel?: string;
   // The deck's slides in order, by path in the conversation's folder.
   slides: string[];
   at: string;
@@ -22,29 +25,41 @@ const HASH = "#presenter=";
 
 // The slide shown, and the build shown on it.
 type Said = { at?: string; build?: number };
-let channel: BroadcastChannel | undefined;
+// One pair per presenting tab, even when two tabs open the same slide.
+let stageChannel: string | undefined;
+export const presenterChannel = () => (stageChannel ??= requestId());
 
-// `heard` takes what the other window says.
-export function usePresentChannel(heard: (said: Said) => void) {
-  channel ??= new BroadcastChannel("uagent-present");
+export function usePresentChannel(
+  id: string | undefined,
+  heard: (said: Said) => void,
+) {
+  const latest = useLatest(heard);
+  const current = useRef<BroadcastChannel>(null);
   useEffect(() => {
-    const listen = (event: MessageEvent<Said>) => heard(event.data ?? {});
-    channel?.addEventListener("message", listen);
-    return () => channel?.removeEventListener("message", listen);
-  });
-  return (said: Said) => channel?.postMessage(said);
+    if (!id) return;
+    const channel = new BroadcastChannel(`uagent-present-${id}`);
+    current.current = channel;
+    channel.onmessage = (event: MessageEvent<Said>) =>
+      latest.current(event.data ?? {});
+    return () => {
+      channel.close();
+      current.current = null;
+    };
+  }, [id, latest]);
+  return (said: Said) => current.current?.postMessage(said);
 }
 
 // Opened in the press that asks for it; it goes to the deck once `ready`
 // (what was typed in a slide is in its file).
 export function openPresenter(deck: Presenting, ready: Promise<unknown>) {
+  const channel = presenterChannel();
   const made = window.open(
     "",
-    "uagent-presenter",
+    `uagent-presenter-${channel}`,
     "popup,width=1280,height=800",
   );
   const address = new URL(
-    `${location.pathname}${HASH}${encodeURIComponent(JSON.stringify(deck))}`,
+    `${location.pathname}${HASH}${encodeURIComponent(JSON.stringify({ ...deck, channel }))}`,
     location.href,
   );
   void ready.then(() => made?.location.replace(address));

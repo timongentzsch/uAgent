@@ -45,7 +45,7 @@ constexpr Action kActions[] = {
     {"observe", false, "Looking at", "Looked at"},
     {"read", false, "Reading", "Read"},
     {"click", true, "Clicking in", "Clicked in"},
-    {"type", true, "Typing", "Typed"},
+    {"type", true, "Typing into", "Typed into"},
     {"press", true, "Pressing a key in", "Pressed a key in"},
     {"fill_saved", true, "Taking a saved login in", "Took a saved login in"},
     {"scroll", true, "Scrolling", "Scrolled"},
@@ -568,7 +568,8 @@ std::string Settle(const BrowserAccess& access, const ToolContext& context) {
 
 // Where the web host serves `path`, a file or folder within this
 // conversation's folder; empty for any other.
-std::string Served(const std::string& path) {
+std::string Served(const std::string& path,
+                   std::filesystem::path* relative = nullptr) {
   const std::string served = EnvStr("UAGENT_INTERNAL_PREVIEW");
   const size_t split = served.find('\n');
   const std::filesystem::path folder =
@@ -578,8 +579,20 @@ std::string Served(const std::string& path) {
       !PathWithin(file, folder)) {
     return "";
   }
-  return served.substr(split + 1) +
-         PercentEncode(file.lexically_relative(folder).string(), "/");
+  // Logout revokes every old URL. The web host atomically updates the
+  // worker's private grant so even a long-lived turn sees the replacement.
+  std::string base = served.substr(split + 1), error;
+  // A worker launched by an older web host receives the URL directly.
+  if (!base.starts_with("http://127.0.0.1:")) {
+    const std::string grant = std::move(base);
+    if (!ReadRegularFile(grant, 512, base, error)) return "";
+  }
+  if (!base.starts_with("http://127.0.0.1:") || !base.ends_with("/")) {
+    return "";
+  }
+  const auto target = file.lexically_relative(folder);
+  if (relative) *relative = target;
+  return base + PercentEncode(target.string(), "/");
 }
 
 // open with a path: a page of this conversation's folder is served by the
@@ -616,7 +629,8 @@ ToolResult Look(const json& args, const ToolContext& context) {
   const std::string kind = file.extension().string();
   std::error_code error;
   const bool deck = std::filesystem::is_directory(file, error);
-  const std::string url = Served(path);
+  std::filesystem::path relative;
+  const std::string url = Served(path, &relative);
   if (url.empty() ||
       !(deck || ((kind == ".html" || kind == ".htm") &&
                  std::filesystem::is_regular_file(file, error)))) {
@@ -624,8 +638,14 @@ ToolResult Look(const json& args, const ToolContext& context) {
                        "observe takes the path of an .html page or a deck's "
                        "folder in this conversation's folder");
   }
+  const std::string selector = JsonValue(args, "selector", "");
+  if (!selector.empty() && deck) {
+    return ToolFailure(
+        ToolErrorCode::kInvalidArguments,
+        "selector takes a slide or page file, not a deck folder");
+  }
   const std::string range = JsonValue(args, "part", "");
-  int first = 1, last = kPictures;
+  int first = 1, last = selector.empty() ? kPictures : 1;
   if (!range.empty()) {
     const char* end = range.data() + range.size();
     std::from_chars_result read = std::from_chars(range.data(), end, first);
@@ -633,21 +653,36 @@ ToolResult Look(const json& args, const ToolContext& context) {
     if (read.ec == std::errc() && read.ptr != end && *read.ptr == '-') {
       read = std::from_chars(read.ptr + 1, end, last);
     }
+    if (!selector.empty() && first != last) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "selector takes a single part");
+    }
     if (read.ec != std::errc() || read.ptr != end || first < 1 ||
         last < first) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "part takes a number or a range such as 9-16");
     }
   }
-  const json shot =
-      browser::Request({{"op", "look"},
-                        {"instance_id", "0"},
-                        {"url", deck ? url + "/?deck&w=1920&h=1080" : url},
-                        {"width", deck ? 1920 : 1440},
-                        {"height", deck ? 1080 : 900},
-                        {"first", first},
-                        {"last", std::min(last, first + kPictures - 1)}},
-                       browser::kActionMs);
+  const auto inspect = [&](const std::string& address) {
+    return browser::Request(
+        {{"op", "look"},
+         {"deck", deck},
+         {"selector", selector},
+         {"instance_id", "0"},
+         {"url", deck ? address + "/?deck&review" : address},
+         {"width", deck ? 1920 : 1440},
+         {"height", deck ? 1080 : 900},
+         {"first", first},
+         {"last", first + std::min(last - first, kPictures - 1)}},
+        browser::kActionMs);
+  };
+  json shot = inspect(url);
+  if (shot.contains("error") && !context.Expired() && !AbortRequested()) {
+    // A logout may revoke the URL while Chrome is loading the page or its
+    // assets.
+    const std::string current = Served(path);
+    if (!current.empty() && current != url) shot = inspect(current);
+  }
   if (const std::string failed = JsonValue(shot, "error", "");
       !failed.empty()) {
     return ToolFailure(ToolErrorCode::kRemoteError, failed);
@@ -668,13 +703,59 @@ ToolResult Look(const json& args, const ToolContext& context) {
   const auto span = [](int from, int to) {
     return std::to_string(from) + (to > from ? "-" + std::to_string(to) : "");
   };
-  const int next = std::min(parts, shown + kPictures);
+  const json* slides = JsonArray(shot, "slides");
+  if (slides) shown = first - 1 + static_cast<int>(slides->size());
+  const int next = shown + std::min(parts - shown, kPictures);
   looked.output = (shown > first ? "Parts " : "Part ") + span(first, shown) +
                   " of " + std::to_string(parts) +
                   (shown < parts ? "; part=" + span(shown + 1, next) +
                                        (next < parts ? " shows the next."
                                                      : " shows the rest.")
                                  : ".");
+  // The model keeps the complete review. A receipt links each finding to the
+  // workspace file, independent of the temporary preview grant.
+  json findings = json::array();
+  const std::string reviewed = looked.output;
+  const auto issues = [&](const json& row, const std::string& label,
+                          const std::filesystem::path& target) {
+    if (const json* problems = JsonArray(row, "problems")) {
+      for (const json& issue : *problems) {
+        if (issue.is_string()) {
+          const auto& text = issue.get_ref<const std::string&>();
+          looked.output += "\n  - " + text;
+          if (!target.empty()) {
+            findings.push_back(LinkPart("file", target.generic_string(),
+                                        label + " · " + text));
+          } else if (slides) {
+            findings.push_back(FieldsPart({{label, text}}));
+          }
+        }
+      }
+    }
+  };
+  if (slides) {
+    int number = first;
+    for (const json& slide : *slides) {
+      const std::string title = JsonValue(slide, "title", "");
+      const std::string name = JsonValue(slide, "file", "");
+      const std::string label = "Slide " + std::to_string(number);
+      looked.output += "\n" + std::to_string(number++) + ". " + title;
+      if (!name.empty() && name != title) looked.output += " (" + name + ")";
+      const std::filesystem::path leaf(name);
+      const bool slide_file =
+          !leaf.has_parent_path() &&
+          (leaf.extension() == ".html" || leaf.extension() == ".htm");
+      issues(slide, label,
+             slide_file ? relative / leaf : std::filesystem::path{});
+    }
+  } else {
+    issues(shot, "", {});
+  }
+  if (!findings.empty()) {
+    findings.insert(findings.begin(), FieldsPart({{"Reviewed", reviewed}}));
+    looked.parts = std::move(findings);
+    looked.body_kind = "fields";
+  }
   return looked;
 }
 
@@ -706,13 +787,41 @@ ToolResult Query(const BrowserAccess& access, const json& args,
                                  ? " console messages and uncaught errors"
                                  : " requests since this page began";
     const std::string find = JsonValue(args, "find", "");
-    return ToolSuccess(std::to_string(count) + what +
-                       (find.empty() ? "" : " containing " + JsonDump(find)) +
-                       (count > 100 ? ", the latest 100" : "") +
-                       (count ? ":\n" + JsonValue(answer, "lines", "") : "."));
+    return ListResult(
+        std::to_string(count) + what +
+            (find.empty() ? "" : " containing " + JsonDump(find)) +
+            (count > 100 ? ", the latest 100" : "") +
+            (count ? ":\n" + JsonValue(answer, "lines", "") : "."),
+        static_cast<int64_t>(count),
+        action == "network" ? "request" : "message");
   }
-  return action == "read" ? Reading(answer, args, "", seen)
-                          : ToolSuccess(JsonDump(answer));
+  if (action == "read") return Reading(answer, args, "", seen);
+  ToolResult result = ToolSuccess(JsonDump(answer));
+  if (action == "tabs") {
+    if (const json* tabs = JsonArray(answer, "tabs")) {
+      result.facts.items = tabs->size();
+      result.facts.unit = "tab";
+      json rows = json::array();
+      for (const json& tab : *tabs) {
+        std::string title = JsonValue(tab, "title", "");
+        if (JsonValue(tab, "id", "") == JsonValue(answer, "selected", "")) {
+          title += " (selected)";
+        }
+        rows.push_back({title, JsonValue(tab, "url", "")});
+      }
+      if (!rows.empty()) {
+        result.parts = json::array({FieldsPart(std::move(rows))});
+      }
+    } else if (answer.contains("closed")) {
+      result.parts =
+          GenericInputParts(JsonPick(answer, {"closed", "selected"}));
+    }
+  } else if (action == "status" || action == "release") {
+    result.parts = GenericInputParts(
+        JsonPick(answer, {"running", "mode", "waiting", "title", "url"}));
+  }
+  if (!result.parts.empty()) result.body_kind = "fields";
+  return result;
 }
 
 // What came of an action's ops: a line for each one done, the op that failed
@@ -765,6 +874,7 @@ Performed Perform(const BrowserAccess& access, const json& args,
 ToolResult Batch(const BrowserAccess& access, const json& args,
                  const ToolContext& context, Seen& seen) {
   const std::vector<json> steps = Steps(args);
+  int64_t completed = 0;
   std::string done;
   for (size_t index = 0; index < steps.size(); ++index) {
     const std::string action = JsonValue(steps[index], "action", "");
@@ -777,6 +887,7 @@ ToolResult Batch(const BrowserAccess& access, const json& args,
       return ToolFailure(ToolErrorCode::kRemoteError,
                          step + " failed: " + did.error + ". No step ran.");
     }
+    if (did.error.empty()) ++completed;
     done += step +
             (did.error.empty() ? " done.\n" : " failed: " + did.error + ".\n") +
             did.notes + Settle(access, context) +
@@ -789,7 +900,12 @@ ToolResult Batch(const BrowserAccess& access, const json& args,
     }
   }
   done.pop_back();
-  return Observation(access, done, context, /*look=*/false, seen);
+  ToolResult result = Observation(access, done, context, /*look=*/false, seen);
+  if (result.Ok()) {
+    result.facts.items = completed;
+    result.facts.unit = "completed step";
+  }
+  return result;
 }
 
 // The actions that change the page: done, then the settled page is returned.
@@ -858,8 +974,10 @@ constexpr char kBrowserDescription[] =
     " page you wrote, open takes path instead of url: an .html or .svg file; "
     "one in this conversation's folder loads its stylesheets and images as "
     "the canvas shows it, and reports its problems (file:// URLs are "
-    "refused). observe takes path too, or a deck's folder: its pages, slides "
-    "or tabs as pictures, 8 at a time (part=9-16). upload with element, "
+    "refused). observe with a deck folder returns a numbered overview and "
+    "each slide's layout problems, 8 at a time (part=9-16); part=3 zooms "
+    "into one slide. With a page path it shows its pages or tabs, or crops "
+    "the picture to a CSS selector. upload with element, "
     "view_id and path gives a file of this conversation's folder to a file "
     "field, or to the chooser the element opens; what a page downloads lands "
     "in its downloads folder. console "
@@ -884,6 +1002,7 @@ json BrowserParameters() {
         {"url", {{"type", "string"}}},
         {"path", {{"type", "string"}}},
         {"part", {{"type", "string"}}},
+        {"selector", {{"type", "string"}, {"maxLength", 512}}},
         {"target_id", {{"type", "string"}}},
         {"view_id", {{"type", "string"}}},
         {"element", {{"type", "integer"}}},
@@ -1116,16 +1235,27 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
   tool.headline = [](const json& args) {
     const Action* action = FindAction(args);
     const std::string name = action ? action->name : "";
-    return Headline{
-        action ? action->doing : "Checking", action ? action->done : "Checked",
-        name == "open" || (name == "observe" && args.contains("path"))
-            ? JsonValue(args, "url", JsonValue(args, "path", ""))
-        : name == "type" ? FirstLine(JsonValue(args, "text", ""))
-                         : "the browser"};
+    std::string target = "the browser";
+    if (name == "open" || name == "observe" || name == "upload") {
+      target = JsonValue(args, "url", JsonValue(args, "path", target));
+    } else if (name == "tabs") {
+      target = JsonValue(args, "target_id", "browser tabs");
+    } else if (JsonValue(args, "element", 0) > 0) {
+      target = "element " + std::to_string(JsonValue(args, "element", 0));
+    } else if (name == "type") {
+      target = "the focused field";
+    } else if (name == "batch") {
+      if (const json* steps = JsonArray(args, "steps")) {
+        return Headline{"Running", "Ran",
+                        Plural(steps->size(), "browser step")};
+      }
+    }
+    return Headline{action ? action->doing : "Checking",
+                    action ? action->done : "Checked", std::move(target)};
   };
   // The call shows the live browser beside it.
   tool.present = [](const json& args) {
-    json parts = GenericInputParts(args);
+    json parts = GenericInputParts(args, {"action"});
     parts.push_back(LinkPart("browser", "", "Open browser"));
     return parts;
   };
@@ -1182,6 +1312,9 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
     }
     // A download the browser told of on the way comes first.
     const auto told = [&access](ToolResult result) {
+      if (result.body_kind == "fields" && !access.news.empty()) {
+        result.parts.push_back(FieldsPart({{"Browser update", access.news}}));
+      }
       result.output = std::exchange(access.news, "") + result.output;
       return result;
     };

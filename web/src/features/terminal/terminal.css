@@ -26,10 +26,16 @@
 .terminal-tab {
   display: flex;
   flex: none;
+  max-width: 100%;
   align-items: center;
 }
-.terminal-tab .terminal-place {
-  flex: none;
+.terminal-tab > button:first-child {
+  min-width: 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .terminal-tab:not(:hover, :focus-within) > .icon-button {
+    opacity: 0;
+  }
 }
 
 .terminal-tabpanel {
@@ -65,4 +71,14 @@
   display: flex;
   padding: var(--bar-pad);
   border-top: var(--border);
+}
+
+.conversation:has(> .terminal-dock[data-expanded]:not([hidden]))
+  > :not(.terminal-dock, .conversation-head),
+.terminal-dock[data-expanded] > .resize-handle {
+  display: none;
+}
+.terminal-dock[data-expanded] {
+  flex: 1;
+  max-height: none;
 }

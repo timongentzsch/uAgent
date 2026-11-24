@@ -7,6 +7,9 @@ import type {
 import { ApiContext, hostApi } from "../state/api.ts";
 import { useHosts } from "../state/sources.ts";
 import HostField from "../shared/host-field.tsx";
+import { ListRow } from "../shared/list-row.tsx";
+import FolderLabel from "../shared/folder-label.tsx";
+import { withoutFileAddress } from "../shared/navigation.ts";
 import FolderPicker from "../features/files/folder-picker.tsx";
 import { folderOf, projectsOf } from "../shared/display.ts";
 import { plural } from "../shared/quantities.ts";
@@ -17,6 +20,7 @@ import {
   Modal,
   Deferred,
   Actions,
+  Group,
   Button,
   EmptyState,
   Input,
@@ -145,6 +149,17 @@ export default function Modals({
   const toolsSession =
     toolsMetadata || sessionById(catalogue.sessions, toolsSessionId);
   const close = () => setModal(null);
+  const instructions = (close: () => void) => (
+    <Modal title="Instructions" size="l" layout="sheet" close={close}>
+      <Instructions
+        session={session}
+        projects={projects}
+        online={online}
+        version={managementVersion}
+        showRequest={session?.generation ? () => showContext() : undefined}
+      />
+    </Modal>
+  );
   return (
     <>
       {(modal?.type === "statistics" ||
@@ -197,6 +212,34 @@ export default function Modals({
               }}
             />
           )}
+        </Modal>
+      )}
+      {modal?.type === "file-origin" && (
+        <Modal
+          title="Choose a workspace"
+          close={close}
+          backAddress={modal.linked ? withoutFileAddress() : undefined}
+        >
+          <p>
+            <strong>{modal.path}</strong> exists in multiple workspaces.
+          </p>
+          <Group>
+            {modal.choices.map(({ cwd, origin }) => (
+              <ListRow
+                key={origin}
+                title={<FolderLabel path={cwd} />}
+                meta={cwd}
+                aria-label={cwd}
+                onClick={() => {
+                  close();
+                  modal.pick(origin);
+                }}
+              />
+            ))}
+          </Group>
+          <Actions>
+            <Button onClick={close}>Cancel</Button>
+          </Actions>
         </Modal>
       )}
       {modal?.type === "move" && (
@@ -393,17 +436,7 @@ export default function Modals({
           />
         </Modal>
       )}
-      {modal?.type === "instructions" && (
-        <Modal title="Instructions" size="l" layout="sheet" close={close}>
-          <Instructions
-            session={session}
-            projects={projects}
-            online={online}
-            version={managementVersion}
-            showRequest={session?.generation ? () => showContext() : undefined}
-          />
-        </Modal>
-      )}
+      {modal?.type === "instructions" && instructions(close)}
       {modal?.type === "settings" && (
         <Modal
           title="Settings"
@@ -422,7 +455,7 @@ export default function Modals({
             refresh={refresh}
             selected={selected}
             session={session}
-            instructions={() => setModal({ type: "instructions" })}
+            instructions={instructions}
           />
         </Modal>
       )}

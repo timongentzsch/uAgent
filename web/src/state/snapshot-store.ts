@@ -1,6 +1,6 @@
-import { useLayoutEffect, useReducer } from "preact/hooks";
 import type { Snapshot } from "../shared/types.ts";
-import { useLatest } from "../shared/use-latest.ts";
+import { valueStore } from "./value-store.ts";
+export { useStoreValue as useSnapshots } from "./value-store.ts";
 
 type Snapshots = Record<string, Snapshot>;
 
@@ -8,11 +8,9 @@ type Snapshots = Record<string, Snapshot>;
 // replaces them every frame, and only a component that reads one re-renders.
 // Handlers read the current value with get() and subscribe to nothing.
 export function snapshotStore() {
-  let value: Snapshots = {};
-  const listeners = new Set<() => void>();
   const watched = new Map<string, number>();
   return {
-    get: () => value,
+    ...valueStore<Snapshots>({}),
     watching: () => [...watched.keys()],
     watches: (id: string) => watched.has(id),
     watch(id: string) {
@@ -23,37 +21,6 @@ export function snapshotStore() {
         else watched.delete(id);
       };
     },
-    set(next: Snapshots | ((prior: Snapshots) => Snapshots)) {
-      const resolved = typeof next === "function" ? next(value) : next;
-      if (resolved === value) return;
-      value = resolved;
-      listeners.forEach((listener) => listener());
-    },
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => void listeners.delete(listener);
-    },
   };
 }
 export type SnapshotStore = ReturnType<typeof snapshotStore>;
-
-// What the caller selects from the store; it re-renders only when that
-// changes identity, so a selector returns stored objects or primitives.
-export function useSnapshots<T>(
-  store: SnapshotStore,
-  select: (snapshots: Snapshots) => T,
-): T {
-  const [, changed] = useReducer((count: number) => count + 1, 0);
-  const value = select(store.get());
-  const latest = useLatest({ select, value });
-  useLayoutEffect(() => {
-    const check = () => {
-      const { select, value } = latest.current;
-      if (!Object.is(select(store.get()), value)) changed(0);
-    };
-    // A change between this render and the subscription still counts.
-    check();
-    return store.subscribe(check);
-  }, [store]);
-  return value;
-}

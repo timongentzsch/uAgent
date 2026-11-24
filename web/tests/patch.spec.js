@@ -15,6 +15,7 @@ test("a patch shows each file it changed, and still does after a reload", async 
   await expect(transcript).toContainText("Native worker");
   const shown = async () => {
     await openRow(transcript, "Worked");
+    await openRow(transcript, "Patched 2 files");
     for (const name of ["patched-one.txt", "patched-two.txt"])
       await expect(
         transcript.locator(".node-row", { hasText: name }),

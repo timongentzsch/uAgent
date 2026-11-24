@@ -70,6 +70,9 @@ void RegisterMemoryTool(std::vector<Tool>& tools) {
     }
     return Headline{"Searching memory", "Searched memory", target};
   };
+  memory.present = [](const json& a) {
+    return GenericInputParts(a, {"action", "key", "query"});
+  };
 }
 
 }  // namespace uagent

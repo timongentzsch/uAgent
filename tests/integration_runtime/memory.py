@@ -132,7 +132,12 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
             {"role": "system", "content": "system-content-must-not-leak"},
             {"role": "user", "content": "memory-extract-user-sentinel"},
             {"role": "assistant", "content": "first answer"},
-            {"role": "user", "content": "please keep fixes concise"},
+            {
+                "role": "user",
+                "content": "Earlier context\n"
+                + "長い行\n" * 7000
+                + "passwd=excerpt-secret\nCorrection: please keep fixes concise.",
+            },
             {"role": "assistant", "content": "understood"},
         ],
         cwd=workspace,
@@ -145,10 +150,19 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
 
     def extract(_, body):
         text = json.dumps(body)
+        evidence = body["messages"][-1]["content"].split("<filtered_session>\n")[-1]
+        transcript = evidence.removesuffix("</filtered_session>")
+        rows = [json.loads(line) for line in transcript.splitlines()]
         valid = (
             not function_names(body)
             and "memory-extract-user-sentinel" in text
             and "system-content-must-not-leak" not in text
+            and "excerpt-secret" not in text
+            and len(transcript.encode()) <= 32 * 1024
+            and any(
+                row["role"] == "user" and "Correction: please keep fixes concise." in row["content"]
+                for row in rows
+            )
             and "at most one durable" in text
         )
         if not valid:
@@ -161,7 +175,8 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
         def extracted():
             markers = list((home / ".uagent/memory/.processed").rglob("*.state"))
             return target.exists() and any(
-                marker.read_text(encoding="utf-8").strip() == "done" for marker in markers
+                marker.read_text(encoding="utf-8").partition("\n")[0] == "done"
+                for marker in markers
             )
 
         code, output = run_pty(
@@ -187,19 +202,120 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
         # before it first reports a state, which is what "Ready" waits for.
         def states():
             return [
-                marker.read_text(encoding="utf-8").strip()
+                marker.read_text(encoding="utf-8").partition("\n")[0]
                 for marker in (home / ".uagent/memory/.processed").rglob("*.state")
             ]
 
         code, output = run_pty(workspace, env, b"/q\n", startup_marker=b"Ready", binary=binary)
         assert_true(code == 0 and len(server.requests) == 1 and states() == ["done"], output)
-        # Idle, and newer than its marker: the source is eligible again.
-        for marker in (home / ".uagent/memory/.processed").rglob("*.state"):
-            age(marker, IDLE_SECONDS + 60)
+        # A different idle source revision would be eligible with generation on.
+        age(session, IDLE_SECONDS + 60)
         disabled = dict(env)
         disabled["UAGENT_MEMORY_GENERATE"] = "0"
         code, output = run_pty(workspace, disabled, b"/q\n", startup_marker=b"Ready", binary=binary)
         assert_true(code == 0 and len(server.requests) == 1 and states() == ["done"], output)
+
+
+def test_memory_extraction_preserves_changed_and_unseen_notes(root, home, *, binary):
+    # Each provider reply lands after the corresponding user edit. Equal-length
+    # replacements exercise the document revision rather than just its size.
+    def exercise(scenario):
+        crowded = not scenario.startswith("index")
+        initial = {
+            "a": "a" * 20000,
+            "b": "original",
+            "c": "c" * 20000 if crowded else "A short heading\nKeep this handwritten instruction.",
+        }
+        workspace = root / scenario
+        workspace.mkdir()
+        case_home = home / scenario
+        source = write_session(
+            case_home,
+            "extract",
+            [{"role": "user", "content": "a lesson"}, {"role": "assistant", "content": "noted"}],
+            cwd=workspace,
+            turns=2,
+        )
+        age(source)
+        directory = project_memory_dir(case_home, workspace)
+        directory.mkdir(parents=True)
+        expected = dict(initial)
+        for key, body in initial.items():
+            (directory / f"{key}.md").write_text(body)
+
+        def answer(_, request):
+            evidence = request["messages"][-1]["content"]
+            blocks = evidence.split("</memories>\n", 1)[1].split("<filtered_session>", 1)[0]
+            assert len(blocks.encode()) <= 32 * 1024
+            if crowded:
+                assert '<memory key="project/a">\n' + initial["a"] + "\n</memory>" in blocks
+                assert (
+                    '<memory key="project/b">' in blocks
+                    and '<memory key="project/c">' not in blocks
+                )
+            else:
+                assert not blocks and "handwritten instruction" not in evidence
+            assert "project/c" in evidence
+            target, merge = "b", ""
+            if scenario == "index-partial":
+                target = "c"
+            if scenario == "index-complete":
+                expected[target] = "merged lesson"
+            if scenario in ("edited", "merge-edited"):
+                expected["b"] = "new text"
+                (directory / "b.md").write_text(expected["b"])
+            if scenario == "deleted":
+                del expected["b"]
+                (directory / "b.md").unlink()
+            if scenario == "created":
+                target = "new"
+                expected[target] = "written by user"
+                (directory / "new.md").write_text(expected[target])
+            if scenario.startswith("merge"):
+                target = "new"
+                merge = "merge: project/" + ("c" if scenario == "merge-unseen" else "b") + "\n"
+            if scenario == "merge":
+                del expected["b"]
+                expected[target] = "merged lesson"
+            return event({"content": f"key: project/{target}\n{merge}merged lesson"})
+
+        with Server([answer]) as server:
+            env = base_env(case_home, server.url)
+            env.update(UAGENT_MEMORY_MAX="3" if crowded else "8", UAGENT_MEMORY_BYTES="32768")
+            markers = case_home / ".uagent/memory/.processed"
+            code, output = run_pty(
+                workspace,
+                env,
+                b"/q\n",
+                binary=binary,
+                before_payload=lambda: wait_until(
+                    lambda: any(
+                        m.read_text().partition("\n")[0] == "done" for m in markers.rglob("*.state")
+                    ),
+                    f"{scenario} did not settle",
+                ),
+            )
+            assert_true(code == 0 and len(server.requests) == 1, output)
+        assert_true({p.stem: p.read_text() for p in directory.glob("*.md")} == expected, scenario)
+        if scenario == "merge":
+            events = [
+                json.loads(line)
+                for line in (directory.parents[1] / "events.jsonl").read_text().splitlines()
+            ]
+            removed = next(evt for evt in events if evt["action"] == "deleted")
+            assert_true(removed["automatic"] and removed["source_session"], removed)
+
+    for scenario in (
+        "edited",
+        "deleted",
+        "created",
+        "index-partial",
+        "index-complete",
+        "merge-edited",
+        "merge-unseen",
+        "merge",
+    ):
+        exercise(scenario)
 
 
 def test_memory_off_conversations_are_never_extracted(root, home, *, binary):
@@ -262,7 +378,7 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
         def wait_for_done():
             wait_until(
                 lambda: any(
-                    marker.read_text(encoding="utf-8").strip() == "done"
+                    marker.read_text(encoding="utf-8").partition("\n")[0] == "done"
                     for marker in markers(no_write_home)
                 ),
                 "successful no-write extraction did not finish",
@@ -439,3 +555,94 @@ def test_memory_index_goes_where_the_tool_goes(root, home, *, binary):
     assert_true(seen.get("parent") is True, seen)
     assert_true(seen.get("child") == (False, False), seen)
     assert_true("memory context truncated" not in result.stderr, result.stderr)
+
+
+def test_extraction_only_commits_the_current_source_revision(root, home, *, binary):
+    source = write_session(
+        home, "source", [{"role": "user", "content": "initial evidence"}], cwd=root, turns=2
+    )
+    age(source)
+    processed = home / ".uagent/memory/.processed"
+    notes = project_memory_dir(home, root)
+
+    def replace_source(content, enabled=True):
+        # A real save replaces the inode. Keep the old timestamp to exercise
+        # both an in-flight change and a completed marker for another revision.
+        stamp = source.stat().st_mtime_ns
+        staged = write_session(
+            home,
+            "staged",
+            [{"role": "user", "content": content}],
+            cwd=root,
+            turns=2,
+            memory=enabled,
+        )
+        os.utime(staged, ns=(stamp, stamp))
+        staged.replace(source)
+
+    def changed(_, body):
+        assert_true("initial evidence" in json.dumps(body), body)
+        replace_source("revised evidence")
+        return event({"content": "key: project/stale\nStale advice."})
+
+    def current(_, body):
+        assert_true("revised evidence" in json.dumps(body), body)
+        return event({"content": "key: project/current\nCurrent advice."})
+
+    def now_private(_, body):
+        assert_true("replacement evidence" in json.dumps(body), body)
+        replace_source("private evidence", enabled=False)
+        return event({"content": "key: project/private\nPrivate advice."})
+
+    with Server([changed, current, now_private]) as server:
+        env = base_env(home, server.url)
+
+        def start(expected, settled):
+            def wait():
+                wait_until(
+                    lambda: len(server.requests) == expected and settled(), "extraction failed"
+                )
+
+            code, output = run_pty(root, env, b"/q\n", before_payload=wait, binary=binary)
+            assert_true(code == 0, output)
+
+        start(1, lambda: not list(processed.rglob("*.state")))
+        assert_true(not (notes / "stale.md").exists(), "outdated reply was saved")
+        start(2, lambda: (notes / "current.md").exists())
+        (marker,) = processed.rglob("*.state")
+        stamped = marker.read_bytes()
+        marker.write_text("done\n")
+        code, output = run_pty(root, env, b"/q\n", startup_marker=b"Ready", binary=binary)
+        assert_true(code == 0 and len(server.requests) == 2, output)
+        marker.write_bytes(stamped)
+        replace_source("replacement evidence")
+        start(3, lambda: not list(processed.rglob("*.state")))
+        assert_true(not (notes / "private.md").exists(), "opted-out reply was saved")
+        code, output = run_pty(root, env, b"/q\n", startup_marker=b"Ready", binary=binary)
+        assert_true(code == 0 and len(server.requests) == 3, output)
+
+
+def test_memory_off_survives_resume_and_future_extraction(root, home, *, binary):
+    # Include a previously eligible conversation resumed with --no-memory.
+    for name, off_at in (("private-first", 0), ("private-later", 1)):
+        workspace = root / name
+        workspace.mkdir()
+        with Server([lambda *_: event({"content": "noted"})]) as server:
+            env = base_env(home, server.url)
+            for index in range(3):
+                flags = ["-c"] if index else []
+                if index == off_at:
+                    flags.append("--no-memory")
+                result = run(workspace, env, *flags, "-p", f"turn {index}", binary=binary)
+                assert_true(result.returncode == 0, result.stderr)
+            sessions = [
+                path
+                for path in (home / ".uagent/history").glob("*.json")
+                if json.loads(path.read_text().splitlines()[0])["cwd"] == str(workspace.resolve())
+            ]
+            assert_true(len(sessions) == 1, sessions)
+            header = json.loads(sessions[0].read_text().splitlines()[0])
+            assert_true(header.get("memory") is False and header["turns"] == 3, header)
+            age(sessions[0])
+            code, output = run_pty(workspace, env, b"/q\n", startup_marker=b"Ready", binary=binary)
+            assert_true(code == 0 and len(server.requests) == 3, output)

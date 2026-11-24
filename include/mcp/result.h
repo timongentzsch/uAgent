@@ -68,9 +68,23 @@ inline ToolResult McpResultText(const McpServer& s, const json& resp,
       }
     }
   }
+  json parts = nullptr;
   if (r.contains("structuredContent")) {
+    const json& structured = r["structuredContent"];
+    const std::string encoded = JsonDump(structured);
+    // MCP servers can also echo structuredContent in a text block. Display
+    // the typed result once, while retaining both representations below.
+    if (text.size() + encoded.size() <= kPreviewChars) {
+      parts = GenericInputParts(structured);
+      if (!parts.empty() && !text.empty()) {
+        const json echo = json::parse(text, nullptr, false);
+        if (echo.is_discarded() || echo != structured) {
+          parts.insert(parts.begin(), CodePart(text, "", ""));
+        }
+      }
+    }
     if (!text.empty()) text += '\n';
-    text += "[mcp structuredContent]\n" + JsonDump(r["structuredContent"]);
+    text += "[mcp structuredContent]\n" + encoded;
   }
   bool is_error = r.contains("isError") && r["isError"].is_boolean() &&
                   r["isError"].get<bool>();
@@ -86,6 +100,10 @@ inline ToolResult McpResultText(const McpServer& s, const json& resp,
       : local_error != ToolErrorCode::kNone
           ? ToolFailure(local_error, std::move(text))
           : ToolSuccess(std::move(text));
+  if (result.Ok() && parts.is_array() && !parts.empty()) {
+    result.parts = std::move(parts);
+    result.body_kind = "fields";
+  }
   result.hint = std::move(hint);
   return result;
 }

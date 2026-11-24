@@ -563,8 +563,8 @@ json Runtime::Awaited(const std::string& session, const std::string& promise,
        {"awaitPromise", true},
        {"returnByValue", true}},
       session);
-  const json* value = RemoteValue(reply);
-  return value ? *value : json();
+  const json* remote = RemoteObject(reply);
+  return remote ? JsonValue(*remote, "value", json()) : json();
 }
 
 json Runtime::Capture(const json& command) {
@@ -588,16 +588,81 @@ json Runtime::Capture(const json& command) {
 }
 
 namespace {
-// What the page states once drawn (web/public/design-helper.js): its
-// artboard, whether this window is that, and its parts. A deck's page states
-// nothing: its slides are its frames.
+// The Files helper resolves this after fonts, bound values and layout settle.
 constexpr char kDrawn[] =
     "document.fonts.ready.then(() => window.uagentReady).then(() => "
-    "window.uagentChecked).then((said) => said ? {...said, tall: "
-    "document.documentElement.scrollHeight} : {frames: "
-    "[...document.querySelectorAll('iframe')].map((frame) => { const box = "
-    "frame.getBoundingClientRect(); return [box.left + scrollX, box.top + "
-    "scrollY, box.width, box.height]; })})";
+    "window.uagentChecked).then(s => s && ({...s, tall: "
+    "document.documentElement.scrollHeight}))";
+
+// The host's deck manifest is inert. Only the selected frames load. They
+// stay at their own artboard sizes, scaled on the outside for the overview.
+// Each opaque frame already reports its title, problems and completion to
+// Files; match those same messages to the frame that sent them.
+constexpr char kReviewDeck[] = R"js((async (first, last) => {
+  const frames = document.querySelector('template#slides')?.content.children;
+  if (!frames) return {error: 'The host did not return the deck manifest.'};
+  const parts = frames.length;
+  if (!parts) return {parts};
+  if (first > parts) return {error: 'part ' + first + ' is past the last, ' + parts};
+  const selected = Array.from(frames).slice(first - 1, last);
+  const overview = selected.length > 1;
+  const gallery = document.body;
+  gallery.style.cssText = 'display:grid;width:max-content;background:#fff;color:#202124;font:18px system-ui';
+  if (overview) {
+    gallery.style.gridTemplateColumns = 'repeat(2,720px)';
+    gallery.style.gap = '12px';
+  }
+  const slides = [];
+  const waiting = new Map();
+  let finish;
+  const checked = new Promise(resolve => { finish = resolve; });
+  function report(event) {
+    const item = waiting.get(event.source);
+    const data = event.data;
+    if (!item || data?.uagentDesign !== 1) return;
+    if (data.type === 'ready' && typeof data.title === 'string' && data.title) {
+      item.slide.title = data.title.slice(0,160);
+      item.label.textContent = item.number + ' · ' + item.slide.title;
+    }
+    if ((data.type === 'error' || data.type === 'issue') && typeof data.message === 'string' && item.slide.problems.length < 8)
+      item.slide.problems.push(data.message.slice(0,300));
+    if (data.type === 'checked') {
+      waiting.delete(event.source);
+      if (!waiting.size) finish();
+    }
+  }
+  addEventListener('message', report);
+  for (const [index, frame] of selected.entries()) {
+    const number = first + index;
+    const title = decodeURIComponent(frame.getAttribute('src'));
+    const slide = {file: title, title, problems: []};
+    slides.push(slide);
+    const tile = document.createElement('div');
+    const label = document.createElement('div');
+    label.textContent = number + ' · ' + title;
+    label.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:30px';
+    const box = document.createElement('div');
+    box.style.cssText = 'position:relative;overflow:hidden';
+    gallery.append(tile);
+    if (overview) tile.append(label);
+    tile.append(box);
+    box.append(frame);
+    const w = frame.offsetWidth, h = frame.offsetHeight;
+    const scale = overview ? Math.min(720/w, 405/h, 1) : 1;
+    box.style.width = Math.ceil(w*scale) + 'px';
+    box.style.height = Math.ceil(h*scale) + 'px';
+    frame.style.transformOrigin = 'top left';
+    frame.style.transform = 'scale(' + scale + ')';
+    waiting.set(frame.contentWindow, {slide, label, number});
+  }
+  const timeout = setTimeout(finish, 7000);
+  await checked;
+  clearTimeout(timeout);
+  removeEventListener('message', report);
+  for (const {slide} of waiting.values()) slide.problems.push('Layout check did not finish.');
+  return {parts, slides, w:gallery.offsetWidth, h:gallery.offsetHeight};
+}))js";
+
 }  // namespace
 
 json Runtime::Look(const json& command) {
@@ -614,81 +679,134 @@ json Runtime::Look(const json& command) {
             {"mobile", false}},
            session);
     };
-    json drawn = Awaited(session, kDrawn, kCdpIoMs);
-    if (!JsonValue(drawn, "fits", true)) {
-      // Laid out from the start in the window its artboard asks for.
-      size(JsonValue(drawn, "w", 1.0), JsonValue(drawn, "h", 1.0));
-      Call("Page.navigate", {{"url", JsonValue(command, "url", "")}}, session);
-      drawn = Awaited(session, kDrawn, kCdpIoMs);
-    }
-    const json* frames = JsonArray(drawn, "frames");
-    const double high = JsonValue(drawn, "h", 1.0);
-    const double length = std::min(JsonValue(drawn, "tall", 0.0), kMost);
-    const int stated = std::max(JsonValue(drawn, "parts", 1), 1);
-    // A page of one part that scrolls is cut into windows of its height.
-    const int windows =
-        frames || stated > 1 ? 1 : static_cast<int>(std::ceil(length / high));
-    const int parts =
-        frames ? static_cast<int>(frames->size()) : std::max(stated, windows);
-    if (first > parts) {
-      return {{"error", "part " + std::to_string(first) +
-                            " is past the last, " + std::to_string(parts)}};
-    }
     json pictures = json::array();
-    for (int part = first; part <= std::min(last, parts); ++part) {
-      double box[4] = {0, 0, JsonValue(drawn, "w", 1.0), high};
-      if (frames) {
-        const json& frame = (*frames)[static_cast<size_t>(part - 1)];
-        for (size_t at = 0; at < 4; ++at) {
-          box[at] =
-              frame.is_array() && frame.size() == 4 && frame[at].is_number()
-                  ? frame[at].get<double>()
-                  : 0;
-        }
-      } else if (windows > 1) {
-        box[1] = (part - 1) * high;
-        box[3] = std::min(high, length - box[1]);
-      } else {
-        // A part that scrolls is drawn whole, as tall as the pane shows it.
-        json tall = JsonValue(drawn, "tall", json());
-        if (parts > 1) {
-          tall = Awaited(session,
-                         "new Promise((done) => { addEventListener("
-                         "'hashchange', () => done(document.documentElement."
-                         "scrollHeight), {once: true}); location.hash = '" +
-                             std::to_string(part) + "'; })",
-                         kCheckedMs);
-        }
-        box[3] = std::max(
-            box[3], std::min(tall.is_number() ? tall.get<double>() : 0, kMost));
-      }
-      const double w = std::clamp(box[2], 1.0, kMost);
-      const double h = std::clamp(box[3], 1.0, kMost);
-      // The window is the part: a frame out of view is not drawn.
-      size(w, windows > 1 ? high : h);
-      if (frames || windows > 1) {
-        Awaited(session, "scrollTo(0, " + std::to_string(box[1]) + ")",
-                kCheckedMs);
-      }
+    const auto capture = [&](double x, double y, double w, double h) {
       const json shot =
           Call("Page.captureScreenshot",
                {{"format", "jpeg"},
-                {"quality", 70},
+                {"quality", 80},
+                {"captureBeyondViewport", true},
                 {"clip",
-                 {{"x", box[0]},
-                  {"y", box[1]},
+                 {{"x", x},
+                  {"y", y},
                   {"width", w},
                   {"height", h},
                   {"scale", std::min(1.0, kEdge / std::max(w, h))}}}},
                session);
       const json* result = JsonObject(shot, "result");
       const std::string data = result ? JsonValue(*result, "data", "") : "";
-      if (data.empty()) {
-        return {{"error", "Chrome drew no picture: " + CdError(shot)}};
-      }
+      if (data.empty()) return "Chrome drew no picture: " + CdError(shot);
       pictures.push_back(data);
+      return std::string();
+    };
+    if (JsonValue(command, "deck", false)) {
+      const std::string script = std::string(kReviewDeck) + "(" +
+                                 std::to_string(first) + "," +
+                                 std::to_string(last) + ")";
+      json deck = Awaited(session, script, kCdpIoMs - 500);
+      if (deck.contains("error")) return deck;
+      if (JsonValue(deck, "parts", -1) == 0) {
+        return {{"error",
+                 "No slides to review in this folder. Save a slide "
+                 "HTML file here or observe an existing slide by its path."}};
+      }
+      if (!JsonArray(deck, "slides")) {
+        return {{"error", "The deck did not finish loading."}};
+      }
+      const double w = JsonValue(deck, "w", 1.0), h = JsonValue(deck, "h", 1.0);
+      size(w, h);
+      // Resizing exposes previously off-screen, separately composited frames.
+      // Their layer surfaces must be painted before Chrome captures the sheet.
+      Awaited(session,
+              "new Promise(done => { requestAnimationFrame(() => "
+              "requestAnimationFrame(done)); setTimeout(done, 300); })",
+              kCheckedMs);
+      if (const auto error = capture(0, 0, w, h); !error.empty()) {
+        return {{"error", error}};
+      }
+      return {{"ok", true},
+              {"pictures", std::move(pictures)},
+              {"parts", deck["parts"]},
+              {"slides", std::move(deck["slides"])}};
     }
-    return {{"ok", true}, {"pictures", std::move(pictures)}, {"parts", parts}};
+    json drawn = Awaited(session, kDrawn, kCdpIoMs - 500);
+    if (!JsonValue(drawn, "fits", true)) {
+      // Laid out from the start in the window its artboard asks for.
+      size(JsonValue(drawn, "w", 1.0), JsonValue(drawn, "h", 1.0));
+      Call("Page.navigate", {{"url", JsonValue(command, "url", "")}}, session);
+      drawn = Awaited(session, kDrawn, kCdpIoMs);
+    }
+    if (!drawn.is_object()) {
+      return {{"error", "The artifact did not finish loading."}};
+    }
+    const double width = std::clamp(JsonValue(drawn, "w", 1.0), 1.0, kMost);
+    const double high = std::clamp(JsonValue(drawn, "h", 1.0), 1.0, kMost);
+    const double length = std::min(JsonValue(drawn, "tall", 0.0), kMost);
+    const int stated = std::max(JsonValue(drawn, "parts", 1), 1);
+    const int windows =
+        stated > 1 ? 1 : static_cast<int>(std::ceil(length / high));
+    const int parts = std::max(stated, windows);
+    if (first > parts) {
+      return {{"error", "part " + std::to_string(first) +
+                            " is past the last, " + std::to_string(parts)}};
+    }
+    const std::string selector = JsonValue(command, "selector", "");
+    for (int part = first; part <= std::min(last, parts); ++part) {
+      double x = 0, y = 0, w = width, h = high;
+      if (windows > 1) {
+        y = (part - 1) * high;
+        h = std::min(high, length - y);
+        Awaited(session, "scrollTo(0, " + std::to_string(y) + ")", kCheckedMs);
+      } else if (parts > 1) {
+        json tall = Awaited(session,
+                            "new Promise((done) => { const next = '#" +
+                                std::to_string(part) +
+                                "'; if (location.hash === next) return "
+                                "done(document.documentElement.scrollHeight); "
+                                "addEventListener('hashchange', () => "
+                                "done(document.documentElement.scrollHeight), "
+                                "{once:true}); location.hash = next; })",
+                            kCheckedMs);
+        if (tall.is_number()) {
+          h = std::max(high, std::min(tall.get<double>(), kMost));
+        }
+      } else {
+        h = std::max(high, length);
+      }
+      if (!selector.empty()) {
+        const json reply = Call(
+            "Runtime.evaluate",
+            {{"expression",
+              "(() => { const el=document.querySelector(" + JsonDump(selector) +
+                  "); if (!el) return null; const "
+                  "r=el.getBoundingClientRect(); "
+                  "return "
+                  "{x:r.left+scrollX,y:r.top+scrollY,w:r.width,h:r.height}; "
+                  "})()"},
+             {"returnByValue", true}},
+            session);
+        const json* box = RemoteValue(reply);
+        if (!box || JsonValue(*box, "w", 0.0) <= 0 ||
+            JsonValue(*box, "h", 0.0) <= 0) {
+          return {
+              {"error", "The selector does not identify a visible element."}};
+        }
+        x = JsonValue(*box, "x", 0.0);
+        y = JsonValue(*box, "y", 0.0);
+        w = std::min(JsonValue(*box, "w", 0.0), kMost);
+        h = std::min(JsonValue(*box, "h", 0.0), kMost);
+      }
+      if (selector.empty()) size(w, windows > 1 ? high : h);
+      if (const std::string error = capture(x, y, w, h); !error.empty()) {
+        return {{"error", error}};
+      }
+    }
+    json result = {
+        {"ok", true}, {"pictures", std::move(pictures)}, {"parts", parts}};
+    if (drawn.contains("problems")) {
+      result["problems"] = std::move(drawn["problems"]);
+    }
+    return result;
   });
 }
 

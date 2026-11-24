@@ -16,6 +16,7 @@
 #include "include/core/fs.h"
 #include "include/core/sandbox_watch.h"
 #include "include/core/workspace.h"
+#include "include/tools/registry.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -317,7 +318,20 @@ TEST_CASE(TestSandboxFollowsApprovalMode) {
     CHECK(!SandboxWritable(planning.policy, CanonicalCwd() + "/notes.txt"));
     CHECK(planning.policy.unreadable == asked.policy.unreadable);
     CHECK(&SandboxRuntime() == &planning);
+    ActivitySupervisor supervisor;
+    const std::vector<Tool> tools = BuiltinTools(supervisor);
+    const Tool* run = FindTool(tools, "run");
+    REQUIRE(run);
+    const json command = {{"command", "pwd"}};
+    CHECK(RequiredApproval(*run, command) == ApprovalClass::kNone);
+    CHECK(RequiredApproval(*run, {{"command", "pwd"}, {"sandbox", false}}) ==
+          ApprovalClass::kMandatoryHuman);
+    SetApprovalMode(ApprovalMode::kAsk);
+    CHECK(RequiredApproval(*run, command) ==
+          ApprovalClass::kYoloEligibleMutation);
     SetApprovalMode(ApprovalMode::kAuto);
+    CHECK(RequiredApproval(*run, command) ==
+          ApprovalClass::kYoloEligibleMutation);
     CHECK(&SandboxRuntime() == &asked);
     CHECK(SandboxDiagnosticJson()["level"] == "default");
     CHECK(!WithinWorkArea(home + "/Documents/notes.txt", "/nonexistent/ws"));

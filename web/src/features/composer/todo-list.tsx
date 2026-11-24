@@ -6,6 +6,7 @@ export default function TodoList({ items }: { items?: TodoItem[] }) {
   if (!items?.length) return null;
   const done = items.filter((item) => item.status === "done").length;
   const current = items.findIndex((item) => item.status !== "done");
+  if (current === -1) return null;
   return (
     <section class="todo-list" aria-label="To-dos">
       <div class="todo-heading">

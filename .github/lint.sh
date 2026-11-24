@@ -2,9 +2,9 @@
 # The checks CI runs on every change that need no build.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-uvx --from clang-format==22.1.8 clang-format --dry-run --Werror \
-  include/*/*.h src/*.cc src/*/*.cc \
-  tests/unit/*.h tests/unit/*.cc tests/fuzz/*.cc benchmarks/*.cc
+find include src tests benchmarks -path tests/fixtures -prune -o \
+  -type f \( -name '*.h' -o -name '*.cc' \) \
+  -exec uvx --from clang-format==22.1.8 clang-format --dry-run --Werror {} +
 uvx --from cpplint==2.0.2 cpplint --quiet \
   --recursive --exclude=third_party --exclude=tests/fixtures \
   --extensions=h,cc \

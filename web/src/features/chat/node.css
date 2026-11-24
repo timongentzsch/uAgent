@@ -12,7 +12,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: var(--space-3);
+  gap: var(--gap);
   width: 100%;
   min-width: 0;
   min-height: var(--row);
@@ -53,20 +53,38 @@ div.node-row > .row-chevron {
   min-width: 0;
 }
 .node-open {
-  margin-left: var(--space-4);
+  margin-inline-start: var(--space-4);
 }
 .node-body,
 .node-kids {
-  padding-left: var(--space-4);
+  padding-inline-start: var(--space-4);
 }
 .node-kids {
-  border-left: var(--border);
+  border-inline-start: var(--border);
+}
+.node[data-kind="call"] > .node-open {
+  border-inline-start: var(--border);
+}
+/* The rail starts half an indent in; the text lines up with the heading
+   after its chevron and gap. */
+.node[data-kind="call"] > .node-open > .node-body {
+  padding-inline-start: calc(var(--icon) + var(--gap) - var(--space-4));
+}
+.node-section,
+.node-agent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.node-section > .node-action,
+.node-agent > .message-expand {
+  justify-self: start;
 }
 .node-body:empty {
   display: none;
 }
 .node-text,
-.node-body > .diff {
+.node-section > .diff {
   margin: 0;
   padding: var(--space-2) var(--pad);
   border: var(--border);
@@ -75,7 +93,7 @@ div.node-row > .row-chevron {
   overflow: auto;
   overscroll-behavior: contain;
 }
-.node-body > .diff {
+.node-section > .diff {
   padding-inline: 0;
 }
 .node-tail {
@@ -119,12 +137,13 @@ div.node-row > .row-chevron {
 }
 .node-fields {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-columns: fit-content(42%) minmax(0, 1fr);
   gap: var(--space-1) var(--space-4);
   margin: 0;
   font-size: var(--font-small);
 }
 .node-fields dt {
+  overflow-wrap: anywhere;
   color: var(--muted);
 }
 .node-fields dd {
@@ -141,6 +160,21 @@ div.node-row > .row-chevron {
   min-height: 0;
   padding: 0;
   text-decoration: underline;
+}
+@media (pointer: coarse) {
+  .node-actions > .node-action {
+    min-height: var(--touch);
+  }
+}
+.node-source {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+  overflow-wrap: anywhere;
+}
+.node-source p {
+  margin: 0;
+  white-space: pre-wrap;
 }
 .node-file {
   display: grid;

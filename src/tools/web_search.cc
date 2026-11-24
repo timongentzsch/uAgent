@@ -163,15 +163,30 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           return ToolTimedOut("error: search deadline reached");
         }
         if (!response.content.empty()) {
-          std::string evidence = CitationEvidence(response.annotations);
-          std::string output = std::move(response.content);
-          if (!evidence.empty()) output += "\n\nSource evidence:\n" + evidence;
-          ToolResult answer = ToolSuccess(std::move(output));
+          auto sources = CitationEntries(response.annotations);
+          ToolResult answer = ToolSuccess(std::move(response.content));
           answer.body_kind = "markdown";
+          if (!sources.empty()) {
+            answer.body_kind = "link";
+            answer.parts.push_back(
+                {{"kind", "markdown"},
+                 {"text", Utf8Trunc(answer.output.substr(0, kPreviewChars + 1),
+                                    kPreviewChars)}});
+            for (const auto& source : sources) {
+              answer.parts.push_back(
+                  SourcePart(source.url, source.title, source.content));
+            }
+            answer.output +=
+                "\n\nSource evidence:\n" + CitationEvidence(sources);
+            answer.facts.items = static_cast<int64_t>(sources.size());
+            answer.facts.unit = "source";
+          }
           answer.hint =
               "[web search result; refetch only if verification is "
               "necessary]";
           if (response.stop_cause == ResponseStopCause::kLength) {
+            answer.parts.push_back(
+                FieldsPart({{"Answer", "Partial · token limit reached"}}));
             AddHint(answer, "[truncated; narrow the query]");
           }
           return answer;

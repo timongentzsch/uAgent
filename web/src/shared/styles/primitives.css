@@ -695,8 +695,7 @@
     font-weight: var(--weight-regular);
   }
   /* A state as a square, told apart by its fill: outlined (idle), solid
-     (connected, unread), or at work the status line band's texture,
-     standing still; failed is the solid square turned on its point. */
+     (connected, unread), a short bar (running), or a diamond (failed). */
   .status-led {
     display: inline-block;
     flex: none;
@@ -711,10 +710,9 @@
     border-color: var(--live);
   }
   .status-led.running {
+    height: var(--space-2);
     border: 0;
-    background:
-      repeating-conic-gradient(currentColor 0 25%, transparent 0 50%) 0 0 /
-      var(--space-2) var(--space-2);
+    background: currentColor;
   }
   .status-led.unread {
     margin-left: var(--space-4);

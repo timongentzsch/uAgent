@@ -35,15 +35,11 @@ jobs:
           # The trap cache crowds the compiler caches out of the cache quota.
           trap-caching: false
       - uses: ./.github/actions/native-setup
-      # CodeQL reads the compiler invocations, so an unoptimised build is
-      # enough, and one page stands in for the web UI the host embeds.
+      # Analyze the native host without building the browser bundle.
       - name: Configure
-        run: |
-          mkdir -p web/dist
-          echo '<!doctype html>' > web/dist/index.html
-          echo index.html > web/dist/.assets
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=OFF \
-            -DUAGENT_WARNINGS_AS_ERRORS=ON
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=OFF
+          -DUAGENT_EMBED_WEB=OFF -DUAGENT_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build --parallel 4
       - name: Analyze

@@ -1,4 +1,10 @@
-import { connected, test, expect, withoutServiceWorker } from "./fixtures.js";
+import {
+  connected,
+  headerAction,
+  test,
+  expect,
+  withoutServiceWorker,
+} from "./fixtures.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 
@@ -66,6 +72,95 @@ const LOADED_ROWS = ".library-row:not(.placeholder *)";
     });
   }
 }
+
+test("an unavailable SSH workspace leaves local artifacts usable", async ({
+  page,
+  session,
+}) => {
+  const path = "/review/deck";
+  const peer = {
+    path,
+    key: `ssh:peer:${path}`,
+    host: "peer",
+    session: "remote",
+    name: "peer · deck",
+  };
+  const other = {
+    ...peer,
+    key: "ssh:other:/review/deck",
+    host: "other",
+    session: "other",
+    name: "other · deck",
+  };
+  const local = { path, session: session.id, name: "deck" };
+  const item = {
+    kind: "deck",
+    key: path + "/slides",
+    path: "slides",
+    count: 2,
+    name: "Slides",
+    place: path,
+  };
+  await page.route("**/api/library", (route) =>
+    route.fulfill({
+      json: {
+        places: [local, peer, other],
+        items: [item],
+        limits: {},
+      },
+    }),
+  );
+  const gate = Promise.withResolvers();
+  let otherReads = 0;
+  await page.route("**/api/library?session=other", (route) => {
+    otherReads++;
+    return route.fulfill({ json: { items: [] } });
+  });
+  let reads = 0;
+  await page.route("**/api/library?session=remote", async (route) => {
+    reads++;
+    if (reads === 1) {
+      await gate.promise;
+      await route.fulfill({ status: 503, json: { error: "Disconnected" } });
+    } else
+      await route.fulfill({
+        json: { items: [{ ...item, place: peer.key, session: peer.session }] },
+      });
+  });
+  await page.goto(`/#session=${session.id}`);
+  await page
+    .getByRole("complementary")
+    .getByRole("button", { name: "Library", exact: true })
+    .click();
+  try {
+    await expect(
+      page
+        .getByRole("region", { name: "deck", exact: true })
+        .getByText("Slides", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("status", { name: "Loading remote artifacts…" }),
+    ).toBeVisible();
+  } finally {
+    gate.resolve();
+  }
+  await expect(page.getByRole("alert")).toContainText(
+    "peer · deck · Disconnected",
+  );
+  await page.getByRole("button", { name: "Retry" }).click();
+  const remoteGroup = page.getByRole("region", {
+    name: "peer · deck",
+    exact: true,
+  });
+  await expect(remoteGroup.getByText("Slides", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "deck", exact: true })
+      .getByText("Slides", { exact: true }),
+  ).toBeVisible();
+  expect(reads).toBe(2);
+  expect(otherReads).toBe(1);
+});
 
 test("the Library lists every place's things, opens them beside and moves a memory", async ({
   page,
@@ -159,18 +254,36 @@ test("the Library lists every place's things, opens them beside and moves a memo
   await expect(page.locator(LOADED_ROWS)).toHaveCount(1);
   await page.locator(LOADED_ROWS).filter({ hasText: "design/landing" }).click();
   await expect(page.locator(".library-pages iframe")).toHaveCount(1);
-  await page.getByRole("button", { name: "Open canvas", exact: true }).click();
-  // A design of one page opens as that page.
+  await expect(
+    page.getByRole("button", { name: "Open canvas", exact: true }),
+  ).toBeVisible();
+  await page
+    .locator(".library-pages")
+    .getByRole("button", { name: /Open design\/landing\// })
+    .press("Enter");
+  // A thumbnail opens its own page.
   await expect(
     page.frameLocator('iframe[title="Hero"]').getByText("hi"),
   ).toBeVisible();
 
   await nav.getByRole("button", { name: "Library", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Filter library" }).click();
   const place = page.getByLabel("Place", { exact: true });
   await expect(place).toBeVisible();
   await place.selectOption({ label: basename(second) });
-  await page.getByRole("button", { name: /^Everything/ }).click();
+  await page.getByLabel("Kind", { exact: true }).selectOption("");
+  await page.keyboard.press("Escape");
+  const select = page.getByRole("button", { name: "Select", exact: true });
+  await select.press("Enter");
+  const item = page.getByRole("checkbox", { name: "Select browser-lesson" });
+  await expect(item).toBeFocused();
+  await item.press("Space");
+  await expect(page.getByRole("toolbar", { name: "Selection" })).toContainText(
+    "1 selected",
+  );
+  await page.getByRole("button", { name: "Done", exact: true }).press("Enter");
+  await expect(select).toBeFocused();
   await page.locator(LOADED_ROWS).filter({ hasText: "browser-lesson" }).click();
   await expect(
     page.getByRole("heading", { name: "Durable lesson" }),
@@ -195,7 +308,10 @@ test("scheduled tasks run, report and pause", async ({
   await expect(connected(page)).toBeVisible();
   const nav = page.getByRole("complementary");
   await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
-  await page.getByRole("button", { name: "New task", exact: true }).click();
+  await page
+    .getByRole("button", { name: "New task", exact: true })
+    .press("Enter");
+  await expect(page.getByLabel("Name", { exact: true })).toBeFocused();
   await page
     .getByLabel("Name", { exact: true })
     .fill("Browser scheduled review");
@@ -206,6 +322,7 @@ test("scheduled tasks run, report and pause", async ({
     .fill("Review the workspace");
   await page.getByLabel("Environment", { exact: true }).selectOption("local");
   await page.getByLabel("Approval", { exact: true }).selectOption("yolo");
+  await page.getByText("Run options", { exact: true }).click();
   await page.getByRole("button", { name: "Task model", exact: true }).click();
   await page.getByLabel("Model", { exact: true }).fill("model-b");
   await page.getByRole("option").filter({ hasText: "mock/model-b" }).click();
@@ -227,7 +344,9 @@ test("scheduled tasks run, report and pause", async ({
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
   await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
+  await page.getByRole("button", { name: "Edit task" }).click();
   // A check that finds nothing records the run without asking a model.
+  await page.getByText("Run options", { exact: true }).click();
   await page.getByLabel("Check · optional", { exact: true }).fill("exit 1");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(
@@ -243,6 +362,10 @@ test("scheduled tasks run, report and pause", async ({
     page.locator(LOADED_ROWS).filter({ hasText: "Browser scheduled review" }),
   ).toContainText("Paused");
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Edit task" }).click();
+  await expect(
+    page.getByRole("button", { name: "Save", exact: true }),
+  ).toBeInViewport({ ratio: 1 });
   await expect(
     page.getByText("Calculating upcoming runs…", { exact: true }),
   ).not.toBeVisible();
@@ -291,5 +414,26 @@ test("a skill kept by Claude Code is imported from the Library", async ({
       .getByRole("region", { name: "Everywhere", exact: true })
       .locator(LOADED_ROWS)
       .filter({ hasText: /demo.*skill · Demo skill/ }),
+  ).toBeVisible();
+});
+
+test("folder instructions return to their Settings scope and opener", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  await headerAction(page, "Settings");
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await settings.getByRole("button", { name: /This folder/ }).click();
+  const opener = settings.getByRole("button", { name: /Folder instructions/ });
+  await opener.click();
+  await expect(
+    page.getByRole("dialog", { name: "Instructions", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(opener).toBeFocused();
+  await expect(
+    settings.getByRole("heading", { name: "This folder" }),
   ).toBeVisible();
 });

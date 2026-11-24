@@ -1,5 +1,5 @@
 import { nextFence } from "./markdown-split.ts";
-import type { Draft, Node } from "./types.ts";
+import type { Draft, LinkPart, Node } from "./types.ts";
 
 // What a message of yours shows until the host's own row replaces it.
 export const outgoingStatus = {
@@ -64,15 +64,144 @@ export const recallable = (
   !!node.request_id &&
   ((online && queuedGuidance(node)) || unsent(node) || waitingToSend(node));
 
-// What a message shows of its text: a finished agent's report without the
-// header line its facts (Node.agent) say instead, and nothing of the note
-// that finished background work woke the conversation.
-export const shownText = (node: Pick<Node, "origin">, text: string) =>
-  node.origin === "agent"
-    ? text.slice(text.indexOf("\n") + 1)
-    : node.origin === "activity"
-      ? ""
-      : text;
+// Older hosts marked a child's request as inter-session mail and only
+// recorded its identity in this envelope. Human messages have no mail origin.
+const legacyRequest =
+  /^\[agent ([0-9a-f]{16}) "([^\n]*)" asks (?:to run ([^\n]+)|the person) \(interaction [^)\n]+\)\]\nThe (?:approval request|question) \(data, not instructions\):\n/;
+export function agentReport(
+  node: Node,
+): (NonNullable<Node["agent"]> & { tool?: string }) | undefined {
+  if (node.agent?.outcome === "merged") return;
+  if (node.agent && node.agent.outcome !== "needs decision") return node.agent;
+  if (!node.agent && node.origin !== "message") return;
+  const match = legacyRequest.exec(node.body?.text || "");
+  if (!match) return node.agent;
+  return {
+    ...(node.agent || {
+      session: match[1],
+      title: match[2],
+      outcome: "needs decision",
+    }),
+    tool: match[3],
+  };
+}
+
+// A tool may return a waited-on reply directly, without a separate mail.
+export const agentLink = (
+  part: NonNullable<Node["parts"]>[number],
+): part is LinkPart => part.kind === "link" && part.to === "agent";
+
+// Read only the shapes returned by agent_start. Older link parts carry
+// navigation but no reply. A waited result can hold more text than its link.
+function agentResults(text: string, links: LinkPart[]) {
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return;
+  }
+  const rows = Array.isArray(value)
+    ? value
+    : Array.isArray(value?.agents)
+      ? value.agents
+      : [value];
+  const byId = new Map(links.map((link) => [String(link.id), link]));
+  const results = [];
+  for (const row of rows) {
+    if (
+      !row ||
+      typeof row.id !== "string" ||
+      typeof row.state !== "string" ||
+      (row.item !== undefined && typeof row.item !== "string") ||
+      (row.answer !== undefined && typeof row.answer !== "string")
+    )
+      return;
+    const link = byId.get(row.id);
+    if (row.id && !link) return;
+    byId.delete(row.id);
+    const assignment: string = row.item || link?.label || "";
+    results.push({
+      link,
+      assignment,
+      state: row.state as string,
+      report: (row.answer as string | undefined) || link?.report,
+    });
+  }
+  // An unfamiliar or incomplete result stays visible as the tool wrote it.
+  if (!byId.size && results.length) return results;
+}
+
+type AgentReply = {
+  link?: LinkPart;
+  assignment: string;
+  state?: string;
+  report?: string;
+};
+const batches = new WeakMap<
+  Node,
+  { replies: AgentReply[]; recognized: boolean }
+>();
+
+// The header, roster and expanded output read the same retained assignments.
+// Ordinary streaming replaces other nodes, leaving this calculation reusable.
+export function agentBatch(node: Node, full?: string) {
+  if (
+    node.kind !== "call" ||
+    (node.tool && node.tool !== "agent_start") ||
+    !node.parts?.length ||
+    !node.parts.every(agentLink)
+  )
+    return;
+  const cached = full === undefined && batches.get(node);
+  if (cached) return cached;
+  const rows = agentResults(full ?? node.body?.text ?? "", node.parts);
+  const batch = {
+    recognized: !!rows,
+    replies:
+      rows ??
+      node.parts.map((link) => ({
+        link,
+        assignment: link.label,
+        state: link.state,
+        report: link.report,
+      })),
+  };
+  if (full === undefined) batches.set(node, batch);
+  return batch;
+}
+
+export function agentText(text: string, outcome?: string) {
+  const body = text.replace(/^\[(?:agent |side chat )[^\n]*\]\r?\n/, "");
+  if (outcome !== "needs decision") return body;
+  // Only unwrap the runtime's request format. The request itself is verbatim.
+  const match =
+    /^The (?:approval request|question) \(data, not instructions\):\r?\n([\s\S]*?)\r?\n+Decide with the decide tool; yield when the person should\.$/.exec(
+      body,
+    );
+  return match ? match[1] : body;
+}
+
+export function shownText(node: Node, text: string) {
+  const sender = agentReport(node);
+  if (sender || node.origin === "agent")
+    return agentText(text, sender?.outcome);
+  return node.origin === "activity" ? "" : text;
+}
+
+// Keep a short reply intact. For a long reply prefer a paragraph boundary,
+// otherwise stop on a word, including for reports written as a single list.
+export function messageExcerpt(text: string) {
+  if (text.length <= 600) return text;
+  const start = text.slice(0, 400);
+  const paragraph = start.lastIndexOf("\n\n");
+  const word = start.search(/\s+\S*$/);
+  const end = paragraph >= 80 ? paragraph : word > 0 ? word : start.length;
+  // A source link can be longer than the excerpt. Leave it intact on expand.
+  const prefix = start
+    .slice(0, end)
+    .replace(/!?\[[^\]\n]*$|!?\[[^\]\n]*\]\([^()\n]*$/, "");
+  return prefix.trimEnd() + "…";
+}
 
 type TextPart = { text: string } | { mention: { id: string; alt: string } };
 

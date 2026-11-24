@@ -1,8 +1,8 @@
+import type { FileTarget } from "../../shared/file-types.ts";
 import { createContext } from "preact";
 import type {
   ActivityTarget,
   Exchange,
-  FileTarget,
   Node,
   Report,
 } from "../../shared/types.ts";

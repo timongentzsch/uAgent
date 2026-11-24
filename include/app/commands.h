@@ -55,8 +55,9 @@ RuntimeConfig::Values RestoreChoices(const json& settings,
 json SessionControl(AppSession& session, const json& request);
 json PermissionControl(AppContext& context, const json& request);
 // What the approval control shows: the conversation's own mode or "default",
-// the mode in effect and the inherited one (Auto for an agent).
-json ApprovalState(const EffectiveConfigSnapshot& configured, bool agent);
+// the mode in effect and the inherited one (the parent mode at spawn).
+json ApprovalState(const EffectiveConfigSnapshot& configured,
+                   const json& agent);
 json ActivityControl(ActivitySupervisor& processes, const json& request);
 std::string ActivityText(const json& result);
 json ActivityCommand(AppSession& session, const ParsedSlashCommand& command);

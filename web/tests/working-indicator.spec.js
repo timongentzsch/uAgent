@@ -1,7 +1,7 @@
 import { devServerTest as test, expect, DEV_SERVER_URL } from "./fixtures.js";
 
-// Work is shown by one moving thing, the band in the status line under the
-// input; everything else that says "at work" stands still, as a square.
+// The footer shows ongoing work. In the sidebar only the selected working
+// row pulses; background conversations keep a quiet, static mark.
 const EPOCH = "work-epoch";
 const id = (n) => n.toString(16).padStart(32, "0");
 const NOW = Date.now();
@@ -142,7 +142,7 @@ const workAnimations = (page) =>
         ).length,
   );
 
-test("while a turn works, the status line's band is the one thing that moves", async ({
+test("the working footer and selected sidebar mark move while background rows stay still", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -155,7 +155,9 @@ test("while a turn works, the status line's band is the one thing that moves", a
   // The glow travels: the band's pixels change.
   const first = await pixels(page);
   await expect.poll(() => pixels(page)).not.toBe(first);
-  expect(await workAnimations(page)).toBe(0);
+  const selected = page.locator(".session[aria-current] .status-led.running");
+  await expect(selected).toHaveCSS("animation-name", "pulse");
+  expect(await workAnimations(page)).toBe(await selected.count());
   // The running step keeps its arrow and carries no mark of its own.
   const running = page.locator('[data-message-id="w"] > .node-row');
   await expect(running.locator(".row-chevron")).toHaveCount(1);
@@ -215,7 +217,7 @@ test("with motion off the band stands still", async ({ page }) => {
   expect(await workAnimations(page)).toBe(0);
 });
 
-test("a list's marks are squares told apart by their fill", async ({
+test("a working mark is centered with the row title and distinct from unread", async ({
   page,
 }) => {
   // Places: a folder's head carries its unread mark.
@@ -235,10 +237,19 @@ test("a list's marks are squares told apart by their fill", async ({
         image: style.backgroundImage.split("(")[0],
         fill: style.backgroundColor,
         width: node.getBoundingClientRect().width,
+        height: node.getBoundingClientRect().height,
         radius: style.borderTopLeftRadius,
       };
     });
   const working = await mark(row(2).locator(".status-led.running"));
+  const offset = await row(2).evaluate((entry) => {
+    const center = (selector) => {
+      const box = entry.querySelector(selector).getBoundingClientRect();
+      return box.top + box.height / 2;
+    };
+    return center(".status-led.running") - center(".row-label");
+  });
+  expect(Math.abs(offset)).toBeLessThan(1);
   // A failure is its own sign; an idle row shows none.
   await expect(row(4).getByRole("img", { name: "Failed" })).toBeVisible();
   await expect(row(5).locator(".status-led")).toHaveCount(0);
@@ -246,7 +257,8 @@ test("a list's marks are squares told apart by their fill", async ({
   await page.getByRole("button", { name: "Conversations of project" }).click();
   const unread = await mark(page.locator(".place-head .status-led.unread"));
   const connected = await mark(page.locator(".connection .status-led.active"));
-  expect(working.image).toBe("repeating-conic-gradient");
+  expect(working.image).toBe("none");
+  expect(working.height).toBeLessThan(working.width);
   for (const solid of [unread, connected]) {
     expect(solid.image).toBe("none");
     expect(solid.fill).not.toBe("rgba(0, 0, 0, 0)");

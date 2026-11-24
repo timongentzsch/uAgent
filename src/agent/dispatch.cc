@@ -138,6 +138,7 @@ json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
       {"artifact_bytes",
        task.result.artifact ? task.result.artifact->bytes : uint64_t{0}}};
   if (task.result.parts.is_array()) data["parts"] = task.result.parts;
+  if (!task.result.diff.empty()) data["change"] = task.result.diff;
   // For the host's detail lookup from the moment the row exists; browsers
   // get the row, never this event.
   if (!task.result.diff_path.empty()) {

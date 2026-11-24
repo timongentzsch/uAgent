@@ -144,7 +144,8 @@ export function FindBar({
       }
       const ranges = rangesIn(row, query);
       // A closed row's own toggle, never a menu button the row also holds.
-      const closed = '.node-row[aria-expanded="false"]';
+      const closed =
+        '.node-row[aria-expanded="false"], .message-expand[aria-expanded="false"]:not(:disabled)';
       const folded = row.matches(closed) ? row : row.querySelector(closed);
       if (ranges.length <= spot.nth && folded instanceof HTMLElement) {
         // A closed row mounts its body on opening; look again after it.

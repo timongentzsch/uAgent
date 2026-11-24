@@ -129,9 +129,10 @@ every result until `press` Enter or Escape answers it; text typed before
 Enter answers a prompt. Downloads go to `<cwd>/downloads` and are reported
 with whichever result follows their end. `upload` takes only a file inside
 the conversation's folder. `open` with `path` loads an `.html` or `.svg`
-file of the folder through its preview address (`UAGENT_INTERNAL_PREVIEW`)
-and appends the page's own problem report; any other file is sent inline as
-markup, at most 4 MiB.
+file of the folder through its preview address and appends its problem
+report. The worker reads that address from its private grant file on each
+inspection. Device revocation rotates the URL for subsequent inspections.
+Outside the folder, the file is sent inline as markup, at most 4 MiB.
 
 **Capture.** `capture` and `problems` draw a preview page
 (`http://127.0.0.1:<port>/preview/…` only) in a throwaway browser context

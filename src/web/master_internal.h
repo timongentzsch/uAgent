@@ -117,6 +117,7 @@ class Master {
   // A files operation on a conversation's folder, on the host it is on.
   json WorkspaceFiles(const WorkspaceIdentity& workspace,
                       const std::string& session, json operation);
+  void FileOrigin(const Request&, Response&);
   void Files(const Request&, Response&);
   void FileWrite(const Request&, Response&);
   // A conversation's folder, read only, for sandboxed pages that carry no
@@ -125,7 +126,7 @@ class Master {
   // A device receives the URL path, a worker receives its private grant file.
   std::string PreviewAddress(const std::string& id, bool worker = false);
   struct PreviewToken {
-    std::string token;
+    std::string token, workspace_key;
     // A running worker reads its current grant here for each file it opens.
     std::string file;
   };

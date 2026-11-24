@@ -659,6 +659,10 @@ void Master::RegisterApiRoutes() {
               [this](const Request& request, Response& response) {
                 AssetRead(request, response);
               });
+  server_.Get(R"(/api/sessions/([a-f0-9]{16,64})/file-origin)",
+              [this](const Request& request, Response& response) {
+                FileOrigin(request, response);
+              });
   server_.Get(R"(/api/sessions/([a-f0-9]{16,64})/files)",
               [this](const Request& request, Response& response) {
                 Files(request, response);

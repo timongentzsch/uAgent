@@ -173,6 +173,9 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
                                       const Conversation* conversation,
                                       SavedFile* saved) {
   json header = HeaderJson(record.metadata);
+  if (const json* moves = JsonArray(record.state.display, "file_moves")) {
+    header["has_file_moves"] = !moves->empty();
+  }
   header["incoming"] =
       JsonValue(JsonValue(record.state.display, "statistics", json::object()),
                 "incoming", uint64_t{0});

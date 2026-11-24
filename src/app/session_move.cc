@@ -77,7 +77,8 @@ std::string Rewrite(const SessionMove& move, const std::string& path,
           metadata.suggestion = nullptr;
           changed = true;
         }
-        if (top && AddNote(record, move, failed)) changed = true;
+        // A child working in its own worktree keeps that workspace.
+        if ((changed || top) && AddNote(record, move, failed)) changed = true;
         return changed && failed.empty();
       });
   if (!failed.empty()) return failed;

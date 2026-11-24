@@ -320,6 +320,7 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"id", session.id},
       {"task_id", session.task_id},
       {"cwd", session.cwd},
+      {"file_origin", WorkspaceId(session.cwd, session.host)},
       {"host", session.host},
       {"parent", session.parent},
       {"model", session.model},
@@ -344,8 +345,9 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"needs_you", waits},
       {"pending_prompt", waits ? JsonValue(session.pending, "prompt", "") : ""},
       {"updated", session.updated}};
-  if (!session.agent_edits.empty())
+  if (!session.agent_edits.empty()) {
     metadata["agent_edits"] = session.agent_edits;
+  }
   return metadata;
 }
 

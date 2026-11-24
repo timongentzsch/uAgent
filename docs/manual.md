@@ -121,8 +121,11 @@ conversation**, **Statistics**, **Tools**, **Export transcript**,
 **Detail**, **Compact**, **Restart**, **Close conversation** and
 **Delete**. Fork waits for a running turn. **Move to…** moves a Local
 conversation and its agents to another folder or workspace; its files stay
-where they were, and it is refused while the conversation or an agent of
-it runs or has mail waiting. **Close conversation** saves it and stops its
+where they were. Earlier file references open in their original workspace.
+New copied file links retain their workspace after a move. An older path-only
+link opens when exactly one workspace contains that path. Move is available
+when the conversation and its agents are idle and have no mail waiting.
+**Close conversation** saves it and stops its
 runtime and supervised children. **Delete** removes its saved messages and
 attachments, closing a live runtime first; files in the folder stay.
 `/fork [@N]`, `/rewind N` and `/btw QUESTION` branch a conversation; a

@@ -5,10 +5,14 @@
 #include <cstdlib>
 #include <filesystem>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
 
+#include "include/agent/conversation.h"
+#include "include/agent/session_role.h"
+#include "include/agent/session_store.h"
 #include "include/app/workspace_files.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -81,6 +85,13 @@ std::string WithHead(std::string html, const std::string& markup) {
   return html;
 }
 
+bool ReadFileMoves(const std::string& path, const json& header, json& moves) {
+  if (!JsonValue(header, "has_file_moves", true)) return true;
+  const auto loaded = SessionStore::Inspect(path);
+  if (!loaded.record) return false;
+  moves = Conversation::FileMoves(loaded.record->state.display);
+  return true;
+}
 }  // namespace
 
 json Master::WorkspaceFiles(const WorkspaceIdentity& workspace,
@@ -92,6 +103,119 @@ json Master::WorkspaceFiles(const WorkspaceIdentity& workspace,
   const auto root = CanonicalDirectory(workspace.path);
   return root ? workspace_files::Request(*root, operation)
               : json{{"error", "not found"}, {"status", 404}};
+}
+
+// A reference reports its original workspace. Opening that workspace still
+// goes through the same session and folder authorization as the Library.
+void Master::FileOrigin(const Request& request, Response& response) {
+  const std::string id = request.matches[1].str();
+  const auto current = host_.WorkspaceOf(id);
+  if (current.path.empty()) return Error(response, "unknown session", 404);
+  const bool at = request.has_param("sequence");
+  const bool by_id = request.has_param("origin");
+  const bool has_path = request.has_param("path");
+  if ((by_id && (at || has_path)) || (!by_id && !at && !has_path)) {
+    return Error(response, "name a sequence, origin or path");
+  }
+  const std::string origin = request.get_param_value("origin");
+  const std::string path = request.get_param_value("path");
+  uint64_t sequence = 0;
+  if (at) {
+    const std::string value = request.get_param_value("sequence");
+    const char* end = value.data() + value.size();
+    const auto parsed = std::from_chars(value.data(), end, sequence);
+    if (parsed.ec != std::errc() || parsed.ptr != end || !sequence) {
+      return Error(response, "invalid reference sequence");
+    }
+  }
+  const auto location = [&](const std::string& cwd) {
+    return json{{"cwd", cwd},
+                {"host", current.host},
+                {"origin", WorkspaceId(cwd, current.host)},
+                {"current", cwd == current.path}};
+  };
+  if (by_id && origin == WorkspaceId(current.path, current.host)) {
+    return Reply(response, location(current.path));
+  }
+  // Moves are local. For new unmoved sessions a small header read suffices.
+  json moves = json::array(), header;
+  const auto stored = host_.AssetPath(id);
+  if (!current.Remote() && !stored.empty() && PathExists(stored)) {
+    header = SessionHeader(stored);
+    if (JsonValue(header, kSessionHeaderCwd, "") != current.path ||
+        !ReadFileMoves(stored, header, moves)) {
+      return Error(response, "workspace history changed, try again", 409);
+    }
+  }
+  std::string folder = current.path;
+  uint64_t first_move = UINT64_MAX, next_move = UINT64_MAX;
+  std::set<std::string> folders{folder};
+  for (const auto& move : moves) {
+    const std::string from = JsonValue(move, "from", "");
+    const auto boundary = JsonValue(move, "sequence", uint64_t{0});
+    if (from.empty() || !boundary) continue;
+    if (by_id && WorkspaceId(from, current.host) == origin) {
+      return Reply(response, location(from));
+    }
+    folders.insert(from);
+    first_move = std::min(first_move, boundary);
+    if (at && sequence < boundary && boundary < next_move) {
+      next_move = boundary;
+      folder = from;
+    }
+  }
+  if (at && sequence >= first_move) return Reply(response, location(folder));
+  if (at) folders = {folder};
+  // Old releases recorded family moves on the lead only. A child's sequence
+  // belongs to its own transcript, so use a unique matching file when needed.
+  std::set<std::string> visited{id};
+  for (;;) {
+    const auto parent = JsonValue(AgentOf(header), "parent", "");
+    if (parent.empty() || !visited.insert(parent).second) break;
+    const auto parent_path = host_.AssetPath(parent);
+    if (parent_path.empty()) break;
+    header = SessionHeader(parent_path);
+    if (JsonValue(header, kSessionHeaderCwd, "") != current.path) break;
+    if (!AgentOf(header).empty()) continue;
+    json parent_moves;
+    if (!ReadFileMoves(parent_path, header, parent_moves)) {
+      return Error(response, "cannot read parent file history", 409);
+    }
+    for (const auto& move : parent_moves) {
+      if (!JsonValue(move, "lead_only", false)) continue;
+      const auto from = JsonValue(move, "from", "");
+      if (from.empty()) continue;
+      if (by_id && WorkspaceId(from, current.host) == origin) {
+        return Reply(response, location(from));
+      }
+      folders.insert(from);
+    }
+  }
+  if (by_id) return Error(response, "unknown file origin", 404);
+  if (folders.size() == 1) return Reply(response, location(folder));
+  if (at && path.empty()) {
+    return Error(response, "original workspace is uncertain", 409);
+  }
+  // Old shared URLs contain only a relative path. Resolve an exact, unique
+  // match; a same-named file in two workspaces needs an explicit choice.
+  json matches = json::array();
+  for (const auto& candidate : folders) {
+    const auto root = CanonicalDirectory(candidate);
+    if (!root || path.empty()) continue;
+    const auto file = Resolve(*root, path);
+    std::error_code error;
+    if (!file || !fs::exists(*file, error)) continue;
+    matches.push_back(location(candidate));
+  }
+  if (matches.empty()) return Error(response, "file no longer found", 404);
+  if (matches.size() == 1) return Reply(response, matches.front());
+  std::string message =
+      "File exists in multiple workspaces. Open it from Files in one of these "
+      "folders:";
+  for (const auto& match : matches) {
+    message += "\n" + JsonValue(match, "cwd", "");
+  }
+  Reply(response, {{"error", message}, {"choices", std::move(matches)}}, 409);
 }
 
 void Master::Files(const Request& request, Response& response) {
@@ -214,12 +338,15 @@ void Master::PublishWorkerPreview(PreviewToken& grant) {
 }
 
 std::string Master::PreviewAddress(const std::string& id, bool worker) {
-  if (host_.Folder(id).empty()) return "";
+  const auto workspace = host_.WorkspaceOf(id);
+  if (workspace.path.empty()) return "";
+  const auto key = workspace.Key();
   std::lock_guard lock(previews_mutex_);
   auto& grant = previews_[id];
   const bool attach = worker && grant.file.empty();
   if (attach) grant.file = directory_ + "/worker-previews/" + id;
-  if (grant.token.empty()) {
+  if (grant.token.empty() || grant.workspace_key != key) {
+    grant.workspace_key = key;
     grant.token = RandomToken();
     PublishWorkerPreview(grant);
   } else if (attach) {
@@ -270,16 +397,20 @@ void Master::PreviewGrant(const Request& request, Response& response) {
 void Master::Preview(const Request& request, Response& response) {
   const std::string token = request.matches[1].str();
   const std::string relative = request.matches[2].str();
-  std::string session;
+  std::string session, workspace_key;
   {
     std::lock_guard lock(previews_mutex_);
     for (const auto& [id, granted] : previews_) {
-      if (EqualSecret(token, granted.token)) session = id;
+      if (EqualSecret(token, granted.token)) {
+        session = id;
+        workspace_key = granted.workspace_key;
+        break;
+      }
     }
   }
   const WorkspaceIdentity workspace = host_.WorkspaceOf(session);
   const std::string* origin = ExpectedOrigin(request);
-  if (workspace.path.empty() || !origin ||
+  if (workspace.path.empty() || workspace.Key() != workspace_key || !origin ||
       relative.find('\0') != std::string::npos) {
     Error(response, "not found", 404);
     return;

@@ -83,7 +83,7 @@ export function TerminalMenu({
         Rename
       </MenuItem>
       <MenuItem disabled={!online} onClick={() => close(terminal)}>
-        Close
+        Stop terminal
       </MenuItem>
     </Menu>
   );
@@ -144,6 +144,30 @@ export function ConversationMenu({
         </MenuItem>
       )}
       {select && <MenuItem onClick={select}>Select</MenuItem>}
+      {detail && detail.levels.length > 0 && (
+        <MenuSub label="View" value={capitalize(detail.level)}>
+          {detail.levels.map((level) => (
+            <MenuItem
+              key={level}
+              role="menuitemradio"
+              aria-checked={level === detail.level}
+              onClick={() => detail.change(level)}
+            >
+              {capitalize(level)}
+              {level === detail.level && <Check />}
+            </MenuItem>
+          ))}
+          <MenuItem
+            role="menuitemcheckbox"
+            aria-checked={detail.thinking}
+            onClick={() => detail.showThinking(!detail.thinking)}
+          >
+            Thinking
+            {detail.thinking && <Check />}
+          </MenuItem>
+          <p class="menu-note small">On this device.</p>
+        </MenuSub>
+      )}
       <MenuSub label="More">
         {more}
         <MenuItem
@@ -181,30 +205,6 @@ export function ConversationMenu({
         >
           Export transcript
         </MenuItem>
-        {detail && detail.levels.length > 0 && (
-          <MenuSub label="Detail" value={capitalize(detail.level)}>
-            {detail.levels.map((level) => (
-              <MenuItem
-                key={level}
-                role="menuitemradio"
-                aria-checked={level === detail.level}
-                onClick={() => detail.change(level)}
-              >
-                {capitalize(level)}
-                {level === detail.level && <Check />}
-              </MenuItem>
-            ))}
-            <MenuItem
-              role="menuitemcheckbox"
-              aria-checked={detail.thinking}
-              onClick={() => detail.showThinking(!detail.thinking)}
-            >
-              Thinking
-              {detail.thinking && <Check />}
-            </MenuItem>
-            <p class="menu-note small">On this device.</p>
-          </MenuSub>
-        )}
         {item.generation && (
           <MenuItem
             disabled={!online || item.turn_active}

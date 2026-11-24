@@ -10,6 +10,7 @@ import {
   openSession,
   paper,
   selectProbeModel,
+  savedConversation,
   slide,
   viewerOf,
   writeFiles,
@@ -808,6 +809,59 @@ async function openDeck(app, session, project, slides, options) {
   };
 }
 
+for (const phone of [false, true]) {
+  test(`a finding opens a reordered slide and adds its reference to the draft (${phone ? "phone" : "desktop"})`, async ({
+    page,
+    host,
+    request,
+  }) => {
+    const dir = "decks/review";
+    const plan = "03-plan.html";
+    await writeFiles(join(host.project, dir), {
+      "01-cover.html": slide("Cover"),
+      [plan]: slide("Plan"),
+    });
+    const session = await savedConversation(
+      host,
+      request,
+      "Review",
+      `Make the chart larger on [Slide 1: Plan](${dir}/01-plan.html).`,
+    );
+    await openSession(page, session, { phone });
+    const link = page.getByRole("button", { name: "Slide 1: Plan" });
+    const prompt = page.locator("#prompt");
+    await prompt.fill("Keep this draft");
+    await link.click();
+    const pane = page.getByRole("region", { name: "Files" });
+    const heading = viewerOf(pane).stage.getByRole("heading", { name: "Plan" });
+    await expect(heading).toBeVisible();
+    const split = (await pane.boundingBox()).width;
+    if (phone) {
+      await page.keyboard.press("Escape");
+      await expect(pane).toBeHidden();
+      await expect(link).toBeFocused();
+      await link.click();
+      await expect(heading).toBeVisible();
+    } else {
+      await pane.getByRole("button", { name: "Expand workspace" }).click();
+      await expect(
+        pane.getByRole("button", { name: "Restore split view" }),
+      ).toBeVisible();
+      expect((await pane.boundingBox()).width).toBeGreaterThan(split);
+      await expect(heading).toBeVisible();
+    }
+    await pane.getByRole("button", { name: "Slide actions" }).click();
+    await page.getByRole("menuitem", { name: "Comment on this slide" }).click();
+    await expect(prompt).toBeFocused();
+    await expect(prompt).toHaveValue("Keep this draft");
+    if (phone) await expect(pane).toBeHidden();
+    else expect((await pane.boundingBox()).width).toBeCloseTo(split, 0);
+    await expect(page.locator(".quote-bar")).toContainText(`${dir}/${plan}`);
+    await page.getByRole("button", { name: "Remove the quote" }).click();
+    await expect(prompt).toHaveValue("Keep this draft");
+  });
+}
+
 test("a deck opens in slide order, presents with its notes, and the presenter's window follows", async ({
   page: app,
   session,
@@ -921,6 +975,11 @@ test("a deck opens in slide order, presents with its notes, and the presenter's 
   const view = presenter.getByRole("main", { name: "Presenter view" });
   await expect(view.getByText("Slide 2 of 3")).toBeVisible();
   await expect(view.locator(".presenter-notes")).toHaveText("Three steps.");
+  await presenter.setViewportSize({ width: 390, height: 844 });
+  const now = await view.locator(".presenter-now").boundingBox();
+  const notes = await view.locator(".presenter-notes").boundingBox();
+  expect(notes.y).toBeGreaterThanOrEqual(now.y + now.height);
+  expect(notes.width).toBeGreaterThan(350);
   await presenter.keyboard.press("ArrowRight");
   await expect(view.getByText("Slide 3 of 3")).toBeVisible();
   await expect(view.getByText("End of the deck")).toBeVisible();

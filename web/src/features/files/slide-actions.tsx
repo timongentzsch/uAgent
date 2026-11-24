@@ -14,6 +14,7 @@ export default function SlideActions({
   skipped,
   pushed,
   busy,
+  comment,
   act,
   add,
   skip,
@@ -26,6 +27,7 @@ export default function SlideActions({
   skipped?: boolean;
   pushed?: boolean;
   busy?: boolean;
+  comment?: () => void;
   act: (moves: Move[]) => void;
   // A new slide after this one; this one skipped, or no longer; this one
   // pushing the one before out as it comes in, or fading in.
@@ -70,6 +72,9 @@ export default function SlideActions({
           Push in
           {pushed && <Check />}
         </MenuItem>
+        {comment && (
+          <MenuItem onClick={comment}>Comment on this slide</MenuItem>
+        )}
         <MenuItem disabled={busy} onClick={() => setDeleting(true)}>
           Delete…
         </MenuItem>

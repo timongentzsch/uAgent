@@ -233,7 +233,18 @@ test("search is a centered panel that groups, marks and steps back", async ({
   for (const hit of await hits.all())
     await expect(hit.locator("mark")).toHaveText("wombat");
   await expect(search).toContainText("3 more in this conversation");
+  await page.route(
+    "**/api/sessions/*?before=*",
+    (route) => route.fulfill({ status: 503, body: "Unavailable" }),
+    { times: 1 },
+  );
   await field.press("ArrowDown");
+  await expect(search.getByText("Preview unavailable.")).toBeVisible();
+  await expect(hits).toHaveCount(4);
+  await search
+    .getByLabel("Preview")
+    .getByRole("button", { name: "Retry" })
+    .click();
   await expect(search.getByLabel("Preview").locator("mark")).not.toHaveCount(0);
   await field.fill(">shortcut");
   await expect(search.getByRole("group").first()).toContainText(
@@ -257,4 +268,29 @@ test("search is a centered panel that groups, marks and steps back", async ({
   await expect(search.locator(".spotlight-snippet").first()).toBeVisible();
   await search.getByRole("combobox").press("ArrowDown");
   await expect(search.getByLabel("Preview")).toHaveCount(0);
+});
+
+test("message search can fail and retry without losing local results", async ({
+  page,
+  host,
+}) => {
+  await seed(page, host);
+  await page.route(
+    "**/api/search?**",
+    (route) => route.fulfill({ status: 503, body: "Unavailable" }),
+    { times: 1 },
+  );
+  await page.keyboard.press(`${mod}+k`);
+  const search = page.getByRole("dialog", { name: "Search" });
+  await search.getByRole("combobox").fill("Needle");
+  await expect(
+    search.getByRole("option", { name: /Needle/ }).first(),
+  ).toBeVisible();
+  await expect(search.getByText("Couldn’t search messages.")).toBeVisible();
+  await search.getByRole("button", { name: "Retry" }).click();
+  await expect(search.getByText("Couldn’t search messages.")).toHaveCount(0);
+  await search.getByRole("combobox").fill("quokka");
+  await expect(
+    search.getByRole("option").filter({ hasText: "Where did the quokka go?" }),
+  ).toBeVisible();
 });

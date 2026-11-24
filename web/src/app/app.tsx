@@ -115,7 +115,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const [libraryKind, setLibraryKind] = useState<LibraryKind | "">("");
   useDismiss(page !== "chat", () => setPage("chat"));
   const [drawer, setDrawer] = useState(false);
-  const [filesOpen, setFilesOpen] = useState(false);
+  const [filesOpen, setFilesOpen] = useState<boolean | "expanded">(false);
   const [flows, setFlows] = useState<Record<string, Flow>>({});
   const setFlow = useCallback(
     (id: string, update: (flow: Flow) => Flow) =>
@@ -133,6 +133,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
   );
   // Hidden (false), its panel stays and its shells run on; none started
   // without a value.
+  const [terminalExpanded, setTerminalExpanded] = useState(false);
   const [terminalShown, setTerminalShown] = useState<boolean>();
   const [modal, setModal] = useState<AppModal | null>(null);
   const [overlay, setOverlay] = useState<"search" | "shortcuts" | null>(null);
@@ -193,6 +194,9 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const openDrawer = useCallback(() => setDrawer(true), []);
   useEdgeSwipe(compact, () => closeTopLayer() || openDrawer());
   const filesSheet = useNarrowColumn(shown) || compact;
+  useDismiss(filesOpen === "expanded" && !filesSheet && page === "chat", () =>
+    setFilesOpen(true),
+  );
   const roomy = useRoomyColumn(shown);
   const side = useSideConversations(host);
   // The side chats have a column where it fits beside the chat (and beside
@@ -542,7 +546,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
       updateDraft(selected, change);
       if (keep) return;
       if (compact) hideTerminal();
-      if (filesSheet) setFilesOpen(false);
+      setFilesOpen((open) => !filesSheet && !!open);
       focusComposer();
     },
     [updateDraft, selected, compact, filesSheet, hideTerminal],
@@ -571,6 +575,13 @@ function App({ host, bindResult, reading }: HostAppProps) {
       key={session.id}
       session={session}
       close={filesSheet ? undefined : () => setFilesOpen(false)}
+      expanded={filesOpen === "expanded" && !filesSheet}
+      expand={
+        filesSheet
+          ? undefined
+          : () =>
+              setFilesOpen((open) => (open === "expanded" ? true : "expanded"))
+      }
       flow={flows[session.id] ?? START}
       setFlow={(update) => setFlow(session.id, update)}
       addToChat={toChat}
@@ -579,7 +590,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
         toChat &&
         ((quote) => {
           side.quote(quote);
-          if (filesSheet) setFilesOpen(false);
+          setFilesOpen((open) => !filesSheet && !!open);
         })
       }
       pictures={browserAvailable}
@@ -592,6 +603,8 @@ function App({ host, bindResult, reading }: HostAppProps) {
       cwd={session ? folderOf(session) : ""}
       quote={quote}
       shown={!!terminalShown}
+      expanded={terminalExpanded}
+      expand={compact ? undefined : () => setTerminalExpanded(!terminalExpanded)}
       hide={hideTerminal}
       close={() => setTerminalShown(undefined)}
       report={report}
@@ -785,7 +798,6 @@ function App({ host, bindResult, reading }: HostAppProps) {
                   )}
                   <main class="conversation" id="conversation" tabIndex={-1}>
                     <ConversationHeader
-                      detail={detailControl}
                       page={page}
                       selected={selected}
                       session={session}
@@ -797,7 +809,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                           ? { open: !!terminalShown, toggle: toggleTerminal }
                           : undefined
                       }
-                      filesOpen={filesOpen}
+                      filesOpen={!!filesOpen}
                       setFilesOpen={setFilesOpen}
                       outgoing={outgoing}
                       parent={sessionById(
@@ -865,6 +877,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                         load={folderTerminal}
                         fallback={<Spinner label="Opening the terminal…" />}
                         terminal={shell}
+                        hide={() => overview(shell.folder)}
                         close={closeTerminal}
                       />
                     )}
@@ -909,6 +922,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                     {terminalStarted && !compact && (
                       <section
                         class="terminal-dock"
+                        data-expanded={terminalExpanded || undefined}
                         aria-label="Terminal"
                         hidden={!terminalShown}
                       >

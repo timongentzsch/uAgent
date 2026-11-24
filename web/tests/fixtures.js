@@ -321,7 +321,7 @@ export async function headerAction(page, name) {
     (node) =>
       getComputedStyle(node).getPropertyValue("--narrow").trim() === "1",
   );
-  if (narrow && (await menu.count())) {
+  if (name !== "Files" && narrow && (await menu.count())) {
     if (name === "Settings") {
       await showList(page);
       return page
@@ -575,15 +575,17 @@ export const test = base.extend({
 });
 
 // Chooses this device's detail level from the open conversation's menu.
-export async function chooseDetail(page, level) {
+export async function openView(page) {
   await page
     .locator(".conversation-head")
     .getByLabel("Conversation menu", { exact: true })
     .click();
   // One row opens the levels in place, with a way back.
-  await openMore(page);
-  await page.getByRole("menuitem", { name: /^Detail/ }).click();
-  await expect(page.getByText("On this device.")).toBeVisible();
+  await page.getByRole("menuitem", { name: /^View/ }).click();
+}
+
+export async function chooseDetail(page, level) {
+  await openView(page);
   await page.getByRole("menuitemradio", { name: level, exact: true }).click();
 }
 

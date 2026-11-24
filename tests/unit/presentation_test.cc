@@ -467,7 +467,11 @@ TEST_CASE(TestTurnStatusBar) {
 
   TurnStatusView routed = Working(std::chrono::milliseconds(1500));
   routed.model = "openrouter/deepseek/deepseek-v4-flash:high";
-  std::string routed_bar = TurnStatusBar(routed);
+  std::string routed_bar;
+  {
+    FixedWidth columns(120);
+    routed_bar = TurnStatusBar(routed);
+  }
   CHECK(routed_bar.find("openrouter/deepseek/deepseek-v4-flash:high") !=
         std::string::npos);
   CHECK(routed_bar.find("openrouter/deepseek/deepseek-v4-flash:high · 1.5s") !=
@@ -491,12 +495,13 @@ TEST_CASE(TestTurnStatusBar) {
     CHECK(TurnStatusBar(busy).find("Ctrl+B background 2 commands") !=
           std::string::npos);
   }
-  // The hint is the first thing a narrow row gives up, before the counters.
+  // Keep the current action, mode and interrupt key when metrics do not fit.
   {
-    FixedWidth columns(60);
+    FixedWidth columns(28);
+    busy.approval = "yolo";
     std::string narrow = TurnStatusBar(busy);
-    CHECK(narrow.find("Esc stop") == std::string::npos);
-    CHECK(narrow.find("steer:3") != std::string::npos);
+    CHECK(narrow.find("Working · YOLO · Esc stop") != std::string::npos);
+    CHECK(narrow.find("steer:3") == std::string::npos);
   }
 
   TurnStatusView interrupting = Working(std::chrono::milliseconds(0));
@@ -560,12 +565,11 @@ TEST_CASE(TestStatusBarDropsByPriority) {
   CHECK(narrow.find("cache 33%") == std::string::npos);
   CHECK(narrow.find("18k in") == std::string::npos);
 
-  // Priority 0 is never dropped, even when it alone overflows: the row would
-  // otherwise stop saying where the request goes.
+  // The effective permission mode survives even on a very narrow terminal.
   {
     FixedWidth columns(4);
     std::string squeezed = StatusBar(usage, view);
-    CHECK(squeezed == "anthropic/claude-sonnet-4-5");
+    CHECK(squeezed == "Ask");
   }
 
   g_tty = prior;

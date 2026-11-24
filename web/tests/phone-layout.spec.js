@@ -518,8 +518,14 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       page.getByLabel("Instructions", { exact: true }),
       "Do not schedule this draft.",
     );
+    const saveTask = page.getByRole("button", { name: "Save", exact: true });
+    await contained(saveTask, 390, 70);
     await viewport(844);
     await input(page.getByLabel("Timezone", { exact: true }), "UTC");
+    await page
+      .locator("html")
+      .evaluate((element) => element.style.setProperty("--zoom", "2"));
+    await contained(saveTask, 390, 70);
     await viewport(844);
     expect(
       await page.evaluate(

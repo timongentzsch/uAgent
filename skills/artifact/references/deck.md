@@ -78,6 +78,10 @@ Inspect a particular slide with `part="3"`, or observe its HTML path with
 a `selector` such as `figure img` to inspect a detail. A zoom helps
 diagnose blur; judge legibility in the full-slide view.
 
+Link each slide-specific finding to its HTML path in the deck, for example
+`[Slide 3: Pricing](decks/launch/03-pricing.html)`, so the reader can open
+the slide and comment from its actions menu.
+
 After a local edit, review just the changed slide. After changing shared
 CSS or data, check all affected slides together. Verify that an editable
 field still points to its source and that nearby claims agree with the

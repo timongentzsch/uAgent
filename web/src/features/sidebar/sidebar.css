@@ -201,13 +201,15 @@
 .session :is(.row-icon, .session-state) {
   width: var(--icon-s);
   height: var(--icon-s);
-  margin-right: var(--space-2);
-  vertical-align: var(--icon-align);
+  flex: none;
 }
 .session-state {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+.session[aria-current] .status-led.running {
+  animation: pulse var(--motion-pulse) var(--ease-standard) infinite;
 }
 .session-state svg {
   width: 100%;
@@ -265,15 +267,17 @@
 /* A row there is its title, whole, over its time or place. Its menu opens
    on a long press. */
 .drawer .session {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
+  display: grid;
+  grid-template-columns: var(--icon-s) minmax(0, 1fr);
+  align-content: center;
+  gap: 0 var(--gap);
   height: auto;
   padding-block: var(--space-3);
 }
 .drawer .session :is(.session-time, .session-tag) {
   max-width: none;
-  margin-left: calc(var(--icon-s) + var(--space-2));
+  grid-column: 2;
+  margin-left: 0;
   font-size: var(--font-small);
   text-align: left;
 }

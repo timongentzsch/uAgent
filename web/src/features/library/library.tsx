@@ -33,6 +33,7 @@ import { matches } from "../../shared/fuzzy.ts";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import FolderLabel from "../../shared/folder-label.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
+import { SheetButton } from "../../shared/sheet.tsx";
 import { useSelection } from "../../shared/selection.ts";
 import { RowCheck, SelectionBar } from "../../shared/selection-bar.tsx";
 import { useShortcuts } from "../../shared/shortcuts.ts";
@@ -375,20 +376,54 @@ export default function Library({
           value={query}
           onInput={(event) => setQuery(event.currentTarget.value)}
         />
-        <Select
-          class="library-place"
-          aria-label="Place"
-          value={where}
-          onChange={(event) => setWhere(event.currentTarget.value)}
+        <SheetButton
+          className="library-filters"
+          label="Filter library"
+          heading="Library filters"
+          trigger={
+            [
+              kind && NAME[kind],
+              where === ALL ? "" : placeOf(where)?.name || "Everywhere",
+            ]
+              .filter(Boolean)
+              .join(" · ") || "Filters"
+          }
         >
-          <option value={ALL}>All places</option>
-          <option value="">Everywhere</option>
-          {places.map((place) => (
-            <option key={place.path} value={place.path} title={place.path}>
-              {place.name}
-            </option>
-          ))}
-        </Select>
+          <label>
+            Kind
+            <Select
+              aria-label="Kind"
+              value={kind}
+              onChange={(event) =>
+                setKind(event.currentTarget.value as LibraryKind | "")
+              }
+            >
+              {RAIL.flatMap(([, kinds]) =>
+                kinds.map(([value, name]) => (
+                  <option key={value} value={value}>
+                    {name}
+                  </option>
+                )),
+              )}
+            </Select>
+          </label>
+          <label>
+            Place
+            <Select
+              aria-label="Place"
+              value={where}
+              onChange={(event) => setWhere(event.currentTarget.value)}
+            >
+              <option value={ALL}>All places</option>
+              <option value="">Everywhere</option>
+              {places.map((place) => (
+                <option key={place.path} value={place.path} title={place.path}>
+                  {place.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+        </SheetButton>
         {kind === "memory" || kind === "skill" ? (
           <>
             <Button
@@ -494,7 +529,7 @@ export default function Library({
           </div>
         </nav>
         <div class={moved ? "management-list push" : "management-list"}>
-          {selection.selecting && (
+          {selection.selecting ? (
             <SelectionBar selection={selection}>
               <Button
                 variant="destructive"
@@ -504,6 +539,17 @@ export default function Library({
                 Delete…
               </Button>
             </SelectionBar>
+          ) : (
+            listing.value &&
+            shown.length > 0 && (
+              <Button
+                variant="quiet"
+                size="compact"
+                onClick={() => selection.start()}
+              >
+                Select
+              </Button>
+            )
           )}
           {listing.error ? (
             <LoadError error={listing.error} retry={listing.retry} />

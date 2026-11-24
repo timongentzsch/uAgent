@@ -164,7 +164,7 @@ export interface Move {
 }
 
 // What a slide is called apart from its place.
-const rest = (name: string) => name.replace(/^\d+-/, "");
+export const slideName = (name: string) => name.replace(/^\d+-/, "");
 
 // The renames that make `order` the deck's order: each slide is its place,
 // as two digits (three from a hundred slides), then its own name. Only
@@ -173,7 +173,7 @@ const renames = (order: string[]): Move[] =>
   order
     .map((from, at) => ({
       from,
-      to: `${String(at + 1).padStart(order.length < 100 ? 2 : 3, "0")}-${rest(from)}`,
+      to: `${String(at + 1).padStart(order.length < 100 ? 2 : 3, "0")}-${slideName(from)}`,
     }))
     .filter((move) => move.from !== move.to);
 
@@ -186,7 +186,7 @@ export function moved(slides: string[], from: number, to: number) {
 // A slide's name from `stem` that no slide has, apart from its place: with
 // a number, while another is called so.
 function free(slides: string[], stem: string) {
-  const taken = new Set(slides.map(rest));
+  const taken = new Set(slides.map(slideName));
   let name = `${stem}.html`;
   for (let n = 2; taken.has(name); n++) name = `${stem}-${n}.html`;
   return name;
@@ -194,7 +194,7 @@ function free(slides: string[], stem: string) {
 
 // A copy of the slide at `at` right after it, named for it with `-copy`.
 export function duplicated(slides: string[], at: number) {
-  const copy = free(slides, rest(slides[at]).replace(/\.html$/, "-copy"));
+  const copy = free(slides, slideName(slides[at]).replace(/\.html$/, "-copy"));
   const order = [...slides];
   order.splice(at + 1, 0, copy);
   return renames(order).map((move) =>

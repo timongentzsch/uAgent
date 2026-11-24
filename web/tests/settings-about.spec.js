@@ -7,6 +7,14 @@ test("About checks for a release, shows its notes and how to update", async ({
   page,
   session,
 }) => {
+  let refuse = true;
+  await page.route("**/api/command", (route) => {
+    const body = route.request().postDataJSON();
+    if (!refuse || body.kind !== "update" || body.action !== "show")
+      return route.continue();
+    refuse = false;
+    return route.fulfill({ status: 503, body: "Unavailable" });
+  });
   await page.goto(`/#session=${session.id}`);
   await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -15,6 +23,9 @@ test("About checks for a release, shows its notes and how to update", async ({
     .getByRole("button", { name: "About", exact: true })
     .click();
   const pane = page.locator(".settings-pane");
+  await expect(pane.getByText("Update status unavailable")).toBeVisible();
+  await expect(pane.getByText("Not checked yet")).toHaveCount(0);
+  await pane.getByRole("button", { name: "Retry" }).click();
   await expect(pane.locator(".row", { hasText: "Version" })).toContainText(
     /\d+\.\d+\.\d+/,
   );

@@ -740,6 +740,17 @@
   flex: 0 0 30%;
   margin: 0;
 }
+@media (orientation: portrait) {
+  .presenter-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 2fr) minmax(0, 3fr);
+  }
+  .presenter-side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 2fr);
+  }
+}
 /* A narrow pane stacks them: the legend a filmstrip under the stage. */
 @container files (max-width: 40rem) {
   .page-body {

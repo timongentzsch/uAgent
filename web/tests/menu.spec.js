@@ -16,10 +16,11 @@ for (const touch of [false, true]) {
         .locator(".conversation-head")
         .getByRole("button", { name: "Conversation menu", exact: true });
       await activate(trigger);
-      await activate(page.getByRole("menuitem", { name: "More", exact: true }));
-      await activate(page.getByRole("menuitem", { name: /^Detail/ }));
-      await activate(page.getByRole("menuitem", { name: "Back to More" }));
-      await activate(page.getByRole("menuitem", { name: /^Detail/ }));
+      await activate(page.getByRole("menuitem", { name: /^View/ }));
+      await activate(
+        page.getByRole("menuitem", { name: "Back to Conversation menu" }),
+      );
+      await activate(page.getByRole("menuitem", { name: /^View/ }));
       await activate(
         page.getByRole("menuitemradio", { name: "Default", exact: true }),
       );
@@ -97,6 +98,7 @@ test("the conversation menu is short and More holds the rest", async ({
     "Pin",
     "Rename",
     "Move to…",
+    /^View/,
     "More",
   ]);
   await openMore(page);
@@ -106,7 +108,6 @@ test("the conversation menu is short and More holds the rest", async ({
     "Statistics",
     "Tools",
     "Export transcript",
-    /^Detail/,
     "Compact",
     "Restart",
     "Close conversation",

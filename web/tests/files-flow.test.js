@@ -110,6 +110,35 @@ const before = [
 const list = (dir) => ({ kind: "list", dir });
 const sequence = (path) => ({ kind: "sequence", path });
 
+test("a finding follows a renumbered slide and a missing slide opens its deck with an explanation", async () => {
+  const dir = "decks/a";
+  assert.deepEqual(await cited(dir + "/03-plan.html"), {
+    view: sequence(dir + "/02-plan.html"),
+    back: [list(dir)],
+  });
+  assert.deepEqual(await cited(dir + "/04-removed.html"), {
+    view: {
+      ...sequence(dir + "/01-cover.html"),
+      note: "04-removed.html is no longer in this deck.",
+    },
+    back: [list(dir)],
+  });
+  // Two old slides with the same unnumbered name require a choice.
+  const flow = cite({ path: dir + "/03-plan.html" }, "");
+  const choices = ["01-plan.html", "02-plan.html"];
+  const ambiguous = await resolve(flow, flow.view, {
+    ...io,
+    list: async () => ({
+      kind: "deck",
+      entries: choices.map((name) => ({ name, dir: false, kind: "deck" })),
+    }),
+  });
+  assert.deepEqual(
+    ambiguous.view.paths,
+    choices.map((file) => dir + "/" + file),
+  );
+});
+
 // The route table, a test a row ("Every way in" on the design's canvas).
 // Rows 5 and 6 (a card for an image or another file) never reach the pane,
 // and 14 (a phone) is the same views, checked in the browser.

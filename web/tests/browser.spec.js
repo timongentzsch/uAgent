@@ -159,7 +159,9 @@ test.describe("phone browser sheet", () => {
       await expect(dialog.getByRole("button", { name })).toBeDisabled();
 
     Object.assign(status, { mode: "human", controller: true, leased: true });
-    await expect(dialog.getByRole("button", { name: "Done" })).toBeVisible();
+    await expect(
+      dialog.getByRole("button", { name: "Hand back" }),
+    ).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Paste" })).toBeEnabled();
     expect(await geometry()).toEqual(resting);
 
@@ -420,7 +422,7 @@ for (const [label, status, state, primary] of [
     "tells the driver when the agent waits for them",
     { mode: "human", controller: true, leased: true, waiting: true },
     "Your turn",
-    "Done",
+    "Hand back",
   ],
   [
     "asks the user to take over when the agent waits",
@@ -437,6 +439,24 @@ for (const [label, status, state, primary] of [
     await expect(dialog.getByRole("button", { name: primary })).toBeVisible();
   });
 }
+
+test("status failure and recovery keep the browser in place", async ({
+  page,
+  session,
+}) => {
+  let retry = false;
+  await page.route("**/api/browser/status", (route) =>
+    retry
+      ? route.fulfill({ json: { ok: true, mode: "idle", running: false } })
+      : route.fulfill({ status: 503, json: { error: "Unavailable" } }),
+  );
+  const dialog = await openBrowser(page, session);
+  await expect(dialog.getByText(/Browser status unavailable/)).toBeVisible();
+  retry = true;
+  await dialog.getByRole("button", { name: "Retry" }).click();
+  await expect(dialog.getByText("Stopped", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Take over" })).toBeEnabled();
+});
 
 test("creates and selects a persistent Chrome profile", async ({
   page,
@@ -514,9 +534,11 @@ test("profile sign-in explicitly reopens Chrome and returns the same profile", a
   await dialog
     .getByRole("button", { name: "Sign in to profile", exact: true })
     .click();
-  await expect(dialog.getByText(/Done reopens this profile/)).toBeVisible();
+  await expect(
+    dialog.getByText(/Hand back when you finish signing in/),
+  ).toBeVisible();
   await page.keyboard.press("Escape");
-  await dialog.getByRole("button", { name: "Done", exact: true }).click();
+  await dialog.getByRole("button", { name: "Hand back", exact: true }).click();
   await expect(
     dialog.getByRole("button", { name: "Take over", exact: true }),
   ).toBeVisible();

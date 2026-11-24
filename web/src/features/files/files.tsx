@@ -13,6 +13,8 @@ import {
   Download,
   File,
   Pencil,
+  Maximize2,
+  Minimize2,
   X,
 } from "lucide-preact";
 import { usePushDirection } from "../../shared/motion.ts";
@@ -176,6 +178,8 @@ const PENDING = "Still running. Refresh to see its result.";
 export default function Files({
   session,
   close,
+  expand,
+  expanded: workspaceExpanded,
   flow,
   setFlow,
   addToChat,
@@ -186,6 +190,8 @@ export default function Files({
   session: Session;
   // Docked beside the chat; in a sheet, the sheet's own close.
   close?: () => void;
+  expand?: () => void;
+  expanded?: boolean;
   // Where it is lives with the app (see flow.ts), so it stays put while
   // closed or moved between the sheet and the docked pane.
   flow: Flow;
@@ -860,6 +866,7 @@ export default function Files({
       class="files"
       aria-label="Files"
       data-showing={side}
+      data-expanded={workspaceExpanded || undefined}
       // A click in the pane leaves focus in it (Safari focuses no button),
       // so the keys of what it shows are its own.
       tabIndex={-1}
@@ -977,6 +984,16 @@ export default function Files({
             <Download />
           </a>
         )}
+        {expand && (
+          <IconButton
+            label={
+              workspaceExpanded ? "Restore split view" : "Expand workspace"
+            }
+            onClick={expand}
+          >
+            {workspaceExpanded ? <Minimize2 /> : <Maximize2 />}
+          </IconButton>
+        )}
         {closeFiles && (
           <IconButton
             label="Close files"
@@ -988,6 +1005,11 @@ export default function Files({
       </Bar>
       {stage && (
         <div class="files-stage">
+          {view.kind === "sequence" && view.note && (
+            <p class="page-notice">
+              <Notice tone="warning">{view.note}</Notice>
+            </p>
+          )}
           {arranging.error != null && (
             <p class="page-notice">
               <Notice tone="error">
@@ -1055,6 +1077,7 @@ export default function Files({
                 leave((current) => swap(current, { kind: "sequence", path }))
               }
               addToChat={addToChat}
+              quoteSlide={quote}
               base={preview.value!.base}
               drawn={
                 pictures ? (as, path) => routes.files(id, as, path) : undefined

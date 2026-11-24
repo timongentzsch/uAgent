@@ -10,7 +10,8 @@ import { SettingsContext, type SettingsProps } from "./context.ts";
 import Configuration from "./configuration.tsx";
 import { McpServers } from "./mcp.tsx";
 import { AboutPane } from "./panes/about.tsx";
-import { DevicesPane } from "./panes/devices.tsx";
+import { NotificationsPane } from "./panes/notifications.tsx";
+import { DevicesPane, InstallPane } from "./panes/devices.tsx";
 import { DisplayPane } from "./panes/display.tsx";
 import { PermissionsPane } from "./panes/permissions.tsx";
 import { SettingsNav } from "./settings-nav.tsx";
@@ -23,6 +24,7 @@ export default function Settings(props: SettingsProps) {
   const [picked, setPicked] = useState<Scope | null>(
     () => SCOPES.find(([id]) => id === props.initialSection)?.[0] ?? null,
   );
+  const [editingInstructions, setEditingInstructions] = useState(false);
   const phone = usePhone();
   const moved = usePushDirection(picked !== null);
   useDismiss(phone && picked !== null, () => setPicked(null));
@@ -37,7 +39,14 @@ export default function Settings(props: SettingsProps) {
   const drilled = phone && picked !== null;
   const instructions = (label: string, detail: string) => (
     <Group>
-      <Row label={label} detail={detail} onClick={props.instructions} />
+      <Row
+        label={label}
+        detail={detail}
+        onClick={(event) => {
+          event.currentTarget.focus({ preventScroll: true });
+          setEditingInstructions(true);
+        }}
+      />
     </Group>
   );
   const mcp = (scope: "global" | "project") => (
@@ -68,7 +77,13 @@ export default function Settings(props: SettingsProps) {
         <PermissionsPane />
       </>
     ),
-    browser: <DisplayPane />,
+    browser: (
+      <>
+        <DisplayPane />
+        <NotificationsPane />
+        <InstallPane />
+      </>
+    ),
     host: <DevicesPane />,
     about: <AboutPane />,
   };
@@ -99,8 +114,7 @@ export default function Settings(props: SettingsProps) {
         <div ref={body} class={moved ? "settings-pane push" : "settings-pane"}>
           {!phone && <h3 class="settings-pane-title">{title}</h3>}
           <p class="settings-scope">{describe(session?.cwd)}</p>
-          {pages[current]}
-          {(current === "user" || current === "project") && (
+          {current === "user" || current === "project" ? (
             <Configuration
               key={current + session?.cwd}
               scope={current}
@@ -108,10 +122,16 @@ export default function Settings(props: SettingsProps) {
               version={props.version}
               online={online}
               sessions={catalogue.sessions}
-            />
+            >
+              {pages[current]}
+            </Configuration>
+          ) : (
+            pages[current]
           )}
         </div>
       </div>
+      {editingInstructions &&
+        props.instructions(() => setEditingInstructions(false))}
     </SettingsContext.Provider>
   );
 }

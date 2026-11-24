@@ -1,4 +1,10 @@
-import { connected, test, expect, withoutServiceWorker } from "./fixtures.js";
+import {
+  connected,
+  headerAction,
+  test,
+  expect,
+  withoutServiceWorker,
+} from "./fixtures.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 
@@ -167,10 +173,18 @@ test("the Library lists every place's things, opens them beside and moves a memo
 
   await nav.getByRole("button", { name: "Library", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Filter library" }).click();
   const place = page.getByLabel("Place", { exact: true });
   await expect(place).toBeVisible();
   await place.selectOption({ label: basename(second) });
-  await page.getByRole("button", { name: /^Everything/ }).click();
+  await page.getByLabel("Kind", { exact: true }).selectOption("");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Select", exact: true }).click();
+  await page.locator(LOADED_ROWS).filter({ hasText: "browser-lesson" }).click();
+  await expect(page.getByRole("toolbar", { name: "Selection" })).toContainText(
+    "1 selected",
+  );
+  await page.getByRole("button", { name: "Done", exact: true }).click();
   await page.locator(LOADED_ROWS).filter({ hasText: "browser-lesson" }).click();
   await expect(
     page.getByRole("heading", { name: "Durable lesson" }),
@@ -206,6 +220,7 @@ test("scheduled tasks run, report and pause", async ({
     .fill("Review the workspace");
   await page.getByLabel("Environment", { exact: true }).selectOption("local");
   await page.getByLabel("Approval", { exact: true }).selectOption("yolo");
+  await page.getByText("Run options", { exact: true }).click();
   await page.getByRole("button", { name: "Task model", exact: true }).click();
   await page.getByLabel("Model", { exact: true }).fill("model-b");
   await page.getByRole("option").filter({ hasText: "mock/model-b" }).click();
@@ -227,7 +242,9 @@ test("scheduled tasks run, report and pause", async ({
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
   await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
+  await page.getByRole("button", { name: "Edit task" }).click();
   // A check that finds nothing records the run without asking a model.
+  await page.getByText("Run options", { exact: true }).click();
   await page.getByLabel("Check · optional", { exact: true }).fill("exit 1");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(
@@ -243,6 +260,10 @@ test("scheduled tasks run, report and pause", async ({
     page.locator(LOADED_ROWS).filter({ hasText: "Browser scheduled review" }),
   ).toContainText("Paused");
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Edit task" }).click();
+  await expect(
+    page.getByRole("button", { name: "Save", exact: true }),
+  ).toBeInViewport({ ratio: 1 });
   await expect(
     page.getByText("Calculating upcoming runs…", { exact: true }),
   ).not.toBeVisible();
@@ -291,5 +312,26 @@ test("a skill kept by Claude Code is imported from the Library", async ({
       .getByRole("region", { name: "Everywhere", exact: true })
       .locator(LOADED_ROWS)
       .filter({ hasText: /demo.*skill · Demo skill/ }),
+  ).toBeVisible();
+});
+
+test("folder instructions return to their Settings scope and opener", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  await headerAction(page, "Settings");
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await settings.getByRole("button", { name: /This folder/ }).click();
+  const opener = settings.getByRole("button", { name: /Folder instructions/ });
+  await opener.click();
+  await expect(
+    page.getByRole("dialog", { name: "Instructions", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(opener).toBeFocused();
+  await expect(
+    settings.getByRole("heading", { name: "This folder" }),
   ).toBeVisible();
 });

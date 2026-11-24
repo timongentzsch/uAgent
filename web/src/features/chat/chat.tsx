@@ -115,8 +115,12 @@ function Chat({
         const cited = (event.target as Element).closest<HTMLElement>(
           ".file-ref",
         );
-        if (cited && openFile)
+        if (cited && openFile) {
+          // Safari leaves focus behind on a pointer click. Give the pane its
+          // actual opener so closing it returns to this finding.
+          cited.focus({ preventScroll: true });
           openFile({ path: cited.dataset.file!, lines: cited.dataset.lines });
+        }
       }}
     >
       {/* A log a listener can browse, silent as it streams: the status

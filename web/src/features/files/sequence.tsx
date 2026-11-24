@@ -173,6 +173,7 @@ export default function Sequence({
   heard,
   go,
   addToChat,
+  quoteSlide,
   base,
   read,
   drawn,
@@ -257,6 +258,7 @@ export default function Sequence({
   view: (image: ViewedImage) => void;
   go: (path: string) => void;
   addToChat?: (text: string, keep?: boolean) => void;
+  quoteSlide?: (text: string) => void;
 }) {
   const doc = kind === "doc";
   const sheet = kind === "sheet";
@@ -902,6 +904,13 @@ export default function Sequence({
           index={index}
           title={boards[index]?.title}
           skipped={boards[index]?.skip}
+          comment={
+            quoteSlide &&
+            (() =>
+              quoteSlide(
+                `Slide ${index + 1} · ${boards[index]?.title ?? path} (\`${path}\`)`,
+              ))
+          }
           busy={arranging}
           act={rearrange}
           add={async () => {

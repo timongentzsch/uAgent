@@ -323,20 +323,22 @@ function SessionRow({
         onClick={(event) => pick?.(item.id, event) || choose(item.id)}
         aria-current={selected ? "page" : undefined}
         data-unread={unread || undefined}
+        leading={
+          <span
+            class={`session-state ${state}`}
+            role={shown && "img"}
+            aria-label={shown?.label}
+          >
+            {shown &&
+              (shown.Icon ? (
+                <shown.Icon aria-hidden />
+              ) : (
+                <StatusLed state="running" />
+              ))}
+          </span>
+        }
         title={
           <>
-            <span
-              class={`session-state ${state}`}
-              role={shown && "img"}
-              aria-label={shown?.label}
-            >
-              {shown &&
-                (shown.Icon ? (
-                  <shown.Icon aria-hidden />
-                ) : (
-                  <StatusLed state="running" />
-                ))}
-            </span>
             <SessionName item={item} />
             {unread && <span role="img" aria-label="Unread messages" />}
           </>
@@ -372,12 +374,8 @@ function TerminalRow({
         class="session"
         aria-current={selected ? "page" : undefined}
         onClick={() => choose(terminal)}
-        title={
-          <>
-            <Terminal class="row-icon" aria-hidden="true" />
-            {terminal.title}
-          </>
-        }
+        leading={<Terminal class="row-icon" aria-hidden="true" />}
+        title={terminal.title}
       >
         <span class="session-time">
           <Time value={terminal.started} brief />

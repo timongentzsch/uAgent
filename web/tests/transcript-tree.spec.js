@@ -2,7 +2,8 @@ import {
   devServerTest as test,
   expect,
   DEV_SERVER_URL,
-  openMore,
+  chooseDetail,
+  openView,
 } from "./fixtures.js";
 import { agents, arrivals, conversation, pondering } from "./golden-turns.js";
 
@@ -176,21 +177,9 @@ test("rows open and close from the keyboard, and stay as left", async ({
   await expect(
     page.locator('[data-message-id="w-m-12"] > .node-row'),
   ).toHaveAttribute("aria-expanded", "false");
-  await page
-    .locator(".conversation-head")
-    .getByLabel("Conversation menu", { exact: true })
-    .click();
-  await openMore(page);
-  await page.getByRole("menuitem", { name: /^Detail/ }).click();
-  await page.getByRole("menuitemradio", { name: "Full" }).click();
+  await chooseDetail(page, "Full");
   await expect(rows(page)).toHaveCount(13);
-  await page
-    .locator(".conversation-head")
-    .getByLabel("Conversation menu", { exact: true })
-    .click();
-  await openMore(page);
-  await page.getByRole("menuitem", { name: /^Detail/ }).click();
-  await page.getByRole("menuitemradio", { name: "Minimal" }).click();
+  await chooseDetail(page, "Minimal");
   await expect(work).toHaveAttribute("aria-expanded", "false");
 });
 
@@ -214,9 +203,8 @@ test("a thought is text among the steps, whole at every level and under a folded
   ).toHaveAttribute("aria-expanded", "false");
   const said = await text.textContent();
   expect(await whole()).toBe(true);
-  const head = page.locator(".conversation-head");
   for (const level of ["Default", "Full"]) {
-    await head.getByRole("tab", { name: level }).click();
+    await chooseDetail(page, level);
     await expect(text).toHaveText(said);
     await expect(thought.getByRole("button")).toHaveCount(0);
     expect(await whole()).toBe(true);
@@ -229,16 +217,17 @@ test("the header sets the level and shows or hides thinking", async ({
   await page.setViewportSize({ width: 1280, height: 1400 });
   await open(page, "full");
   await expect(rows(page)).toHaveCount(13);
-  const head = page.locator(".conversation-head");
-  const thinking = head.getByRole("button", { name: "Thinking", exact: true });
-  await expect(thinking).toHaveAttribute("aria-pressed", "true");
+  await openView(page);
+  const thinking = page.getByRole("menuitemcheckbox", { name: "Thinking" });
+  await expect(thinking).toBeChecked();
   // A thought is text among the rows, so hiding it leaves them as they were.
   await expect(page.locator('[data-kind="thinking"]')).toHaveCount(1);
   await thinking.click();
-  await expect(thinking).toHaveAttribute("aria-pressed", "false");
+  await openView(page);
+  await expect(thinking).not.toBeChecked();
   await expect(rows(page)).toHaveCount(13);
   await expect(page.locator('[data-kind="thinking"]')).toHaveCount(0);
-  await head.getByRole("tab", { name: "Minimal" }).click();
+  await page.getByRole("menuitemradio", { name: "Minimal" }).click();
   await expect(
     page.locator('[data-message-id="w-m-22"] > .node-row'),
   ).toHaveAttribute("aria-expanded", "false");

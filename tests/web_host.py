@@ -199,13 +199,20 @@ def answer(handler, body):
             },
             call_id="browser-activity",
         )
-    if "Todo probe" in prompt:
+    todo_request = next((str(text) for text in reversed(texts) if "Todo probe" in str(text)), "")
+    if todo_request:
+        complete = "Todo probe: finish" in todo_request
         items = [
             {"text": "Read the parser", "status": "done"},
             {"text": "Fix the lexer", "status": "pending"},
             {"text": "Add tests", "status": "pending"},
         ]
-        return tool_call("todo", {"items": items}, call_id="todo-write")
+        if complete:
+            for item in items:
+                item["status"] = "done"
+        call_id = "todo-finish" if complete else "todo-write"
+        if not any(message.get("tool_call_id") == call_id for message in body["messages"]):
+            return tool_call("todo", {"items": items}, call_id=call_id)
     if "Plan probe" in prompt and not any(
         message.get("tool_call_id") == "plan-write" for message in body["messages"]
     ):

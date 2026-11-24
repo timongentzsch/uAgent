@@ -271,7 +271,7 @@ export function Row({
   label: ComponentChildren;
   detail?: ComponentChildren;
   children?: ComponentChildren;
-  onClick?: () => void;
+  onClick?: ButtonHTMLAttributes<HTMLButtonElement>["onClick"];
   disabled?: boolean;
   destructive?: boolean;
   current?: boolean;

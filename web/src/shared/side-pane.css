@@ -34,6 +34,19 @@
   width: var(--side-width, clamp(var(--popover), 30vw, var(--sheet)));
 }
 
+/* Expand the workspace in place so its selection, chat and saved split survive. */
+.side-layout:has(.side-pane > .files[data-expanded]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.side-layout:has(.side-pane > .files[data-expanded])
+  > :not(:has(> .files[data-expanded])),
+.side-pane:has(> .files[data-expanded]) > .resize-handle {
+  display: none;
+}
+.side-pane:has(> .files[data-expanded]) {
+  width: 100%;
+}
+
 /* A wide grip over the pane's 1px edge. */
 .resize-handle {
   position: absolute;

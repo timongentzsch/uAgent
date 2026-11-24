@@ -145,6 +145,17 @@ export default function Modals({
   const toolsSession =
     toolsMetadata || sessionById(catalogue.sessions, toolsSessionId);
   const close = () => setModal(null);
+  const instructions = (close: () => void) => (
+    <Modal title="Instructions" size="l" layout="sheet" close={close}>
+      <Instructions
+        session={session}
+        projects={projects}
+        online={online}
+        version={managementVersion}
+        showRequest={session?.generation ? () => showContext() : undefined}
+      />
+    </Modal>
+  );
   return (
     <>
       {(modal?.type === "statistics" ||
@@ -393,17 +404,7 @@ export default function Modals({
           />
         </Modal>
       )}
-      {modal?.type === "instructions" && (
-        <Modal title="Instructions" size="l" layout="sheet" close={close}>
-          <Instructions
-            session={session}
-            projects={projects}
-            online={online}
-            version={managementVersion}
-            showRequest={session?.generation ? () => showContext() : undefined}
-          />
-        </Modal>
-      )}
+      {modal?.type === "instructions" && instructions(close)}
       {modal?.type === "settings" && (
         <Modal
           title="Settings"
@@ -422,7 +423,7 @@ export default function Modals({
             refresh={refresh}
             selected={selected}
             session={session}
-            instructions={() => setModal({ type: "instructions" })}
+            instructions={instructions}
           />
         </Modal>
       )}

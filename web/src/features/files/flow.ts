@@ -3,7 +3,7 @@
 
 import type { FileTarget } from "../../shared/types.ts";
 import { HTML, MARKDOWN, nameOf, paged } from "../../shared/file-types.ts";
-import { join, type Listing, pagesOf, slidesOf } from "./boards.ts";
+import { join, type Listing, pagesOf, slideName, slidesOf } from "./boards.ts";
 
 export type Lines = [number, number];
 export type View =
@@ -20,7 +20,7 @@ export type View =
     }
   // A page across the pane, with the legend of what it is part of (a deck's
   // slides, a document's pages, a design's boards).
-  | { kind: "sequence"; path: string }
+  | { kind: "sequence"; path: string; note?: string }
   // A design's pages on a plane.
   | { kind: "canvas"; dir: string }
   // Several files share a cited name: the person picks one.
@@ -130,7 +130,10 @@ export function folderView(dir: string, listing: Listing): View | undefined {
     kind: "sequence",
     path: join(dir, name),
   });
-  if (listing.kind === "deck") return at(slidesOf(listing)[0]);
+  if (listing.kind === "deck") {
+    const first = slidesOf(listing)[0];
+    return first ? at(first) : undefined;
+  }
   if (listing.kind === "system" && pages.includes("book.html"))
     return at("book.html");
   if (pages.length > 1) return { kind: "canvas", dir };
@@ -196,6 +199,40 @@ export async function resolve(
       target.turn,
     );
     return settle(view, up);
+  }
+  // Reordering a deck changes the numeric prefix of its slides. Resolve an
+  // older finding against this deck before searching the wider workspace.
+  if (
+    listing?.kind === "deck" &&
+    HTML.test(name) &&
+    !target.lines &&
+    !target.diff
+  ) {
+    const slides = slidesOf(listing);
+    const dir = dirOf(target.path);
+    const up: View = { kind: "list", dir };
+    const matches = slides.filter(
+      (file) => slideName(file) === slideName(name),
+    );
+    if (matches.length > 1)
+      return settle(
+        {
+          kind: "pick",
+          name: target.path,
+          paths: matches.map((file) => join(dir, file)),
+        },
+        [up],
+      );
+    const next = matches[0] ?? slides[0];
+    const note = matches.length
+      ? undefined
+      : `${name} is no longer in this deck.`;
+    return next
+      ? settle(
+          { kind: "sequence", path: join(dir, next), ...(note && { note }) },
+          [up],
+        )
+      : settle({ ...up, note }, []);
   }
   // Not there as written: a name the folder holds somewhere else.
   const named = (await io.find(name)).filter(

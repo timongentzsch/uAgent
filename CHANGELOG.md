@@ -10,6 +10,7 @@
 
 ### Fixes
 
+- **A tab whose page crashed is no longer reported as opened.** When Chrome ends a tab's page (often for lack of memory), the agent's browser says "the tab's page crashed …; open the page again" at once, for every action and for an open the crash cut short, instead of "open done", a 10-second timeout or "Internal error"; tabs marks the tab as crashed, and opening the page again (or Reload in the viewer) brings it back.
 - **On a machine with too little memory, the agent's browser says so.** Below 600 MB for µAgent (a container's limit, else the machine's memory) it answers "The agent's browser needs about 600 MB of memory; this machine allows 512 MB" instead of starting Chrome and losing pages to the out-of-memory killer; PDF and PNG export, which use it, say the same.
 - **A conversation whose runtime ended mid-turn goes on with the next message.** When its runtime was killed (out of memory, a crash) or had stopped while the page held it, the next message was refused with "session needs activation" or "stale generation"; it now starts the runtime again and is answered. The turn that was running shows as stopped, as one you stop does.
 - **When memory runs out, the web host is not the first to go.** A conversation's runtime and what it runs, and the agent's browser, are now the processes the kernel ends first; before, the host went first and every conversation with it. On a 512 MB machine with 150 conversations streaming, the host stayed up and two conversations' runtimes were ended instead.

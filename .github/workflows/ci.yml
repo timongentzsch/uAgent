@@ -94,6 +94,8 @@ jobs:
           web-dist: true
           ccache: release
           ccache-size: 300M
+          # With the runner's Google Chrome, the agent's browser runs for real.
+          packages: tigervnc-standalone-server
       # macOS links Homebrew's libcrypto statically, so the archive runs on
       # hosts without Homebrew.
       - name: Configure

@@ -70,6 +70,12 @@ void Terminate(pid_t& pid) {
   pid = -1;
 }
 constexpr auto kLeaseQuiet = std::chrono::minutes(3);
+json Crashed() {
+  return {{"error",
+           "the tab's page crashed (Chrome ended it, often for lack of "
+           "memory); open the page again"},
+          {"crashed", true}};
+}
 // The first X display no server holds, as ":N": a second server on a held
 // number fails to start.
 std::string FreeDisplay() {
@@ -492,6 +498,14 @@ json Runtime::Call(const std::string& method, const json& parameters,
   const bool held = !session.empty() && session == page_session_ &&
                     method != "Page.handleJavaScriptDialog";
   if (held && OpenDialog()) return {{"dialog", true}};
+  if (crashed_.contains(session)) {
+    if (method != "Page.navigate" && method != "Page.reload" &&
+        method != "Page.navigateToHistoryEntry" &&
+        method != "Page.getNavigationHistory") {
+      return Crashed();
+    }
+    if (method != "Page.getNavigationHistory") crashed_.erase(session);
+  }
   // A page drawn smaller than its size reads the pointer in drawn pixels.
   json scaled;
   if (input_scale_ != 1 && (method == "Input.dispatchMouseEvent" ||
@@ -531,9 +545,17 @@ json Runtime::Call(const std::string& method, const json& parameters,
                       [&](const auto& tab) { return tab.second == gone; });
         dialogs_.erase(gone);
         requests_.erase(gone);
+        crashed_.erase(gone);
         if (gone == page_session_) page_session_.clear();
       }
       const std::string from = JsonValue(response, "sessionId", "");
+      if (event == "Inspector.targetCrashed") {
+        if (!from.empty()) crashed_.insert(from);
+        // Chrome never answers what was asked of that page.
+        if (from == session) return Crashed();
+      }
+      // Reloaded by a person in the viewer.
+      if (event == "Inspector.targetReloadedAfterCrash") crashed_.erase(from);
       if (params && event == "Page.javascriptDialogOpening") {
         // The page's plea to stay while the agent leaves it is accepted,
         // and a throwaway tab's dialog closed: nobody is there to answer it.
@@ -661,6 +683,8 @@ bool Runtime::AttachPage(std::string target, std::string& error) {
     error = enabled;
     return false;
   }
+  // For Inspector.targetCrashed and targetReloadedAfterCrash.
+  Call("Inspector.enable", json::object(), attached_session);
   if (auto installed = CdError(Call("Page.addScriptToEvaluateOnNewDocument",
                                     {{"source", kSecretScript},
                                      {"worldName", kWorld},
@@ -841,6 +865,7 @@ json Runtime::Execute(const json& command) {
   // What failed while a dialog is open failed because of it. A download that
   // ended is told with the next answer: it may end long after its action.
   const auto reported = [&](json result) {
+    if (crashed_.contains(page_session_)) return Crashed();
     if (const json* open = OpenDialog()) {
       result.erase("error");
       result["ok"] = true;
@@ -876,6 +901,10 @@ json Runtime::Execute(const json& command) {
     if (pages.contains("error")) return pages;
     for (auto& page : pages) {
       page["selected"] = JsonValue(page, "id", "") == target_;
+      if (const auto tab = sessions_.find(JsonValue(page, "id", ""));
+          tab != sessions_.end() && crashed_.contains(tab->second)) {
+        page["crashed"] = true;
+      }
       page.erase("opener");
     }
     std::string requested = JsonValue(command, "target_id", "");

@@ -114,7 +114,7 @@ export function useEdgeSwipe(enabled: boolean, back: () => void) {
       if (
         event.touches.length !== 1 ||
         touch.clientX > viewportBounds(true).left + edgeSwipeStartPx ||
-        target.closest('.terminal-view, [role="slider"]')
+        target.closest('.terminal-panel, [role="slider"]')
       )
         return;
       for (let at: Element | null = target; at; at = at.parentElement) {

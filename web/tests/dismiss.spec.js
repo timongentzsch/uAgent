@@ -76,33 +76,36 @@ test.describe("back closes what is open", () => {
     await expect(page).toHaveURL(new RegExp(session.id));
   });
 
-  test("a dialog swapped in from a drilled section leaves no stale entry", async ({
+  test("back from instructions restores the settings section and then the list", async ({
     page,
     session,
   }) => {
     await page.goto(`/#session=${session.id}`);
-    const before = await page.evaluate(() => history.length);
     await headerAction(page, "Settings");
     const settings = page.getByRole("dialog", { name: "Settings" });
     await settings
       .locator(".settings-nav")
       .getByRole("button", { name: "All conversations", exact: true })
       .tap();
-    await settings
+    const opener = settings
       .locator(".settings-pane")
-      .getByRole("button", { name: /Instructions/ })
-      .tap();
+      .getByRole("button", { name: /Instructions/ });
+    await opener.tap();
     const prompt = page.getByRole("dialog", { name: "Instructions" });
     await expect(prompt).toBeVisible();
     await page.goBack();
     await expect(prompt).toHaveCount(0);
+    await expect(opener).toBeFocused();
+    await expect(
+      settings.getByRole("heading", { name: "All conversations", exact: true }),
+    ).toBeVisible();
+    await page.goBack();
+    await expect(settings.locator(".settings-nav")).toBeVisible();
+    await page.goBack();
+    await expect(settings).toHaveCount(0);
+    await expect(page.getByLabel("Message or guidance")).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(session.id));
     await expect.poll(() => layerDepth(page)).toBe(0);
-    await headerAction(page, "Settings");
-    await settings.getByRole("button", { name: "Close settings" }).click();
-    await expect.poll(() => layerDepth(page)).toBe(0);
-    expect(await page.evaluate(() => history.length)).toBeGreaterThanOrEqual(
-      before,
-    );
   });
 
   test("a reload on a layer entry opens nothing and back still works", async ({

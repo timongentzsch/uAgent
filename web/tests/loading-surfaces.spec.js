@@ -697,6 +697,9 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
     }),
   ).toBe(0);
   const body = tool.locator(".node-body");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(body).toHaveCount(0);
+  await toggle.click();
   await expect(body).toContainText("short preview");
   await expect(tool.locator(".katex")).toHaveCount(0);
   expect(requests).toBe(0);

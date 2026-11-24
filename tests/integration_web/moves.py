@@ -273,6 +273,10 @@ def test_web_file_origin_survives_repeated_moves_and_legacy_receipts(root, home,
             query = child + "/file-origin?sequence=2&path="
             assert_true(again.json(query + "only-old.md")[1]["origin"] == original, "old child")
             assert_true(again.json(query + "same.html")[0] == 409, "ambiguous old child")
+            assert_true(
+                again.json(query + str(old.resolve() / "same.html"))[1]["origin"] == original,
+                "absolute reference in old child",
+            )
 
 
 def test_web_move_takes_a_conversation_and_its_agents_to_another_folder(root, home, *, binary):

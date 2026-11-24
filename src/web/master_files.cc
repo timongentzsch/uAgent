@@ -202,7 +202,11 @@ void Master::FileOrigin(const Request& request, Response& response) {
   for (const auto& candidate : folders) {
     const auto root = CanonicalDirectory(candidate);
     if (!root || path.empty()) continue;
-    const auto file = Resolve(*root, path);
+    const fs::path written(path);
+    const auto relative =
+        written.is_absolute() ? written.lexically_relative(*root) : written;
+    if (relative.empty()) continue;
+    const auto file = Resolve(*root, relative.string());
     std::error_code error;
     if (!file || !fs::exists(*file, error)) continue;
     matches.push_back(location(candidate));

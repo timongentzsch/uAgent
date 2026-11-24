@@ -239,6 +239,7 @@ class SessionHost {
                            const std::string& asset);
   SnapshotResult Snapshot(const std::string& id, const SnapshotQuery& query);
   bool Contains(const std::string& id) const;
+  bool HasWorker(const std::string& id) const;
   SessionCommandResult ExecuteCommand(json command, const std::string& device,
                                       const std::string& request_id);
 

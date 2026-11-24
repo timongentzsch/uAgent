@@ -578,8 +578,18 @@ std::string Served(const std::string& path) {
       !PathWithin(file, folder)) {
     return "";
   }
-  return served.substr(split + 1) +
-         PercentEncode(file.lexically_relative(folder).string(), "/");
+  // Logout revokes every old URL. The web host atomically updates the
+  // worker's private grant so even a long-lived turn sees the replacement.
+  std::string base = served.substr(split + 1), error;
+  // A worker launched by an older web host receives the URL directly.
+  if (!base.starts_with("http://127.0.0.1:")) {
+    const std::string grant = std::move(base);
+    if (!ReadRegularFile(grant, 512, base, error)) return "";
+  }
+  if (!base.starts_with("http://127.0.0.1:") || !base.ends_with("/")) {
+    return "";
+  }
+  return base + PercentEncode(file.lexically_relative(folder).string(), "/");
 }
 
 // open with a path: a page of this conversation's folder is served by the

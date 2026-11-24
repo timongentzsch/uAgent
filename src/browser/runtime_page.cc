@@ -705,10 +705,11 @@ json Runtime::Look(const json& command) {
                                  std::to_string(last) + ")";
       json deck = Awaited(session, script, kCdpIoMs - 500);
       if (deck.contains("error")) return deck;
-      if (JsonValue(deck, "parts", -1) == 0)
+      if (JsonValue(deck, "parts", -1) == 0) {
         return {{"error",
                  "No slides to review in this folder. Save a slide "
                  "HTML file here or observe an existing slide by its path."}};
+      }
       if (!JsonArray(deck, "slides")) {
         return {{"error", "The deck did not finish loading."}};
       }

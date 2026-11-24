@@ -179,12 +179,16 @@ test("the Library lists every place's things, opens them beside and moves a memo
   await place.selectOption({ label: basename(second) });
   await page.getByLabel("Kind", { exact: true }).selectOption("");
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Select", exact: true }).click();
-  await page.locator(LOADED_ROWS).filter({ hasText: "browser-lesson" }).click();
+  const select = page.getByRole("button", { name: "Select", exact: true });
+  await select.press("Enter");
+  const item = page.getByRole("checkbox", { name: "Select browser-lesson" });
+  await expect(item).toBeFocused();
+  await item.press("Space");
   await expect(page.getByRole("toolbar", { name: "Selection" })).toContainText(
     "1 selected",
   );
-  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await page.getByRole("button", { name: "Done", exact: true }).press("Enter");
+  await expect(select).toBeFocused();
   await page.locator(LOADED_ROWS).filter({ hasText: "browser-lesson" }).click();
   await expect(
     page.getByRole("heading", { name: "Durable lesson" }),

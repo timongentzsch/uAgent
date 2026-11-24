@@ -1,8 +1,9 @@
 import http.client
 import json
+import stat
 from urllib.parse import quote, urlencode
 
-from integration_support import SMALL_PNG, Server, assert_true, event, tool_call
+from integration_support import SMALL_PNG, Server, assert_true, event, run, tool_call
 from web_support import WebClient, web_host
 
 
@@ -20,7 +21,7 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
     (project / ".mcp.json").write_text("{}")
     (root / "outside.html").write_text("<p>outside</p>")
     with Server([lambda _, _body: event({"content": "unused"})]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+        with web_host(binary, root, home, provider.url) as (client, code, _, env):
             port = client.port
             client.pair(code)
             session = client.create(project, activate=False)
@@ -136,10 +137,40 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
             ):
                 status, body, _ = client.request(f"/api/sessions/{session['id']}/files?{asked}")
                 assert_true(status == 503, (asked, status, body))
+            # A failed first publication is retryable on the same worker. Occupy
+            # the private grant directory with a regular file to force the failure.
+            grant_dir = home / ".uagent/web/worker-previews"
+            grant_dir.touch()
+            # Attach a worker after the first paired device has already minted a URL.
+            generation = client.command("activate", session)["session"]["generation"]
+            assert_true(client.request(grant, {})[0] == 404, "unpublished grant accepted")
+            grant_dir.unlink()
+            status, data, _ = client.json(grant, {})
+            assert_true(status == 200, "failed to republish worker grant")
+            base = data["base"]
+            grant_file = grant_dir / session["id"]
+            assert_true(stat.S_IMODE(grant_file.stat().st_mode) == 0o600, "grant mode")
+            assert_true(grant_file.read_text() == client.origin + base, "worker grant")
             # Logging the device out ends its grants.
             client.command("logout")
             status, body, _ = page("design/hero-a.html")
             assert_true(status == 404, (status, body))
+            assert_true(client.request(grant, {})[0] == 401, "logged-out device")
+            # A newly paired device and the already-running worker can both review a revision.
+            issued = run(project, env, "--web", "--web-port", str(port), binary=binary)
+            peer = WebClient(port)
+            peer.pair(issued.stdout.split("#pair=")[1].splitlines()[0])
+            assert_true(
+                peer.snapshot(session)["metadata"]["generation"] == generation, "worker changed"
+            )
+            base = peer.json(grant, {})[1]["base"]
+            assert_true(grant_file.read_text() == peer.origin + base, "worker missed rotation")
+            (project / "design/hero-a.html").write_text("<p>revised</p>")
+            assert_true(b"revised" in page("design/hero-a.html")[1], "revised slide missing")
+            assert_true(
+                b"<template id=slides>" in page("design/?deck&review")[1], "manifest missing"
+            )
+    assert_true(not grant_file.exists(), "worker grant survived host shutdown")
 
 
 def test_web_sheet_page_loads_its_engine_from_its_own_address(root, home, *, binary):

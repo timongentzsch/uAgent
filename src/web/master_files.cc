@@ -199,17 +199,64 @@ void Master::FileWrite(const Request& request, Response& response) {
   }
 }
 
-std::string Master::PreviewBase(const std::string& id) {
+// Publish by atomic replacement. A failed write must leave the old URL revoked.
+void Master::PublishWorkerPreview(PreviewToken& grant) {
+  if (grant.file.empty() || grant.token.empty()) return;
+  std::string error;
+  if (!EnsurePrivateDirectory(fs::path(grant.file).parent_path().string()) ||
+      !WritePrivateFile(grant.file, local_ + "/preview/" + grant.token + "/",
+                        error)) {
+    grant.token.clear();
+  }
+}
+
+std::string Master::PreviewAddress(const std::string& id, bool worker) {
   if (host_.Folder(id).empty()) return "";
   std::lock_guard lock(previews_mutex_);
-  std::string& token = previews_[id];
-  if (token.empty()) token = RandomToken();
-  if (token.empty()) previews_.erase(id);
-  return token.empty() ? "" : "/preview/" + token + "/";
+  auto& grant = previews_[id];
+  const bool attach = worker && grant.file.empty();
+  if (attach) grant.file = directory_ + "/worker-previews/" + id;
+  if (grant.token.empty()) {
+    grant.token = RandomToken();
+    PublishWorkerPreview(grant);
+  } else if (attach) {
+    PublishWorkerPreview(grant);
+  }
+  if (worker) return grant.file;
+  return grant.token.empty() ? "" : "/preview/" + grant.token + "/";
+}
+
+void Master::RevokePreviews() {
+  std::lock_guard lock(previews_mutex_);
+  std::erase_if(previews_, [this](auto& item) {
+    const auto& [id, grant] = item;
+    if (grant.file.empty()) return true;
+    if (host_.HasWorker(id)) return false;
+    std::error_code ec;
+    fs::remove(grant.file, ec);
+    return true;
+  });
+  for (auto& item : previews_) {
+    auto& grant = item.second;
+    grant.token = RandomToken();
+    PublishWorkerPreview(grant);
+  }
+}
+
+void Master::ClearWorkerPreviews() const {
+  std::error_code ec;
+  const fs::path dir = fs::path(directory_) / "worker-previews";
+  if (!fs::is_directory(fs::symlink_status(dir, ec))) return;
+  for (const auto& entry : fs::directory_iterator(dir, ec)) {
+    if (session::OpaqueId(entry.path().filename().string())) {
+      fs::remove(entry.path(), ec);
+    }
+  }
+  fs::remove(dir, ec);
 }
 
 void Master::PreviewGrant(const Request& request, Response& response) {
-  const std::string base = PreviewBase(request.matches[1].str());
+  const std::string base = PreviewAddress(request.matches[1].str());
   if (base.empty()) {
     Error(response, "unknown session", 404);
     return;
@@ -224,7 +271,7 @@ void Master::Preview(const Request& request, Response& response) {
   {
     std::lock_guard lock(previews_mutex_);
     for (const auto& [id, granted] : previews_) {
-      if (EqualSecret(token, granted)) session = id;
+      if (EqualSecret(token, granted.token)) session = id;
     }
   }
   const WorkspaceIdentity workspace = host_.WorkspaceOf(session);
@@ -331,7 +378,7 @@ void Master::Picture(const Request& request, Response& response,
     directory = target && fs::is_directory(*target);
     regular = target && fs::is_regular_file(*target);
   }
-  const std::string base = PreviewBase(session);
+  const std::string base = PreviewAddress(session);
   const bool deck = pdf && directory;
   if (!target || !(deck || regular) || base.empty()) {
     Error(response, "not found", 404);

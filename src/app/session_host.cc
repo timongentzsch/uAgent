@@ -304,6 +304,14 @@ bool SessionHost::Contains(const std::string& id) const {
   return sessions_.contains(id);
 }
 
+bool SessionHost::HasWorker(const std::string& id) const {
+  std::lock_guard lock(mutex_);
+  const auto it = sessions_.find(id);
+  return it != sessions_.end() &&
+         (it->second->connecting ||
+          (it->second->pid > 0 && !it->second->exited));
+}
+
 json SessionHost::Metadata(const HostSession& session) const {
   // A decision routed to an agent's parent does not wait on a person.
   const bool waits = WaitsOnPerson(session.pending);

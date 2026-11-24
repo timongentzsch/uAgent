@@ -196,12 +196,19 @@ def test_web_restarts_conversations_and_itself(root, home, *, binary):
             assert_true(active.wait(budget(10)), "turn did not start")
             discovery = home / ".uagent/web/discovery.json"
             epoch = json.loads(discovery.read_text())["epoch"]
+            grant = discovery.parent / "worker-previews" / session["id"]
+            old_grant = grant.read_text()
             client.command("restart_host")
 
             def restarted():
                 try:
                     current = json.loads(discovery.read_text())["epoch"]
-                    return current != epoch and client.json("/api/sessions")[0] == 200
+                    # A detached worker gets a fresh URL before any client reopens it.
+                    return (
+                        current != epoch
+                        and grant.read_text() != old_grant
+                        and client.json("/api/sessions")[0] == 200
+                    )
                 except (OSError, ValueError, ConnectionError):
                     return False
 

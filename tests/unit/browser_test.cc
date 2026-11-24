@@ -1402,6 +1402,7 @@ TEST_CASE(TestBrowserToolSteps) {
   // In the folder the host serves it opens at its address there, and is told
   // what is wrong with it as a window of its artboard's size draws it.
   {
+    // Older web hosts supplied the preview URL directly at worker launch.
     const ScopedEnv served("UAGENT_INTERNAL_PREVIEW",
                            fs::canonical(fake.workspace.root).string() +
                                "\nhttp://127.0.0.1:1/preview/token/");
@@ -1519,8 +1520,10 @@ TEST_CASE(TestBrowserToolLook) {
     std::ofstream(folder / page) << "<p>page</p>";
   }
   std::ofstream(fake.workspace.root / "outside.html") << "<p>page</p>";
+  const fs::path grant = fake.workspace.root / "preview-grant";
+  std::ofstream(grant) << "http://127.0.0.1:1/preview/t/";
   const ScopedEnv served("UAGENT_INTERNAL_PREVIEW",
-                         folder.string() + "\nhttp://127.0.0.1:1/preview/t/");
+                         folder.string() + "\n" + grant.string());
   const fs::path checked = fake.data / "profile" / "page-checked";
   // Written before Chrome starts, in the profile it then takes.
   fs::create_directories(checked.parent_path());
@@ -1571,6 +1574,8 @@ TEST_CASE(TestBrowserToolLook) {
   CHECK(!empty.Ok());
   CHECK(empty.output.find("No slides to review in this folder") !=
         std::string::npos);
+  // The host rotated its grant between turns in this same worker.
+  std::ofstream(grant) << "http://127.0.0.1:1/preview/new/";
   const ToolResult single =
       look("deck", "", R"({"parts":1,"w":1920,"h":1080,"slides":[
       {"file":"01.html","title":"Evidence","problems":[]}]})");
@@ -1618,6 +1623,8 @@ TEST_CASE(TestBrowserToolLook) {
   CHECK(navigated[5] == navigated[4]);
   CHECK(navigated[6].value("url", "") ==
         "http://127.0.0.1:1/preview/t/deck/?deck&review");
+  CHECK(navigated.back().value("url", "") ==
+        "http://127.0.0.1:1/preview/new/deck/?deck&review");
 }
 
 // A batch: steps in order on one look, the page once after them, and no step

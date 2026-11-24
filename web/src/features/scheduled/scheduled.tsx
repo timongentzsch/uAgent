@@ -15,7 +15,7 @@ import type {
   ScheduledState,
   ScheduleRule,
 } from "../../shared/types.ts";
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { Plus, Play, Square, ChevronLeft } from "lucide-preact";
 import {
   Cluster,
@@ -123,7 +123,7 @@ export default function Scheduled({
   const newTaskButton = useRef<HTMLButtonElement>(null);
   const editTaskButton = useRef<HTMLButtonElement>(null);
   const focusName = useRef(false);
-  useLayoutEffect(() => {
+  useEffect(() => {
     // New task is available while the list loads. Give focus to the live
     // field after the inert loading form has been replaced.
     if (focusName.current && scheduled && nameField.current) {

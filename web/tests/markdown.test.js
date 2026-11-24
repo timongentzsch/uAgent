@@ -225,6 +225,20 @@ test("a cited path names a file and its lines, and nothing else does", () => {
     assert.equal(fileReference(text), undefined, text);
 });
 
+test("explicit chat links keep escaped filenames and line anchors", () => {
+  const text =
+    "[deck](<decks/Résumé %23 1.html>) and [note](<Notes 2026.md#L2-L4>) " +
+    "[literal](file%23L2) and [download](/api/sessions/s/assets/a)";
+  const html = markdownBlocks(text, 0, { refs: true })[0].html;
+  assert.match(html, /data-file="decks\/Résumé # 1.html">deck<\/button>/);
+  assert.match(html, /data-file="file#L2">literal<\/button>/);
+  assert.match(html, /href="\/api\/sessions\/s\/assets\/a"/);
+  assert.match(
+    html,
+    /data-file="Notes 2026.md" data-lines="2-4">note<\/button>/,
+  );
+});
+
 test("references render only where a surface opens them", () => {
   const text =
     "See `src/a.ts:2`, `ledger.summary` and [the app](src/a.ts#L3) or [`b.ts:4`](b.ts).";

@@ -2,6 +2,7 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <string>
@@ -50,8 +51,12 @@ TEST_CASE(TestGrepTool) {
   CHECK(ToolWriteFile(colon.string(), "needle match\n").Ok());
   auto grouped =
       ToolGrep(supervisor, "needle", root.string(), {.glob = "*.cpp"});
-  CHECK(grouped.parts.size() == 2 &&
-        grouped.parts[0]["label"] == colon.string());
+  CHECK(grouped.parts.size() == 2);
+  CHECK(std::ranges::any_of(grouped.parts, [&](const json& part) {
+    return part["label"] == colon.string() &&
+           part["text"].get<std::string>().find("needle match") !=
+               std::string::npos;
+  }));
   fs::remove(colon);
   {
     // One match past the cap is reported as cut, not dropped silently.

@@ -659,17 +659,26 @@ ToolResult Look(const json& args, const ToolContext& context) {
                          "part takes a number or a range such as 9-16");
     }
   }
-  const json shot = browser::Request(
-      {{"op", "look"},
-       {"deck", deck},
-       {"selector", selector},
-       {"instance_id", "0"},
-       {"url", deck ? url + "/?deck&review" : url},
-       {"width", deck ? 1920 : 1440},
-       {"height", deck ? 1080 : 900},
-       {"first", first},
-       {"last", first + std::min(last - first, kPictures - 1)}},
-      browser::kActionMs);
+  const auto inspect = [&](const std::string& address) {
+    return browser::Request(
+        {{"op", "look"},
+         {"deck", deck},
+         {"selector", selector},
+         {"instance_id", "0"},
+         {"url", deck ? address + "/?deck&review" : address},
+         {"width", deck ? 1920 : 1440},
+         {"height", deck ? 1080 : 900},
+         {"first", first},
+         {"last", first + std::min(last - first, kPictures - 1)}},
+        browser::kActionMs);
+  };
+  json shot = inspect(url);
+  if (shot.contains("error") && !context.Expired() && !AbortRequested()) {
+    // A logout may revoke the URL while Chrome is loading the page or its
+    // assets.
+    const std::string current = Served(path);
+    if (!current.empty() && current != url) shot = inspect(current);
+  }
   if (const std::string failed = JsonValue(shot, "error", "");
       !failed.empty()) {
     return ToolFailure(ToolErrorCode::kRemoteError, failed);

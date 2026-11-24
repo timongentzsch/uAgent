@@ -112,6 +112,20 @@ test("a slide not drawn yet is as large as one that is, and named by its file", 
   );
 });
 
+test("slide thumbnails have their declared sizes before any preview loads", () => {
+  const deck = listing("deck", ["a.html", "deck"], ["b.html", "deck"]);
+  deck.entries[0].artboard = [1920, 1080];
+  deck.entries[1].artboard = [960, 720];
+  const sizes = (seen) =>
+    boardsOf("", deck, seen, "a.html").map(({ w, h }) => [w, h]);
+  const expected = deck.entries.map((entry) => entry.artboard);
+  assert.deepEqual(sizes({}), expected);
+  assert.deepEqual(
+    sizes(hear({}, "a.html", ready("Cover", 1920, 1080))),
+    expected,
+  );
+});
+
 test("a design's pages lie in rows by step, numbers in number order, the stepless first", () => {
   const design = listing(
     "design",

@@ -6,7 +6,10 @@ const PAGE_HEIGHT_MAX = 4000;
 
 // The size a page is drawn at: its artboard, or as wide as it says (else
 // PAGE_WIDTH) and as tall as it measured, up to `most`.
-export function pageSize(info?: PageInfo, most = PAGE_HEIGHT_MAX) {
+export function pageSize(
+  info?: { artboard: PageInfo["artboard"]; height?: number },
+  most = PAGE_HEIGHT_MAX,
+) {
   const fixed = !!info?.artboard.w && !!info.artboard.h;
   return {
     fixed,

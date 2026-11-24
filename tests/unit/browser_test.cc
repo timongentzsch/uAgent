@@ -1574,11 +1574,20 @@ TEST_CASE(TestBrowserToolLook) {
   CHECK(!empty.Ok());
   CHECK(empty.output.find("No slides to review in this folder") !=
         std::string::npos);
-  // The host rotated its grant between turns in this same worker.
-  std::ofstream(grant) << "http://127.0.0.1:1/preview/new/";
-  const ToolResult single =
-      look("deck", "", R"({"parts":1,"w":1920,"h":1080,"slides":[
+  // A logout between navigation and rendering invalidates the first request.
+  // The same tool call draws the replacement URL without another model turn.
+  const fs::path profile = checked.parent_path();
+  std::ofstream(profile / "pause-navigation").close();
+  std::ofstream(profile / "fail-first-look").close();
+  auto observing = std::async(std::launch::async, [&] {
+    return look("deck", "", R"({"parts":1,"w":1920,"h":1080,"slides":[
       {"file":"01.html","title":"Evidence","problems":[]}]})");
+  });
+  CHECK(WaitUntil([&] { return fs::exists(profile / "navigation-paused"); },
+                  BudgetMs(2000)));
+  std::ofstream(grant) << "http://127.0.0.1:1/preview/new/";
+  fs::remove(profile / "pause-navigation");
+  const ToolResult single = observing.get();
   CHECK(single.Ok());
   CHECK(single.output == "Part 1 of 1.\n1. Evidence (01.html)");
   fake.Stop();
@@ -1619,10 +1628,11 @@ TEST_CASE(TestBrowserToolLook) {
                            {"width", 740},
                            {"height", 465},
                            {"scale", 1.0}}));
-  REQUIRE(navigated.size() == 12);
+  REQUIRE(navigated.size() == 13);
   CHECK(navigated[5] == navigated[4]);
   CHECK(navigated[6].value("url", "") ==
         "http://127.0.0.1:1/preview/t/deck/?deck&review");
+  CHECK(navigated[11] == navigated[6]);
   CHECK(navigated.back().value("url", "") ==
         "http://127.0.0.1:1/preview/new/deck/?deck&review");
 }

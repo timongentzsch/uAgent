@@ -633,10 +633,7 @@ export default function Sequence({
   // The page's shape: what it said once drawn, and until then what its file
   // names, so the stage does not move when it arrives.
   const shape = info?.artboard ?? boards[index]?.named;
-  const size = pageSize(
-    info ?? (shape && ({ artboard: shape } as PageInfo)),
-    8000,
-  );
+  const size = pageSize(info ?? (shape && { artboard: shape }), 8000);
   const { fixed } = size;
   const sized = `&w=${size.w}&h=${size.h}`;
   // Of a file with several boards, the one shown is pictured.

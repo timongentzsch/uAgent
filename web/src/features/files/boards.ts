@@ -279,12 +279,15 @@ export function boardsOf(
 ): Board[] {
   const board = (file: string, like?: PageInfo): Board => {
     const path = join(dir, file);
-    const { w, h } = pageSize(seen[path]?.info ?? like);
     const [width, height] =
       listing.entries.find((entry) => entry.name === file)?.artboard ?? [];
+    const named = width ? { w: width, h: height || 0 } : undefined;
+    const { w, h } = pageSize(
+      seen[path]?.info ?? (named ? { artboard: named } : like),
+    );
     return {
       path,
-      ...(width ? { named: { w: width, h: height || 0 } } : {}),
+      named,
       title: seen[path]?.info?.title || file,
       media: "page",
       w,
@@ -312,7 +315,7 @@ export function boardsOf(
     return titles.map((title, at) => ({ ...page, title, at }));
   }
   if (kind === "deck") {
-    // A slide not drawn yet is taken to be as large as one that is.
+    // A slide with no declared size borrows one from a loaded neighbour.
     const slides = slidesOf(listing);
     const like = slides
       .map((file) => seen[join(dir, file)]?.info)

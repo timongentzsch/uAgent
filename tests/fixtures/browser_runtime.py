@@ -293,6 +293,10 @@ while chunk := os.read(3, 4096):
             ).exists():
                 # The window the page's artboard asks for, as the test wrote it.
                 wants = json.loads((profile / "page-checked").read_text())
+                # Simulate the read of an address revoked during navigation.
+                if (profile / "fail-first-look").exists():
+                    (profile / "fail-first-look").unlink()
+                    wants = None
                 result = {"result": {"value": wants}}
             elif "performance.timeOrigin" in asked:
                 # A page that has finished loading and stays as it is.

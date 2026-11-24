@@ -165,8 +165,9 @@ void Master::LibraryDelete(const Request& request, Response& response) {
                JsonValue(each, field, "") == place;
       });
     };
-    if (known("spaces", "path") || known("sessions", "cwd"))
+    if (known("spaces", "path") || known("sessions", "cwd")) {
       workspace.path = place;
+    }
   }
   if (workspace.path.empty() || workspace.Key() != place) {
     Error(response, "not found", 404);

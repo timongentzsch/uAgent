@@ -492,8 +492,9 @@ Changes ReadChanges(const fs::path& folder, const std::string& pathspec,
     if (!name.starts_with(from_top)) continue;
     std::string path = name.substr(from_top.size());
     if ((!rename_target.empty() && rename_target != path) ||
-        !Shown(folder / path))
+        !Shown(folder / path)) {
       continue;
+    }
     if (changes.list.size() == kFileFindMatches) {
       changes.more = true;
       break;
@@ -523,9 +524,9 @@ std::optional<json> ReadDiff(const fs::path& folder, const std::string& path,
   if (whole) {
     args.insert(args.end(), {"--no-index", "--", "/dev/null", path});
   } else {
-    args.push_back("--relative");
-    if (scope == "staged") args.push_back("--cached");
-    if (scope.empty()) args.push_back("HEAD");
+    args.emplace_back("--relative");
+    if (scope == "staged") args.emplace_back("--cached");
+    if (scope.empty()) args.emplace_back("HEAD");
     args.insert(args.end(), {"--find-renames", "--", ":(literal)" + path});
     // Restricting status to the destination reports a rename as an addition.
     // Ask for the tracked paths only when that column could be a rename.

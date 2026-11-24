@@ -69,7 +69,6 @@ for _group, _top in TEST_MODULES:
                 assert _name not in ALL_TESTS, f"{_name} is defined twice"
                 ALL_TESTS[_name] = _test
                 TEST_GROUPS[_name] = _group
-ORDERED_TESTS = tuple(ALL_TESTS)
 
 
 def parse_args():
@@ -93,17 +92,22 @@ def parse_args():
 def select(arguments):
     names = [
         name
-        for name in ORDERED_TESTS
-        if arguments.group == "all" or TEST_GROUPS[name] == arguments.group
+        for name, group in TEST_GROUPS.items()
+        if arguments.group == "all" or group == arguments.group
     ]
     if arguments.test:
-        unknown = sorted(set(arguments.test) - set(ALL_TESTS))
+        requested = set(arguments.test)
+        unknown = sorted(requested - ALL_TESTS.keys())
         if unknown:
             raise SystemExit(f"unknown test name: {unknown}")
-        names = [name for name in names if name in set(arguments.test)]
+        names = [name for name in names if name in requested]
     if arguments.match:
         names = [name for name in names if any(part in name for part in arguments.match)]
     return names
+
+
+def fixture_homes(directory):
+    return {state.parent for state in directory.rglob(".uagent")}
 
 
 def remove_suite(root):
@@ -111,7 +115,7 @@ def remove_suite(root):
     finished session can still start another after its case's cleanup."""
     from session_support import close_sessions, remove_runtime, runtime_directory
 
-    homes = list(root.glob("*.home"))
+    homes = set(root.glob("*.home")) | fixture_homes(root)
     deadline = time.monotonic() + budget(5)
     quiet_since = time.monotonic()
     # A suite in which no runtime ever started has none to wait for.
@@ -124,9 +128,8 @@ def remove_suite(root):
         if live:
             quiet_since = time.monotonic()
         time.sleep(0.05)
-    # Every home a case made, also one inside another.
-    for state in root.rglob(".uagent"):
-        remove_runtime(state.parent)
+    for home in homes:
+        remove_runtime(home)
     shutil.rmtree(root)
 
 
@@ -176,7 +179,7 @@ def run_shards(arguments, names):
             output.close()
     if failed:
         raise SystemExit(f"{failed} of {jobs} runners failed")
-    print(f"all {len(names)} integration tests passed in {jobs} runners")
+    print(f"completed {len(names)} selected integration tests across {jobs} runners")
 
 
 def main():
@@ -246,9 +249,8 @@ def run_case(root, name, binary):
         return "failed"
     finally:
         signal.alarm(0)
-        stop_sessions(home)
-        for state in case_root.rglob(".uagent"):
-            stop_sessions(state.parent)
+        for fixture_home in {home} | fixture_homes(home) | fixture_homes(case_root):
+            stop_sessions(fixture_home)
 
 
 if __name__ == "__main__":

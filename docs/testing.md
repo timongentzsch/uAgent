@@ -299,7 +299,7 @@ promotes, but not ThreadSanitizer; scheduled and manual runs run them all:
 
 | Job | Runs |
 | --- | --- |
-| `web-dist` | The web bundle the native builds embed; skipped when only `web/` or documents changed |
+| `web-dist` | Type-checks and builds the production bundle once, and reports sizes. Native builds and browser shards consume that artifact. Changes confined to ordinary documentation skip it. |
 | `build-and-test` | `release` builds for Linux x86_64 and macOS ARM64, and Linux ARM64 where selected; `ctest`; packaging through `install.sh` with `UAGENT_LOCAL_ONLY=1`, `tests/package_contents.py`, and the target's remote payload |
 | `remote-bundle` | Where selected: assembles the three payloads into one verified bundle (`.github/remote_bundle.py`), adds it to each release archive and checks the archives; uploads `release-complete` |
 | `sanitizers` | `sanitize` preset, `ctest` in two legs: `integration_web` and `integration_providers` (with `behavior_eval`, `reference_docs`), and the rest |
@@ -307,8 +307,8 @@ promotes, but not ThreadSanitizer; scheduled and manual runs run them all:
 | `coverage` | Weekly and by hand: `core` and every integration group with a branch report; fails under 67% line coverage |
 | `lint` | `.github/lint.sh`: clang-format, cpplint, Ruff, the source contracts and the docs check |
 | `clang-tidy` | clang-tidy, changed units on one runner or all units across three |
-| `web` | Biome format check and lint, Node tests, bundle and size report, a `release` host |
-| `web-browser` | Playwright in Chromium and WebKit against that host, in Playwright's own image (browsers preinstalled), each browser split across two runners |
+| `web` | Builds the native release host that the browser shards drive |
+| `web-browser` | Playwright in Chromium and WebKit against that host, each browser split across two runners. The first Chromium shard also checks client formatting, lint and unit tests. |
 | `image` | Where selected: builds the container image for x86_64 from the tested Linux archive, starts it under `deploy/seccomp-chrome.json`, runs `deploy/check-network.sh` against a second listening container, and waits for the fetched Chrome |
 | `CI result` | fails if any required job failed or was cancelled |
 

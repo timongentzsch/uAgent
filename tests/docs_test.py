@@ -6,6 +6,8 @@ import re
 import subprocess
 import unittest
 
+from reference_docs import limits_page
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PAGES = [
     *sorted((ROOT / "docs").rglob("*.md")),
@@ -40,6 +42,15 @@ def anchors(page):
 
 
 class DocsTest(unittest.TestCase):
+    def test_limit_comments_describe_their_declaration(self):
+        page = limits_page(
+            "// A ratio.\ninline constexpr int kParts = 3, kTotal = 4;\n"
+            'inline constexpr char kMarker[] = ".done";\n'
+        )
+        self.assertIn("| `kParts` | `3` | A ratio. |", page)
+        self.assertIn("| `kTotal` | `4` | A ratio. |", page)
+        self.assertIn('| `kMarker` | `".done"` |  |', page)
+
     def test_links_resolve(self):
         for page in PAGES:
             for link in LINK.findall(FENCE.sub("", page.read_text())):

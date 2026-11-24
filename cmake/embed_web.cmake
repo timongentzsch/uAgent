@@ -3,9 +3,9 @@
 option(UAGENT_EMBED_WEB "Embed the browser application in the executable" ON)
 set(_web_generated "${CMAKE_CURRENT_BINARY_DIR}/web_assets.cc")
 if(NOT UAGENT_EMBED_WEB)
-  # The preview helper is a runtime resource, not the browser application.
+  # The preview scripts also run in the agent browser without the web app.
   set(_web_root "${CMAKE_CURRENT_SOURCE_DIR}/web/public")
-  set(_web_paths "design-helper.js")
+  set(_web_paths "design-helper.js" "deck-print.js")
   set(_web_manifest "${_web_root}/design-helper.js")
 else()
   set(_web_root "${CMAKE_CURRENT_SOURCE_DIR}/web/dist")

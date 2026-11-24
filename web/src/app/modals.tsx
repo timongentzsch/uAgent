@@ -7,6 +7,9 @@ import type {
 import { ApiContext, hostApi } from "../state/api.ts";
 import { useHosts } from "../state/sources.ts";
 import HostField from "../shared/host-field.tsx";
+import { ListRow } from "../shared/list-row.tsx";
+import FolderLabel from "../shared/folder-label.tsx";
+import { withoutFileAddress } from "../shared/navigation.ts";
 import FolderPicker from "../features/files/folder-picker.tsx";
 import { folderOf, projectsOf } from "../shared/display.ts";
 import { plural } from "../shared/quantities.ts";
@@ -17,6 +20,7 @@ import {
   Modal,
   Deferred,
   Actions,
+  Group,
   Button,
   EmptyState,
   Input,
@@ -208,6 +212,34 @@ export default function Modals({
               }}
             />
           )}
+        </Modal>
+      )}
+      {modal?.type === "file-origin" && (
+        <Modal
+          title="Choose a workspace"
+          close={close}
+          backAddress={modal.linked ? withoutFileAddress() : undefined}
+        >
+          <p>
+            <strong>{modal.path}</strong> exists in multiple workspaces.
+          </p>
+          <Group>
+            {modal.choices.map(({ cwd, origin }) => (
+              <ListRow
+                key={origin}
+                title={<FolderLabel path={cwd} />}
+                meta={cwd}
+                aria-label={cwd}
+                onClick={() => {
+                  close();
+                  modal.pick(origin);
+                }}
+              />
+            ))}
+          </Group>
+          <Actions>
+            <Button onClick={close}>Cancel</Button>
+          </Actions>
         </Modal>
       )}
       {modal?.type === "move" && (

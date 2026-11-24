@@ -1,3 +1,4 @@
+import { failure } from "../shared/types.ts";
 import type { FileTarget } from "../shared/file-types.ts";
 import type {
   JSONValue,
@@ -34,7 +35,12 @@ import {
 } from "../shared/ui.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 import { ResizeHandle } from "../shared/side-pane.tsx";
-import { closeTopLayer, settled, useDismiss } from "../shared/dismiss.ts";
+import {
+  closeTopLayer,
+  settled,
+  underLayers,
+  useDismiss,
+} from "../shared/dismiss.ts";
 import { slide } from "../shared/motion.ts";
 import { useEdgeSwipe } from "../shared/swipe.ts";
 import Sidebar, {
@@ -445,7 +451,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
     showInPlace,
   };
   const openFile = useCallback(
-    async (target: FileTarget, linked = false) => {
+    async (target: FileTarget, linked = false): Promise<void> => {
       const request = ++lookup.current;
       revealNext.current = undefined;
       const id = selectedRef.current;
@@ -477,10 +483,31 @@ function App({ host, bindResult, reading }: HostAppProps) {
       } catch (error) {
         if (id !== selectedRef.current || request !== lookup.current) return;
         setFilesOpen(false);
-        report(error);
+        const { choices } = failure(error);
+        if (!target.origin && choices?.length) {
+          open({
+            type: "file-origin",
+            path: target.path,
+            choices,
+            linked,
+            pick: (origin) => {
+              if (id !== selectedRef.current || request !== lookup.current)
+                return;
+              if (linked) {
+                const url = artifactURL(
+                  id,
+                  fileNav.current.active,
+                  target.path,
+                  origin,
+                );
+                if (url) underLayers(() => location.replace(url));
+              } else void openFile({ ...target, origin });
+            },
+          });
+        } else report(error);
       }
     },
-    [api, routes, openHere, report],
+    [api, routes, openHere, open, report],
   );
   const showLinkedFile = useCallback(
     (path: string, origin?: string) => {

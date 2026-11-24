@@ -15,6 +15,7 @@ interface Failure extends Error {
   network?: boolean;
   status?: number;
   rejected?: boolean;
+  choices?: FileOrigin[];
 }
 export function failure(error: unknown): Failure {
   return error instanceof Error ? error : new Error(String(error));
@@ -1063,6 +1064,13 @@ export type AppModal =
   | { type: "new"; place: "conversation" | "workspace" | "folder" }
   // `sessions`: several moved at once, from the sidebar's selection.
   | { type: "move"; session: Session; sessions?: Session[] }
+  | {
+      type: "file-origin";
+      path: string;
+      choices: FileOrigin[];
+      pick: (origin: string) => void;
+      linked: boolean;
+    }
   | { type: "delete-many"; sessions: Session[]; spaces: Space[] }
   // section: a settings section to open on, e.g. from /permissions.
   | { type: "settings"; section?: string }

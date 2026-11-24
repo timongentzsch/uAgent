@@ -166,7 +166,7 @@ Under `/api/sessions/<id>/`; an unknown conversation, or a path outside the fold
 | `POST files` | `{path, text, revision}`, `{path, text, create: true}`, or `{path, moves}` | `{revision, stamp}` or `{moved}`; 409 when the file changed |
 | `POST attachments?name=<name>` | the file as the body, ≤ 8 MiB | `{id, name, mime, image, bytes}` |
 | `GET assets/<asset id>[?download]` | | the stored file |
-| `GET file-origin` | `sequence` with optional `path`, `origin` alone or `path` alone | Original workspace of a transcript reference, copied link or older path-only link. Returns `cwd`, `host`, opaque `origin` and `current`. A missing match returns 404 and an ambiguous path returns 409. Opening the folder uses normal session access. |
+| `GET file-origin` | `sequence` with optional `path`, `origin` alone or `path` alone | Original workspace of a transcript reference, copied link or older path-only link. Returns `cwd`, `host`, opaque `origin` and `current`. A missing match returns 404 and an ambiguous path returns 409 with matching workspaces in `choices`. Opening the folder uses normal session access. |
 | `POST preview` | | `{base: "/preview/<48 hex>/"}` |
 
 `GET /preview/<token>/<path>` needs no cookie. `?deck&w&h` returns a

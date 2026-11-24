@@ -301,8 +301,48 @@ test("earlier file references and links survive two chat moves without opening a
     files.getByText("Original workspace contents", { exact: true }),
   ).toBeVisible();
   await page.goto(link(path));
-  await expect(page.getByText(/multiple workspaces/i)).toBeVisible();
+  const picker = page.getByRole("dialog", { name: "Choose a workspace" });
+  await expect(picker.getByText(/multiple workspaces/i)).toBeVisible();
+  await expect(
+    picker.getByRole("button", { name: host.project, exact: true }),
+  ).toBeVisible();
+  await expect(
+    picker.getByRole("button", { name: middle, exact: true }),
+  ).toBeVisible();
   await expect(files).toHaveCount(0);
+  await picker.getByRole("button", { name: "Cancel" }).click();
+  await expect(picker).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp("#session=" + chat.id + "$"));
+  await expect(files).toHaveCount(0);
+  const submissions = [];
+  page.on("request", (req) => {
+    if (
+      req.method() === "POST" &&
+      new URL(req.url()).pathname === "/api/command" &&
+      req.postDataJSON()?.kind === "submit"
+    )
+      submissions.push(req);
+  });
+  for (const [folder, contents] of [
+    [middle, "Middle workspace contents"],
+    [host.project, "Original workspace contents"],
+    [last, "Wrong destination contents"],
+  ]) {
+    await page.goto(link(path));
+    const match = picker.getByRole("button", { name: folder, exact: true });
+    await match.focus();
+    await page.keyboard.press("Enter");
+    await expect(picker).toHaveCount(0);
+    await expect(files.getByText(contents, { exact: true })).toBeVisible();
+    await expect
+      .poll(() =>
+        new URLSearchParams(new URL(page.url()).hash.slice(1)).get("origin"),
+      )
+      .toBeTruthy();
+    await page.reload();
+    await expect(files.getByText(contents, { exact: true })).toBeVisible();
+  }
+  expect(submissions).toHaveLength(0);
   await page.goto(link("notes/only-old.md"));
   await expect(
     files.getByText("Only in original", { exact: true }),

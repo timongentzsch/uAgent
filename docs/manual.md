@@ -123,7 +123,8 @@ conversation**, **Statistics**, **Tools**, **Export transcript**,
 conversation and its agents to another folder or workspace; its files stay
 where they were. Earlier file references open in their original workspace.
 New copied file links retain their workspace after a move. An older path-only
-link opens when exactly one workspace contains that path. Move is available
+link opens when exactly one workspace contains that path. If several contain
+it, choose the original folder from the list. Move is available
 when the conversation and its agents are idle and have no mail waiting.
 **Close conversation** saves it and stops its
 runtime and supervised children. **Delete** removes its saved messages and

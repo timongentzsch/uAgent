@@ -326,6 +326,7 @@ export default function Files({
   // The turn whose change to the file is shown, rather than the uncommitted
   // one.
   const changedIn = view.kind === "file" ? view.turn : undefined;
+  const journal = view.kind === "file" ? view.journal : undefined;
   const source = view.kind === "file" && !!view.source;
   const marked = view.kind === "file" ? view.lines : undefined;
   // From the tree, search or changes (the list itself): Back is the list.
@@ -434,12 +435,13 @@ export default function Files({
     () =>
       changing
         ? (changedIn
-            ? command("changes", session, { turn: changedIn, path: file }).then(
-                (receipt) => {
-                  if (receipt.pending) throw new Error(PENDING);
-                  return receipt.result;
-                },
-              )
+            ? command("changes", journal ? { id: journal } : session, {
+                turn: changedIn,
+                path: file,
+              }).then((receipt) => {
+                if (receipt.pending) throw new Error(PENDING);
+                return receipt.result;
+              })
             : api<FileText>(
                 routes.files(id, "diff", file) +
                   (scope ? `&scope=${scope}` : ""),
@@ -451,10 +453,10 @@ export default function Files({
               kinds.filter((kind) => kind === "diff-add").length,
               kinds.filter((kind) => kind === "diff-del").length,
             ];
-            return { ...value, path: file, counts, scope, changedIn };
+            return { ...value, path: file, counts, scope, changedIn, journal };
           })
         : undefined,
-    [id, file, turn, changing, changedIn, scope, written, edition],
+    [id, file, turn, changing, changedIn, journal, scope, written, edition],
   );
   // A turn's change is undone here as from the chat: only while the file
   // still holds what the turn left. Undone, the change stays in view.
@@ -473,7 +475,8 @@ export default function Files({
   const diffText =
     diff.value?.path === file &&
     diff.value.scope === scope &&
-    diff.value.changedIn === changedIn
+    diff.value.changedIn === changedIn &&
+    diff.value.journal === journal
       ? diff.value
       : undefined;
   const counts = diffText?.counts ?? [0, 0];
@@ -838,7 +841,9 @@ export default function Files({
   const fileError = content.error ? failure(content.error) : undefined;
   const above = back[back.length - 1];
   const permalink =
-    !deleted && file ? artifactURL(id, session.host || host, file) : undefined;
+    !deleted && file
+      ? artifactURL(id, session.host || host, file, session.file_origin)
+      : undefined;
   // The file itself, saved or shared.
   const download = {
     href: `${url(file)}&download=1`,
@@ -928,6 +933,7 @@ export default function Files({
           <span class="files-dir small">{formatStat(counts)}</span>
         )}
         {changedIn &&
+          !journal &&
           diffText &&
           formatStat(counts) &&
           undone !== shownChange && (

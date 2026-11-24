@@ -1,8 +1,8 @@
+import type { FileTarget } from "../../shared/file-types.ts";
 import { nameOf } from "../../shared/file-types.ts";
 import { ChevronLeft } from "lucide-preact";
 import { useApi } from "../../state/api.ts";
 import type {
-  FileTarget,
   LibraryItem,
   LibraryPlace,
 } from "../../shared/types.ts";

@@ -1,3 +1,17 @@
+// A file a message cites, as the Files pane opens it: its lines ("12" or
+// "12-20"), or its diff: among the uncommitted changes, or what a turn
+// changed in it.
+export interface FileTarget {
+  path: string;
+  sequence?: number;
+  origin?: string;
+  exact?: boolean;
+  journal?: string;
+  lines?: string;
+  changes?: boolean;
+  turn?: number;
+}
+
 // Small and eager, so the renderer can tell a cited path without the
 // highlighter.
 

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "preact/hooks";
 import type { View } from "../features/files/flow.ts";
 import {
   fileFromURL,
+  fileOriginFromURL,
   replaceLinkedFile,
   selectedFromURL,
 } from "../shared/navigation.ts";
@@ -12,27 +13,31 @@ export function useLinkedFile(
   session: string,
   open: boolean,
   view: View | undefined,
-  show: (path: string) => void,
+  show: (path: string, origin?: string) => void,
 ) {
   const linked = useRef<
-    { session: string; path: string; opened: boolean } | undefined
+    | { session: string; path: string; origin?: string; opened: boolean }
+    | undefined
   >(undefined);
   useEffect(() => {
     const follow = () => {
       if (selectedFromURL() !== session) return;
       const path = fileFromURL();
+      const origin = fileOriginFromURL();
       if (!path) {
-        if (linked.current) show("");
+        if (linked.current?.session === session) show("");
         linked.current = undefined;
         return;
       }
       if (
         !session ||
-        (linked.current?.session === session && linked.current.path === path)
+        (linked.current?.session === session &&
+          linked.current.path === path &&
+          linked.current.origin === origin)
       )
         return;
-      linked.current = { session, path, opened: false };
-      show(path);
+      linked.current = { session, path, origin, opened: false };
+      show(path, origin);
     };
     follow();
     addEventListener("hashchange", follow);

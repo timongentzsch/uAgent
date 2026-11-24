@@ -269,7 +269,8 @@ function Message({
           openFile && (
             <ArtifactCard
               key={index}
-              session={session.id}
+              session={session}
+              sequence={node.sequence}
               part={part}
               open={openFile}
             />

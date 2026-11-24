@@ -1,3 +1,4 @@
+import type { FileTarget } from "../shared/file-types.ts";
 import { useCallback, useMemo } from "preact/hooks";
 import type {
   Act,
@@ -6,7 +7,6 @@ import type {
   CommandFields,
   Draft,
   Exchange,
-  FileTarget,
   InspectorTarget,
   Node,
   Session,

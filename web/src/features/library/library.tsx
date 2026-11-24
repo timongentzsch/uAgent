@@ -1,3 +1,4 @@
+import type { FileTarget } from "../../shared/file-types.ts";
 import {
   useEffect,
   useLayoutEffect,
@@ -10,7 +11,6 @@ import { BookOpen, ChevronDown, Brain, FileText, Plus } from "lucide-preact";
 import { useApi } from "../../state/api.ts";
 import { useRemoteArtifacts } from "./use-remote-artifacts.ts";
 import type {
-  FileTarget,
   LibraryItem,
   LibraryKind,
   LibraryListing,

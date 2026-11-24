@@ -1,7 +1,7 @@
 // Where the Files pane is: exactly one view, and the views Back returns to.
 // A view's data is looked up by the path it names, never "the current one".
 
-import type { FileTarget } from "../../shared/types.ts";
+import type { FileTarget } from "../../shared/file-types.ts";
 import { HTML, MARKDOWN, nameOf, paged } from "../../shared/file-types.ts";
 import { join, type Listing, pagesOf, slideName, slidesOf } from "./boards.ts";
 
@@ -18,6 +18,7 @@ export type View =
       diff?: boolean | GitScope;
       // The diff is what this turn changed, not the uncommitted change.
       turn?: number;
+      journal?: string;
     }
   // A page across the pane, with the legend of what it is part of (a deck's
   // slides, a document's pages, a design's boards).
@@ -33,6 +34,7 @@ export type View =
       lines?: Lines;
       diff?: boolean;
       turn?: number;
+      journal?: string;
       fresh: boolean;
       exact?: boolean;
     }
@@ -84,8 +86,10 @@ export function cite(target: FileTarget, folder: string): Flow {
       kind: "resolve",
       path,
       lines: lineRange(target.lines),
+      ...(target.exact && { exact: true }),
       diff: !!target.changes,
       ...(target.turn && { turn: target.turn }),
+      ...(target.journal && { journal: target.journal }),
       fresh: true,
     },
     back: [],
@@ -149,12 +153,19 @@ function landing(
   lines?: Lines,
   diff?: boolean,
   turn?: number,
+  journal?: string,
 ): { view: View; up: View[] } {
   const dir = dirOf(path);
   const list: View = { kind: "list", dir };
   if (diff)
     return {
-      view: { kind: "file", path, diff: true, ...(turn && { turn }) },
+      view: {
+        kind: "file",
+        path,
+        diff: true,
+        ...(turn && { turn }),
+        ...(journal && { journal }),
+      },
       up: [list],
     };
   // A design's page lies on its canvas; a document, a sheet and a deck's
@@ -199,6 +210,7 @@ export async function resolve(
       target.lines,
       target.diff,
       target.turn,
+      target.journal,
     );
     return settle(view, up);
   }

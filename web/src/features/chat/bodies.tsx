@@ -123,7 +123,13 @@ function Parts({
           part.to === "browser"
             ? host && (() => host.setModal({ type: "browser" }))
             : part.to === "file"
-              ? openFile && (() => openFile({ path: String(part.id) }))
+              ? openFile &&
+                (() =>
+                  openFile({
+                    path: String(part.id),
+                    sequence: node.sequence,
+                    exact: true,
+                  }))
               : activity && (() => activity(linkTarget(node, part)));
         return open ? (
           <Button

@@ -23,12 +23,21 @@ function workspacePath(path: string) {
   );
 }
 
-export function artifactURL(session: string, host: string, path: string) {
+export function artifactURL(
+  session: string,
+  host: string,
+  path: string,
+  origin?: string,
+) {
   if (!session || !workspacePath(path)) return undefined;
   const params = selectionParams(session, host);
   params.set("file", path);
+  if (origin) params.set("origin", origin);
   return `${location.origin}${location.pathname}#${params}`;
 }
+
+export const fileOriginFromURL = () =>
+  addressParams().get("origin") ?? undefined;
 
 export function fileFromURL() {
   const path = addressParams().get("file") ?? "";
@@ -41,7 +50,10 @@ export function replaceLinkedFile(id: string, previous: string, path = "") {
   if (selectedFromURL() !== id || fileFromURL() !== previous) return false;
   const params = addressParams();
   if (path && workspacePath(path)) params.set("file", path);
-  else params.delete("file");
+  else {
+    params.delete("file");
+    params.delete("origin");
+  }
   history.replaceState(history.state, "", `#${params}`);
   return true;
 }
@@ -51,6 +63,7 @@ export function withoutFileAddress() {
   const params = addressParams();
   if (!params.has("file")) return undefined;
   params.delete("file");
+  params.delete("origin");
   return `#${params}`;
 }
 

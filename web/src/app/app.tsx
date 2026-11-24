@@ -1,3 +1,4 @@
+import type { FileTarget } from "../shared/file-types.ts";
 import type {
   JSONValue,
   Draft,
@@ -9,7 +10,7 @@ import type {
   AppModal,
   InspectorTarget,
   TerminalInfo,
-  FileTarget,
+  FileOrigin,
   LibraryKind,
   LibraryPlace,
 } from "../shared/types.ts";
@@ -77,6 +78,7 @@ import { folderOf } from "../shared/display.ts";
 import {
   focusComposer,
   fileFromURL,
+  artifactURL,
   withoutFileAddress,
 } from "../shared/navigation.ts";
 import { useLinkedFile } from "./use-linked-file.ts";
@@ -117,7 +119,7 @@ const keptPage = stored<Page>(
 // a streamed frame re-renders <ChatPage>, not the shell and its sidebar.
 function App({ host, bindResult, reading }: HostAppProps) {
   const hosts = useHosts();
-  const { command, manage } = useApi();
+  const { api, routes, command, manage } = useApi();
   const [page, setPage] = useState<Page>(() =>
     fileFromURL() ? "chat" : keptPage.read(),
   );
@@ -137,9 +139,10 @@ function App({ host, bindResult, reading }: HostAppProps) {
   );
   const selectedRef = useRef("");
   const folderRef = useRef("");
-  const openFile = useCallback(
-    (target: FileTarget, id = selectedRef.current) => {
-      setFlow(id, () => cite(target, folderRef.current));
+  const flowRef = useRef("");
+  const openHere = useCallback(
+    (target: FileTarget) => {
+      setFlow(flowRef.current, () => cite(target, folderRef.current));
       setFilesOpen(true);
     },
     [setFlow],
@@ -244,13 +247,6 @@ function App({ host, bindResult, reading }: HostAppProps) {
     }),
     [levels, detail, changeDetail, thinking, chooseThinking],
   );
-  // A path asked for in another conversation opens once that one is shown.
-  const revealNext = useRef<FileTarget | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: on each conversation chosen
-  useEffect(() => {
-    if (revealNext.current) openFile(revealNext.current, selected);
-    revealNext.current = null;
-  }, [selected]);
   // The catalogue entry changes with every session event; a snapshot's
   // metadata stands in only for a session not listed yet.
   const listedSession = sessionById(catalogue.sessions, selected);
@@ -260,25 +256,12 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const session = listedSession || metadata;
   selectedRef.current = selected;
   folderRef.current = session ? folderOf(session) : "";
-  const showLinkedFile = useCallback(
-    (path: string) => {
-      setFilesOpen(!!path);
-      if (!path) return;
-      setPage("chat");
-      setDrawer(false);
-      setFlow(selected, () => ({
-        view: { kind: "resolve", path, fresh: true, exact: true },
-        back: [],
-      }));
-    },
-    [selected, setFlow],
-  );
-  useLinkedFile(
-    session?.id ?? "",
-    !!filesOpen,
-    flows[selected]?.view,
-    showLinkedFile,
-  );
+  // A move invalidates this workspace's file data and navigation history.
+  const fileScope = JSON.stringify([
+    selected,
+    session?.file_origin || folderRef.current,
+  ]);
+  flowRef.current = fileScope;
   // Only an empty open conversation is passed on, so choosing among the
   // others does not filter the list again.
   const keep = listedSession?.turns === 0 ? selected : "";
@@ -386,22 +369,138 @@ function App({ host, bindResult, reading }: HostAppProps) {
         );
     });
   }, [choose, compact]);
+  // Only release a pending reveal in the exact workspace the host resolved.
+  const revealNext = useRef<
+    { path: string; host: string; target: FileTarget } | undefined
+  >(undefined);
+  const cwd = session ? folderOf(session) : "";
+  const ownerHost = session?.host || hosts.active;
+  useEffect(() => {
+    const pending = revealNext.current;
+    if (
+      !selected ||
+      !pending ||
+      cwd !== pending.path ||
+      ownerHost !== pending.host
+    )
+      return;
+    revealNext.current = undefined;
+    openHere(pending.target);
+  }, [selected, cwd, ownerHost, openHere]);
   const showInPlace = useCallback(
-    (place: LibraryPlace, target: FileTarget) => {
-      setFilesOpen(true);
-      if (place.session === selected) {
+    (
+      place: Pick<LibraryPlace, "path" | "host" | "session">,
+      target: FileTarget,
+      linked = false,
+    ) => {
+      if (place.path === cwd && (place.host || "") === ownerHost && selected) {
         setPage("chat");
-        openFile(target);
+        openHere(target);
         return;
       }
-      revealNext.current = target;
-      if (place.session) void choose(place.session, place.host || "");
-      else
-        void startConversation(place.path, "", "", place.host || "").catch(
-          report,
+      // A copied link stays reloadable when its original chat has moved.
+      // Navigate with the complete file address in one history transition.
+      const followLink = (id: string) => {
+        const url = artifactURL(
+          id,
+          place.host || "",
+          target.path,
+          target.origin,
         );
+        if (url) location.replace(url);
+      };
+      if (linked && place.session) {
+        followLink(place.session);
+        return;
+      }
+      const pending = { path: place.path, host: place.host || "", target };
+      revealNext.current = pending;
+      setFilesOpen(false);
+      if (place.session) void choose(place.session, pending.host);
+      else
+        void startConversation(place.path, "", "", pending.host)
+          .then((id) => {
+            if (id && linked && selectedRef.current === id) followLink(id);
+            if (!id && revealNext.current === pending)
+              revealNext.current = undefined;
+          })
+          .catch((error) => {
+            if (revealNext.current === pending) revealNext.current = undefined;
+            report(error);
+          });
     },
-    [selected, openFile, choose, startConversation, report],
+    [cwd, ownerHost, selected, openHere, choose, startConversation, report],
+  );
+  const lookup = useRef(0);
+  // Catalogue refreshes should not replace every transcript action. Resolve
+  // against the latest catalogue when the paired host answers.
+  const fileNav = useRef({
+    sessions: catalogue.sessions,
+    active: hosts.active,
+    showInPlace,
+  });
+  fileNav.current = {
+    sessions: catalogue.sessions,
+    active: hosts.active,
+    showInPlace,
+  };
+  const openFile = useCallback(
+    async (target: FileTarget, linked = false) => {
+      const request = ++lookup.current;
+      revealNext.current = undefined;
+      const id = selectedRef.current;
+      if (!id) return;
+      try {
+        const source = await api<FileOrigin>(routes.fileOrigin(id, target));
+        if (id !== selectedRef.current || request !== lookup.current) return;
+        const nav = fileNav.current;
+        const executionHost = source.host || nav.active;
+        const at = nav.sessions.find(
+          (s) =>
+            s.id !== id &&
+            folderOf(s) === source.cwd &&
+            (s.host || nav.active) === executionHost,
+        );
+        const resolved = {
+          ...target,
+          origin: source.origin,
+          ...(target.turn && !source.current && { journal: id }),
+        };
+        if (source.current && source.cwd === folderRef.current)
+          openHere(resolved);
+        else
+          nav.showInPlace(
+            { path: source.cwd, host: executionHost, session: at?.id },
+            resolved,
+            linked,
+          );
+      } catch (error) {
+        if (id !== selectedRef.current || request !== lookup.current) return;
+        setFilesOpen(false);
+        report(error);
+      }
+    },
+    [api, routes, openHere, report],
+  );
+  const showLinkedFile = useCallback(
+    (path: string, origin?: string) => {
+      if (!path) {
+        ++lookup.current;
+        revealNext.current = undefined;
+        setFilesOpen(false);
+        return;
+      }
+      setPage("chat");
+      setDrawer(false);
+      void openFile({ path, origin, exact: true }, true);
+    },
+    [openFile],
+  );
+  useLinkedFile(
+    session?.id ?? "",
+    !!filesOpen,
+    flows[fileScope]?.view,
+    showLinkedFile,
   );
   const { submit, deliver, forkAndOpen, showContext, runCommand } = useCommands(
     {
@@ -607,7 +706,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const quote = drafting ? addQuote : undefined;
   const files = session && (
     <Files
-      key={session.id}
+      key={fileScope}
       session={session}
       close={filesSheet ? undefined : () => setFilesOpen(false)}
       expanded={filesOpen === "expanded" && !filesSheet}
@@ -617,8 +716,8 @@ function App({ host, bindResult, reading }: HostAppProps) {
           : () =>
               setFilesOpen((open) => (open === "expanded" ? true : "expanded"))
       }
-      flow={flows[session.id] ?? START}
-      setFlow={(update) => setFlow(session.id, update)}
+      flow={flows[fileScope] ?? START}
+      setFlow={(update) => setFlow(fileScope, update)}
       addToChat={toChat}
       quote={quote}
       askSide={

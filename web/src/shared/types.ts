@@ -277,14 +277,11 @@ interface Delivery {
   delivery: string;
   path: string;
 }
-// A file a message cites, as the Files pane opens it: its lines ("12" or
-// "12-20"), or its diff: among the uncommitted changes, or what a turn
-// changed in it.
-export interface FileTarget {
-  path: string;
-  lines?: string;
-  changes?: boolean;
-  turn?: number;
+export interface FileOrigin {
+  cwd: string;
+  host: string;
+  origin: string;
+  current: boolean;
 }
 // What the inspector opens: a row's own work, or the one a link names.
 export interface ActivityTarget {
@@ -438,6 +435,7 @@ export interface PlaceOption {
 }
 export interface Session {
   host?: string;
+  file_origin?: string;
   suggestion?: {
     options?: PlaceOption[];
     reason?: string;
@@ -478,7 +476,7 @@ export interface FolderFacts {
   changed: { files: number; added: number; removed: number };
   git?: { branch: string; uncommitted: number };
 }
-export type SessionRef = Pick<Session, "id" | "generation">;
+export type SessionRef = Pick<Session, "id" | "generation" | "file_origin">;
 export interface State {
   phase?: ExecutionPhase;
   // When the running turn started, on the host's clock.

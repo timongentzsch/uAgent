@@ -3,6 +3,7 @@ import {
   expect,
   openFiles,
   openSession,
+  savedConversation,
   slide,
   viewerOf,
   writeFiles,
@@ -93,6 +94,7 @@ test("a copied slide link opens the same slide on a paired device and after relo
   expect(Object.fromEntries(new URLSearchParams(url.hash.slice(1)))).toEqual({
     session: session.id,
     file: second,
+    origin: expect.stringMatching(/^[a-f0-9]+$/),
   });
   const { count } = viewerOf(pane);
   await expect(count).toHaveText("2 / 2");
@@ -225,9 +227,127 @@ test("a linked file follows the session's execution host when the address omits 
   const href = await heading.getByRole("link").getAttribute("href");
   expect(
     Object.fromEntries(new URLSearchParams(new URL(href).hash.slice(1))),
-  ).toEqual(expected);
+  ).toEqual({ ...expected, origin: expect.stringMatching(/^[a-f0-9]+$/) });
   await page.reload();
   await expect(page.locator(".code-view")).toContainText(
     "the session workspace",
   );
+});
+
+test("earlier file references and links survive two chat moves without opening a same-named file", async ({
+  page,
+  host,
+  request,
+  command,
+}) => {
+  const middle = host.project + "/second";
+  const last = host.project + "/third";
+  const path = "notes/source.md";
+  await writeFiles(host.project, {
+    [path]: "Original workspace contents",
+    "notes/only-old.md": "Only in original",
+  });
+  await writeFiles(middle, { [path]: "Middle workspace contents" });
+  await writeFiles(last, {
+    [path]: "Wrong destination contents",
+    "notes/new.md": "Wrong source",
+  });
+  const source = await savedConversation(host, request, "Original workspace");
+  const chat = await savedConversation(
+    host,
+    request,
+    "Moved chat",
+    "Read `notes/source.md:1`.",
+  );
+  const snap = async () =>
+    (await (await request.get(`/api/sessions/${chat.id}`)).json()).metadata;
+  const first = await snap();
+  expect(first.file_origin).toBeTruthy();
+  for (const cwd of [middle, last]) {
+    const meta = await snap();
+    await command("move", {
+      session_id: chat.id,
+      generation: meta.generation || "",
+      cwd,
+    });
+  }
+  const link = (file, origin) =>
+    `/#${new URLSearchParams({ session: chat.id, file, ...(origin && { origin }) })}`;
+  await openSession(page, chat);
+  const lookup = page.waitForRequest((req) =>
+    new URL(req.url()).pathname.endsWith("/file-origin"),
+  );
+  await page.locator(".transcript .file-ref").click();
+  const query = new URL((await lookup).url()).searchParams;
+  expect(query.get("path")).toBe(path);
+  expect(Number(query.get("sequence"))).toBeGreaterThan(0);
+  const files = page.getByRole("region", { name: "Files" });
+  await expect(
+    files.getByText("Original workspace contents", { exact: true }),
+  ).toBeVisible();
+  await expect(files.getByText("Wrong destination contents")).toHaveCount(0);
+  await page.goto(link(path, first.file_origin));
+  await expect(files.getByRole("heading").first()).toContainText(path);
+  await expect(
+    files.getByText("Original workspace contents", { exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      new URLSearchParams(new URL(page.url()).hash.slice(1)).get("session"),
+    )
+    .toBe(source.id);
+  await page.reload();
+  await expect(
+    files.getByText("Original workspace contents", { exact: true }),
+  ).toBeVisible();
+  await page.goto(link(path));
+  await expect(page.getByText(/multiple workspaces/i)).toBeVisible();
+  await expect(files).toHaveCount(0);
+  await page.goto(link("notes/only-old.md"));
+  await expect(
+    files.getByText("Only in original", { exact: true }),
+  ).toBeVisible();
+  await page.goto(link("notes/new.md", first.file_origin));
+  await expect(files.getByText(/new.md is not in this folder/)).toBeVisible();
+  await expect(files.getByText("Wrong source")).toHaveCount(0);
+});
+
+test("a paired file link reopens the original folder when it has no remaining chat", async ({
+  page,
+  host,
+  request,
+  command,
+}) => {
+  const cwd = host.project + "/later";
+  const path = "brief.txt";
+  await writeFiles(host.project, { [path]: "The first brief" });
+  await writeFiles(cwd, { [path]: "A different brief" });
+  const chat = await savedConversation(host, request, "Only conversation");
+  const origin = chat.file_origin;
+  expect(origin).toBeTruthy();
+  await command("move", {
+    session_id: chat.id,
+    generation: chat.generation || "",
+    cwd,
+  });
+  const created = page.waitForRequest(
+    (req) =>
+      req.method() === "POST" &&
+      new URL(req.url()).pathname === "/api/command" &&
+      req.postDataJSON()?.kind === "create",
+  );
+  await page.goto(
+    "/#" + new URLSearchParams({ session: chat.id, file: path, origin }),
+  );
+  expect((await created).postDataJSON().cwd).toBe(host.project);
+  const files = page.locator(".code-view");
+  await expect(files).toContainText("The first brief");
+  const address = () =>
+    Object.fromEntries(new URLSearchParams(new URL(page.url()).hash.slice(1)));
+  await expect
+    .poll(address)
+    .toEqual({ session: expect.any(String), file: path, origin });
+  expect(address().session).not.toBe(chat.id);
+  await page.reload();
+  await expect(files).toContainText("The first brief");
 });

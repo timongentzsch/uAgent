@@ -209,7 +209,18 @@ void JsonEventStream::Emit(const std::string& type, json data) noexcept {
 
 void DebugLog(const std::string& event, json data) {
   Observability* observability = ActiveObservability();
-  if (observability) observability->Diagnostic(event, std::move(data));
+  if (observability) {
+    observability->Diagnostic(Severity::kDebug, event, "", std::move(data));
+  }
+}
+
+void Diagnose(Severity severity, const std::string& name,
+              const std::string& text, json data) {
+  fprintf(stderr, "%s\n", text.c_str());
+  Observability* observability = ActiveObservability();
+  if (observability) {
+    observability->Diagnostic(severity, name, text, std::move(data));
+  }
 }
 
 }  // namespace uagent

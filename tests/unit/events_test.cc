@@ -2,9 +2,12 @@
 
 #include "include/core/events.h"
 
+#include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <atomic>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -516,6 +519,72 @@ TEST_CASE(TestObservabilityEvents) {
         (tightened.st_mode & 0777) == 0600);
 }
 
+TEST_CASE(TestDiagnosticsReachTheDayLog) {
+  TestWorkspace workspace("diagnostics");
+  ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH",
+                    (workspace.root / "s.json").string());
+  const std::string trace = (workspace.root / "trace.jsonl").string();
+  const std::string day =
+      UagentDir(kLogsDir) + "/" + UtcStamp("%Y-%m-%d") + ".jsonl";
+  const auto lines_of = [](const std::string& path) {
+    std::ifstream input(path);
+    std::vector<json> records;
+    for (std::string line; std::getline(input, line);) {
+      records.push_back(json::parse(line, nullptr, false));
+    }
+    return records;
+  };
+  {
+    Observability observability;
+    SetObservability(&observability);
+    observability.SetRole("runtime");
+    CHECK(observability.StartDebug(trace));
+    // stderr goes to a file for the length of the call.
+    const std::string captured = (workspace.root / "stderr").string();
+    std::fflush(stderr);
+    const int saved = dup(STDERR_FILENO);
+    const int file = open(captured.c_str(), O_CREAT | O_WRONLY, 0600);
+    dup2(file, STDERR_FILENO);
+    Diagnose(Severity::kWarning, "usage_ledger", "cannot write usage ledger",
+             {{"error", "disk full"}});
+    DebugLog("debug_only", {{"value", 1}});
+    std::fflush(stderr);
+    dup2(saved, STDERR_FILENO);
+    close(saved);
+    close(file);
+    std::ifstream printed(captured);
+    std::string first;
+    CHECK(std::getline(printed, first) && first == "cannot write usage ledger");
+    CHECK(!std::getline(printed, first));
+    observability.Shutdown();
+    SetObservability(nullptr);
+  }
+  const std::vector<json> written = lines_of(day);
+  REQUIRE(written.size() == 1);
+  const json& line = written[0];
+  CHECK(line["event"] == "usage_ledger");
+  CHECK(line["pid"] == getpid());
+  CHECK(line.contains("time"));
+  CHECK(line["data"]["level"] == "warning");
+  CHECK(line["data"]["role"] == "runtime");
+  CHECK(line["data"]["session_id"] ==
+        SessionIdFor((workspace.root / "s.json").string()));
+  CHECK(line["data"]["text"] == "cannot write usage ledger");
+  CHECK(line["data"]["data"]["error"] == "disk full");
+  // The trace has both; the debug line goes nowhere else.
+  const std::vector<json> traced = lines_of(trace);
+  CHECK(traced.size() == 2);
+  // At level off the day's file is not written; stderr still is.
+  ScopedEnv off("UAGENT_LOG_LEVEL", "off");
+  std::filesystem::remove(day);
+  {
+    Observability quiet;
+    quiet.Diagnostic(Severity::kError, "web_restart", "cannot restart", {});
+    quiet.Shutdown();
+  }
+  CHECK(!std::filesystem::exists(day));
+}
+
 TEST_CASE(TestLogsAreKeptWithinTheirSize) {
   TestWorkspace workspace("log-size");
   ScopedEnv limit("UAGENT_LOG_MB", "1");
@@ -553,6 +622,7 @@ TEST_CASE(TestLogLevelsWriteTheirRecords) {
   };
   constexpr Expected kExpected[] = {
       {LogKind::kJournal, false, true, true, true},
+      {LogKind::kDiagnostics, false, true, true, true},
       {LogKind::kMcpStderr, false, true, true, true},
       {LogKind::kCapture, false, false, true, true},
       {LogKind::kExchange, false, false, true, true},

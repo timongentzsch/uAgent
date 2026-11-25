@@ -17,6 +17,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/logs.h"
 #include "include/core/strings.h"
 #include "include/core/turn_status.h"
 
@@ -450,14 +451,40 @@ void Observability::Emit(Event event) noexcept {
   }
 }
 
-void Observability::Diagnostic(const std::string& name, json data) noexcept {
+void Observability::SetRole(std::string role) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!shutdown_ && debug_.Enabled()) debug_.Write(name, std::move(data));
+  role_ = std::move(role);
+}
+
+void Observability::Diagnostic(Severity severity, const std::string& name,
+                               const std::string& text, json data) noexcept {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (shutdown_) return;
+  if (severity == Severity::kDebug) {
+    if (debug_.Enabled()) debug_.Write(name, std::move(data));
+    return;
+  }
+  json line = {{"level", severity == Severity::kError ? "error" : "warning"},
+               {"role", role_},
+               {"text", text},
+               {"data", std::move(data)}};
+  if (const std::string session = SessionIdFor(OwnSessionFile());
+      !session.empty()) {
+    line["session_id"] = session;
+  }
+  if (debug_.Enabled()) debug_.Write(name, line);
+  if (Logs(LogKind::kDiagnostics) &&
+      (diagnostics_.Enabled() ||
+       diagnostics_.Start(UagentDir(kLogsDir) + "/" + UtcStamp("%Y-%m-%d") +
+                          ".jsonl"))) {
+    diagnostics_.Write(name, std::move(line));
+  }
 }
 
 void Observability::Flush() {
   std::lock_guard<std::mutex> lock(mutex_);
   debug_.Flush();
+  diagnostics_.Flush();
 }
 
 void Observability::Shutdown() {
@@ -467,6 +494,7 @@ void Observability::Shutdown() {
   debug_.Flush();
   json_.Stop();
   debug_.Stop();
+  diagnostics_.Stop();
   subscribers_.clear();
   shutdown_ = true;
 }

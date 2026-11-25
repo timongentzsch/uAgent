@@ -15,6 +15,7 @@ enum class LogLevel { kOff, kEvents, kFull, kDebug };
 
 enum class LogKind {
   kJournal,
+  kDiagnostics,
   kMcpStderr,
   kCapture,
   kExchange,
@@ -33,6 +34,7 @@ struct LogRecord {
 
 inline constexpr LogRecord kLogRecords[] = {
     {LogKind::kJournal, "", LogLevel::kEvents},
+    {LogKind::kDiagnostics, kLogsDir, LogLevel::kEvents},
     {LogKind::kMcpStderr, kMcpDir, LogLevel::kEvents},
     {LogKind::kCapture, kArtifactsDir, LogLevel::kFull},
     {LogKind::kExchange, kArtifactsDir, LogLevel::kFull},

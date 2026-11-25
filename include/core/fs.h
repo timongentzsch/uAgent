@@ -72,6 +72,7 @@ inline constexpr const char* kMcpDir = "mcp";
 inline constexpr const char* kModelsDir = "models";
 inline constexpr const char* kConfigDir = "config";
 inline constexpr const char* kMailDir = "mail";
+inline constexpr const char* kLogsDir = "logs";
 // Named workspaces, one folder each.
 inline constexpr const char* kSpacesDir = "spaces";
 // The workspace a conversation starts in until it is filed.

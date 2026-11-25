@@ -252,7 +252,8 @@ void Application::Teardown(const char* reason) {
     std::string error;
     if (!context_.observability.Journal().Flush(
             session_file_ + kSessionJournalSuffix, error)) {
-      fprintf(stderr, "cannot save session journal: %s\n", error.c_str());
+      Diagnose(Severity::kWarning, "session_journal",
+               "cannot save session journal: " + error);
     }
   }
   context_.observability.Flush();

@@ -158,7 +158,10 @@ class Observability {
   void Unsubscribe(uint64_t subscription);
   void EnableJournal(bool enabled) { journal_.SetEnabled(enabled); }
   void Emit(Event event) noexcept;
-  void Diagnostic(const std::string& name, json data = json::object()) noexcept;
+  // What the process is (web, runtime, headless, agent), for its diagnostics.
+  void SetRole(std::string role);
+  void Diagnostic(Severity severity, const std::string& name,
+                  const std::string& text, json data) noexcept;
 
   DebugSink& DebugOutput() { return debug_; }
   SessionJournal& Journal() { return journal_; }
@@ -168,6 +171,8 @@ class Observability {
 
  private:
   DebugSink debug_;
+  // ~/.uagent/logs/<UTC day>.jsonl, opened by the first warning or error.
+  DebugSink diagnostics_;
   JsonEventStream json_;
   SessionJournal journal_;
   std::unique_ptr<TurnStatus> activity_;
@@ -180,6 +185,7 @@ class Observability {
   uint64_t app_sequence_ UAGENT_GUARDED_BY(mutex_) = 0;
   uint64_t next_subscription_ UAGENT_GUARDED_BY(mutex_) = 1;
   bool shutdown_ UAGENT_GUARDED_BY(mutex_) = false;
+  std::string role_ UAGENT_GUARDED_BY(mutex_) = "uagent";
 };
 
 // Set once by main; the pointer never owns the runtime.

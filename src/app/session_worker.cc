@@ -963,6 +963,7 @@ int WorkerMain(int argc, char** argv) {
   if (const int failed = channel.Start()) return failed;
   Observability observation;
   SetObservability(&observation);
+  observation.SetRole("runtime");
   auto subscriber = observation.Subscribe(
       [&](const AppEvent& event) { channel.Event(event); });
   BootstrapResult boot =

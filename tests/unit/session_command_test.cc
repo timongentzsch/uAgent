@@ -18,6 +18,7 @@
 
 #include "include/app/asset_store.h"
 #include "include/app/commands.h"
+#include "include/app/present.h"
 #include "include/app/schedule.h"
 #include "include/app/session_host.h"
 #include "include/app/transient_batcher.h"
@@ -26,6 +27,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/runtime_config.h"
+#include "include/tools/files.h"
 #include "tests/unit/terminal_test_support.h"
 #include "tests/unit/test_support.h"
 
@@ -446,6 +448,47 @@ TEST_CASE(TestToolCopiesKeepRoomForUserFiles) {
   }
   CHECK(copies <= kMaxSessionAssets / 2);
   CHECK(store.Store(session, "mine", "notes.txt", true).error.empty());
+}
+
+// A file kept again unchanged is the one asset; a changed file, an upload
+// and an evictable copy each get their own.
+TEST_CASE(TestUnchangedFileStoredOnce) {
+  TestWorkspace workspace("asset-unchanged");
+  const std::string session = UagentDir("history") + "/project/web-a.json";
+  session::AssetStore store;
+  const auto stored = [&](const std::string& bytes, bool committed,
+                          bool tool_copy = false) {
+    return JsonValue(
+        store.Store(session, bytes, "notes.txt", committed, tool_copy, true)
+            .value,
+        "id", "");
+  };
+  const std::string first = stored("same", true);
+  CHECK(!first.empty() && stored("same", true) == first);
+  CHECK(stored("changed", true) != first);
+  CHECK(stored("same", false) != first);
+  CHECK(stored("same", true, true) != first);
+  size_t files = 0, bytes = 0;
+  for (const auto& entry :
+       std::filesystem::directory_iterator(session + ".assets")) {
+    if (entry.path().extension() != ".data") continue;
+    ++files;
+    bytes += entry.file_size();
+  }
+  CHECK(files == 4 && bytes == 4 + 7 + 4 + 4);
+  // Presented twice, a file is shown twice from the one asset.
+  CHECK(ToolWriteFile("report.txt", "report").Ok());
+  const Tool present = PresentTool(session, nullptr);
+  const json args = {{"path", "report.txt"}};
+  const ToolResult shown = present.run(args, ToolContext{});
+  const ToolResult again = present.run(args, ToolContext{});
+  CHECK(shown.Ok() && again.Ok());
+  CHECK(shown.parts[0]["id"] == again.parts[0]["id"]);
+  CHECK(again.parts[0]["name"] == "report.txt");
+  CHECK(ReadFile(session + ".assets/" +
+                     again.parts[0]["id"].get<std::string>() + ".data",
+                 64)
+            .value_or("") == "report");
 }
 
 TEST_CASE(TestCommandReplies) {

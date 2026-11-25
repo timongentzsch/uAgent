@@ -144,6 +144,28 @@ export const withoutServiceWorker = (page) =>
     route.fulfill({ contentType: "text/javascript", body: "" }),
   );
 
+// For a page whose host is mocked: an event stream, kept as `testStream`,
+// that says it is ready at `cursor`. Passed to page.addInitScript.
+export const fakeStream = ({ epoch, cursor }) => {
+  globalThis.EventSource = class extends EventTarget {
+    readyState = 1;
+    constructor() {
+      super();
+      globalThis.testStream = this;
+      setTimeout(() =>
+        this.dispatchEvent(
+          new MessageEvent("ready", {
+            data: JSON.stringify({ epoch, cursor }),
+          }),
+        ),
+      );
+    }
+    close() {
+      this.readyState = 2;
+    }
+  };
+};
+
 // The composer sends and attaches nothing until the event stream has caught
 // up. A click waits for that; a key press, setInputFiles or a dispatched
 // drop does not, and what it carried is lost.

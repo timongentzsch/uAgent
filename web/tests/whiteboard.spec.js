@@ -421,6 +421,9 @@ test("items picked with Shift or a frame move together, line up and spread out, 
   await undo.click();
   await expect.poll(saved).toBe(BOARD);
   await expect(undo).toBeDisabled();
+  // The board is drawn again from the file, which lets go of what was picked;
+  // a drag begun before that is lost with the page it began on.
+  await expect(picked).toHaveCount(0);
 
   // A frame drawn from the empty board picks what it touches, the diamond,
   // the database and the note, and a section only where it holds all of it.

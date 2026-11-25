@@ -1,9 +1,7 @@
-// docs/images/cover.png, how-it-works.png and remote-execution.png: stills of
-// one fixture host, laid out by the pages in recordings/figures. The remote
-// host and the model catalogue are answered here; the Chrome still is
-// docs/images/browser-sign-in.png, the container's browser pane.
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
+// The README's stills of one fixture host: a conversation that ran on a
+// remote host, and a terminal and a phone asked to approve the same command.
+// The remote host is answered here.
+import { mkdir, realpath } from "node:fs/promises";
 import {
   expect,
   headerAction,
@@ -24,20 +22,12 @@ test.use({
 });
 
 const remote = "b".repeat(32);
-const figures = { cover: 924, "how-it-works": 700, "remote-execution": 560 };
-const models = [
-  ["anthropic/claude-sonnet-5-5", "Claude Sonnet 5.5"],
-  ["local/qwen3-coder", "Qwen3 Coder"],
-  ["openai/gpt-6.1", "GPT-6.1"],
-  ["openrouter/deepseek/deepseek-v4", "DeepSeek V4"],
-];
+const images = "../docs/images";
 const benchmark =
   "python3 benchmarks/compare_agents.py --from-report report.json";
 
-test("cover", async ({ page, host, request, command, browser }, testInfo) => {
+test("readme", async ({ page, host, request, command, browser }) => {
   test.setTimeout(180000);
-  const stills = testInfo.outputPath("stills");
-  await mkdir(stills, { recursive: true });
   const save = (title, cwd, fields = {}) =>
     saveHistory(host, `cover-${crypto.randomUUID()}.json`, {
       id: crypto.randomUUID(),
@@ -158,63 +148,17 @@ test("cover", async ({ page, host, request, command, browser }, testInfo) => {
   await page.route(new RegExp(`/api/sessions/${shown.id}$`), async (route) => {
     const response = await route.fetch();
     const snapshot = await response.json();
-    if (snapshot.state) snapshot.state.route = `${models[0][0]}:high`;
+    if (snapshot.state)
+      snapshot.state.route = "anthropic/claude-sonnet-5-5:high";
     await route.fulfill({ response, json: snapshot });
   });
-  await page.route("**/api/command", async (route) => {
-    const body = route.request().postDataJSON();
-    if (body.kind !== "model" || body.operation !== "catalog")
-      return route.continue();
-    await route.fulfill({
-      json: {
-        v: 2,
-        accepted: true,
-        pending: false,
-        request_id: body.request_id,
-        result: {
-          models: models.map(([value, name], index) => ({
-            value,
-            label: value,
-            name,
-            active: !index,
-            efforts: ["high", "low"],
-          })),
-        },
-      },
-    });
-  });
-
   await page.goto(`/#session=${shown.id}`);
   await online(page);
   await expect(page.getByText("The run stayed on gpu-box.")).toBeVisible();
   await page.mouse.move(0, 0);
   await page.evaluate(() => document.fonts.ready);
-  await page.screenshot({ path: `${stills}/desk.png`, animations: "disabled" });
-  const hosts = await page
-    .getByRole("button", { name: "Remote hosts" })
-    .boundingBox();
-  const add = await page
-    .getByRole("button", { name: "Add host" })
-    .boundingBox();
   await page.screenshot({
-    path: `${stills}/remote.png`,
-    clip: {
-      x: 0,
-      y: hosts.y - 8,
-      width: 260,
-      height: add.y + add.height + 16 - hosts.y,
-    },
-  });
-  await page
-    .getByRole("button", { name: "Model and effort", exact: true })
-    .click();
-  const picker = page.getByRole("dialog", { name: "Model and effort" });
-  await picker.getByRole("combobox", { name: "Model" }).click();
-  await expect(picker.getByText("openai/gpt-6.1")).toBeVisible();
-  const sheet = await picker.boundingBox();
-  await page.screenshot({
-    path: `${stills}/models.png`,
-    clip: { x: sheet.x, y: sheet.y, width: sheet.width, height: 340 },
+    path: `${images}/remote-conversation.png`,
     animations: "disabled",
   });
 
@@ -268,35 +212,15 @@ test("cover", async ({ page, host, request, command, browser }, testInfo) => {
   await expect(hand.locator(".conversation-head")).toContainText("Check the");
   await hand.evaluate(() => document.fonts.ready);
   await hand.screenshot({
-    path: `${stills}/phone.png`,
+    path: `${images}/phone-approval.png`,
     animations: "disabled",
   });
-  await panel
-    .locator(".xterm")
-    .screenshot({ path: `${stills}/terminal.png`, animations: "disabled" });
+  await panel.locator(".xterm").screenshot({
+    path: `${images}/terminal-approval.png`,
+    animations: "disabled",
+  });
   await deny.tap();
   await expect(panel.locator(".xterm-rows")).toContainText("was not run");
   await pocket.close();
   await window.close();
-
-  const frame = await browser.newContext({
-    viewport: { width: 1280, height: 1000 },
-    deviceScaleFactor: 2,
-  });
-  const sheetPage = await frame.newPage();
-  const root = pathToFileURL(`${process.cwd()}/..`).href;
-  for (const [name, height] of Object.entries(figures)) {
-    const source = await readFile(`recordings/figures/${name}.html`, "utf8");
-    const file = `${stills}/${name}.html`;
-    await writeFile(file, source.replaceAll("{root}", root));
-    await sheetPage.goto(pathToFileURL(file).href);
-    await sheetPage.evaluate(() =>
-      Promise.all([...document.images].map((image) => image.decode())),
-    );
-    await sheetPage.screenshot({
-      path: `../docs/images/${name}.png`,
-      clip: { x: 0, y: 0, width: 1280, height },
-    });
-  }
-  await frame.close();
 });

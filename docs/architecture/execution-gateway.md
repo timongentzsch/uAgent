@@ -5,7 +5,19 @@ on another machine over SSH: connecting a host, installing the matching
 build, the remote processes, the RPC and recovery after a drop. What a
 remote account may do is in [Security](../../SECURITY.md).
 
-![Your host keeps the agent loop, keys and approvals and sends checked tool calls over a forwarded Unix socket to a worker in the remote folder](../images/remote-execution.png)
+```mermaid
+sequenceDiagram
+  participant H as Your host<br/>agent loop, keys, history, approvals
+  participant R as Remote machine<br/>uagent --execution-worker in the folder
+  H->>R: its own build over SSH, SHA-256 verified
+  loop every tool call
+    H->>R: check: classify for approval
+    R-->>H: what the call would do
+    H->>R: run, as JSON over a forwarded Unix socket
+    R-->>H: result, read by its receipt
+  end
+  Note over H,R: After a dropped link the host reads the receipt.<br/>An uncertain mutation is never sent twice.
+```
 
 ## Responsibility
 

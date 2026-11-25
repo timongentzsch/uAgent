@@ -1,6 +1,13 @@
 // A sheet opens in the viewer as its own grid, calculated and drawn by the
 // page in its sandboxed frame; the pane adds its tabs, its cell and its errors.
-import { test, expect, openSheet, sheet, SAMPLE_SHEET } from "./fixtures.js";
+import {
+  test,
+  expect,
+  openSheet,
+  sheet,
+  SAMPLE_SHEET,
+  enter,
+} from "./fixtures.js";
 
 const selected = (tabs) =>
   tabs.and(tabs.page().locator('[aria-selected="true"]'));
@@ -263,9 +270,7 @@ test("a sheet fetches the engine once, however many changes it calculates", asyn
   });
   const { cell } = await openCosts(app, session, host);
   for (const cost of [50, 60]) {
-    await cell("Costs", "B2").click();
-    await app.keyboard.type(`${cost}`);
-    await app.keyboard.press("Enter");
+    await enter(cell("Costs", "B2"), `${cost}`);
     await expect(cell("Costs", "C2")).toHaveText(`${cost * 2}`);
   }
   expect(fetched).toBe(1);
@@ -277,9 +282,7 @@ test("a formula the engine panics on is refused when entered: the sheet goes on 
   host,
 }) => {
   const { files, cell, saved } = await openCosts(app, session, host);
-  await cell("Costs", "B2").click();
-  await app.keyboard.type("=XNPV(1,1)");
-  await app.keyboard.press("Enter");
+  await enter(cell("Costs", "B2"), "=XNPV(1,1)");
   await expect(
     files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
   ).toHaveText(
@@ -288,9 +291,7 @@ test("a formula the engine panics on is refused when entered: the sheet goes on 
   await expect(cell("Costs", "B2")).toHaveText("1200");
   expect(await saved()).toBe(COSTS);
   // What it takes is calculated and saved as ever, and undone.
-  await cell("Costs", "B2").click();
-  await app.keyboard.type("50");
-  await app.keyboard.press("Enter");
+  await enter(cell("Costs", "B2"), "50");
   await expect(cell("Costs", "C2")).toHaveText("100");
   await expect.poll(saved).toContain("<td>50<td>=B2*2");
   await files.getByRole("button", { name: "Undo" }).click();
@@ -342,9 +343,7 @@ test("a formula the engine never finishes is refused once its time is up; meanwh
     session,
     host,
   );
-  await cell("Costs", "B2").click();
-  await app.keyboard.type(NEVER);
-  await app.keyboard.press("Enter");
+  await enter(cell("Costs", "B2"), NEVER);
   const status = files.locator(".page-tools .page-status");
   await expect(status).toHaveText("Calculating…");
   // The page answers: a cell is selected; the formula, not calculated,
@@ -373,9 +372,7 @@ test("a formula the engine never finishes is refused once its time is up; meanwh
   await expect(why).toBeVisible();
   await expect(status).toHaveCount(0);
   // What it takes next is calculated and saved as ever, and ends the reason.
-  await cell("Costs", "B2").click();
-  await app.keyboard.type("50");
-  await app.keyboard.press("Enter");
+  await enter(cell("Costs", "B2"), "50");
   await expect(cell("Costs", "C2")).toHaveText("100");
   await expect.poll(saved).toContain("<td>50<td>=B2*2");
   await expect(why).toHaveCount(0);

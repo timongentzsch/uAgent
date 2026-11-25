@@ -75,9 +75,7 @@ TEST_CASE(TestPromptRequestParity) {
   std::vector<Tool> tools;
   ActivitySupervisor processes;
   UsageAccumulator usage;
-  Agent agent(
-      api, tools, processes, usage,
-      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
+  Agent agent(api, tools, processes, usage, Denied);
   const std::string effective = agent.PromptPreview()["effective"];
   agent.PreviewContext();
   CHECK(agent.ModelRequest()["messages"][0]["content"] == effective);

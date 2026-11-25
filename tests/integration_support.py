@@ -289,6 +289,15 @@ def write_mcp_server(path, body, *, setup="", extra_imports=()):
     path.write_text(source, encoding="utf-8")
 
 
+def mcp_servers(workspace, scripts, **fields):
+    """The folder's .mcp.json: each named server runs its script."""
+    servers = {
+        name: {"command": sys.executable, "args": [str(script)], **fields}
+        for name, script in scripts.items()
+    }
+    (workspace / ".mcp.json").write_text(json.dumps({"mcpServers": servers}))
+
+
 def run_dialog(cwd, env, text, *args, timeout=10, binary):
     return subprocess.run(
         [str(binary), *args],

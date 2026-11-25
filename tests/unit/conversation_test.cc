@@ -1145,9 +1145,7 @@ TEST_CASE(TestForkAtTurnAndLineage) {
   std::vector<Tool> tools;
   ActivitySupervisor processes;
   UsageAccumulator usage;
-  Agent agent(
-      api, tools, processes, usage,
-      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
+  Agent agent(api, tools, processes, usage, Denied);
   std::string error;
   CHECK(agent.Load(child, CanonicalCwd(), error));
   const std::string resaved = (workspace.workspace / "reloaded.json").string();

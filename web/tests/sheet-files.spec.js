@@ -1,7 +1,14 @@
 // An Excel or CSV file opens in the sheet viewer, read-only; it is saved as
 // a sheet to change it, and any sheet goes out as a workbook or as CSV.
 import { readFile } from "node:fs/promises";
-import { test, expect, openSheet, viewerOf, writeFiles } from "./fixtures.js";
+import {
+  test,
+  expect,
+  openSheet,
+  viewerOf,
+  writeFiles,
+  enter,
+} from "./fixtures.js";
 import { evaluating as engine } from "./sheet-engine.js";
 
 const LOCALE = ["en", "UTC", "en"];
@@ -103,9 +110,7 @@ test("an Excel file opens read-only, is saved as a sheet and edited there, and g
   expect(await saved("books/costs.html")).toBe(SHEET);
   await expect(tabs).toHaveText(["Costs", "Inputs", "Lookup"]);
   await expect(cell("Costs", "B4")).toHaveText("1,290.50");
-  await cell("Costs", "B2").click();
-  await app.keyboard.type("2400");
-  await app.keyboard.press("Enter");
+  await enter(cell("Costs", "B2"), "2400");
   await expect(cell("Costs", "B4")).toHaveText("2,490.50");
   await expect
     .poll(() => saved("books/costs.html"))
@@ -200,9 +205,7 @@ test("a CSV file opens as one tab named after it, its cells as data, read-only, 
   await expect(stage.locator("tr.sheet-head")).toHaveText("1ItemNetPhone");
   await expect(files.locator(".sheet-note")).toHaveText("Read-only");
   // The grid runs on past its rows, and takes no typing there either.
-  await cell(name, "E8").click();
-  await app.keyboard.type("7");
-  await app.keyboard.press("Enter");
+  await enter(cell(name, "E8"), "7");
   await expect(cell(name, "E8")).toHaveText("");
   // Its first row is its header: the column is filtered from there.
   await cell(name, "A1").getByRole("button").click();

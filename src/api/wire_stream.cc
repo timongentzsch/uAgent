@@ -1,5 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <limits>
 #include <map>
 #include <string>
 #include <string_view>
@@ -31,7 +32,9 @@ void AddStreamAnnotation(const json& annotation, ChatResult& result) {
   result.semantic_progress = true;
 }
 
-// The stream slots a response may open: calls and, for Anthropic, blocks.
+// The calls a Chat Completions or Responses stream may open: past them, an
+// unindexed fragment's slot search and the Responses replay grow with every
+// event.
 constexpr int64_t kStreamSlots = 256;
 
 // A provider that omits `index` would pile every fragment into slot 0, so
@@ -608,7 +611,8 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
     return delta;
   }
   int64_t raw_index = JsonValue(value, "index", int64_t{-1});
-  if (raw_index < 0 || raw_index >= kStreamSlots) {
+  if (raw_index < 0 ||
+      raw_index > static_cast<int64_t>(std::numeric_limits<int>::max())) {
     if (type == "message_delta") {
       const json* message_delta = JsonObject(value, "delta");
       if (message_delta) {

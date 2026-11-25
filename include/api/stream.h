@@ -315,9 +315,11 @@ inline void CollectToolCalls(std::map<int, ToolCall>& streamed,
       const char* key = type == "tool_use"        ? "id"
                         : type == "function_call" ? "call_id"
                                                   : nullptr;
-      auto found =
-          key ? outcomes.find(JsonValue(block, key, "")) : outcomes.end();
-      if (found != outcomes.end()) {
+      // The first call streamed with this id: lower_bound, as find may
+      // return any of equal keys.
+      const std::string streamed = key ? JsonValue(block, key, "") : "";
+      auto found = key ? outcomes.lower_bound(streamed) : outcomes.end();
+      if (found != outcomes.end() && found->first == streamed) {
         const std::string id = std::move(found->second);
         outcomes.erase(found);
         if (id.empty()) continue;

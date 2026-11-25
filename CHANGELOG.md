@@ -5,7 +5,6 @@
 ### Fixes
 
 - A `web_fetch` rule for a site no longer matches an address whose query or fragment holds `@` and that site's name; the rule is keyed by the host the fetch goes to. A preview's sheet engine route no longer serves a file outside the engine's folder.
-- A reply whose tool calls had a missing or repeated id, or no name, no longer leaves the next Anthropic or Responses request carrying a call without a matching result, which the provider refused until the conversation compacted. A stream that names hundreds of tool-call slots opens at most 256, and an MCP server sending many short lines is read in one pass.
 
 ## v1.12.0 - 2026-11-24
 

@@ -387,16 +387,14 @@ TEST_CASE(TestSseChunkPartitions) {
   CollectToolCalls(twice, responses);
   CHECK(responses.replay["items"][1]["call_id"] == responses.tool_calls[1].id);
   // However many slots a stream names, the calls it opens stay bounded.
-  for (const auto& [api, shape] :
-       {std::pair{WireApi::kChatCompletions,
-                  R"({"choices":[{"delta":{"tool_calls":[{"index":%,)"
-                  R"("function":{"name":"x"}}]}}]})"},
-        {WireApi::kResponses,
-         R"({"type":"response.output_item.added","output_index":%,)"
-         R"("item":{"type":"function_call","name":"x"}})"},
-        {WireApi::kAnthropicMessages,
-         R"({"type":"content_block_start","index":%,)"
-         R"("content_block":{"type":"tool_use","name":"x"}})"}}) {
+  for (const auto& [api, shape] : {
+           std::pair{WireApi::kChatCompletions,
+                     R"({"choices":[{"delta":{"tool_calls":[{"index":%,)"
+                     R"("function":{"name":"x"}}]}}]})"},
+           {WireApi::kResponses,
+            R"({"type":"response.output_item.added","output_index":%,)"
+            R"("item":{"type":"function_call","name":"x"}})"},
+       }) {
     ChatResult flooded;
     std::map<int, ToolCall> slots;
     WireStreamState state;
@@ -407,6 +405,21 @@ TEST_CASE(TestSseChunkPartitions) {
     }
     CHECK(slots.size() == 256);
   }
+  // An Anthropic reply may hold many more blocks than calls: a cited answer
+  // is a text block per span, and every one arrives.
+  ChatResult cited;
+  std::map<int, ToolCall> none;
+  WireStreamState blocks;
+  for (int index = 0; index < 300; ++index) {
+    DecodeWireStreamEvent(WireApi::kAnthropicMessages,
+                          R"({"type":"content_block_start","index":)" +
+                              std::to_string(index) +
+                              R"(,"content_block":{"type":"text","text":"x"}})",
+                          cited, none, blocks);
+  }
+  DecodeWireStreamEvent(WireApi::kAnthropicMessages,
+                        R"({"type":"message_stop"})", cited, none, blocks);
+  CHECK(cited.replay["content"].size() == 300);
 
   std::map<int, ToolCall> truncated = {
       {0, {"complete", "read_path", R"({"path":"README.md"})"}},

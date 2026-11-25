@@ -18,7 +18,6 @@
 #include "include/core/term.h"
 #include "include/core/workspace.h"
 #include "include/mcp/register.h"
-#include "include/mcp/tasks.h"
 #include "include/providers/providers.h"
 #include "include/tools/memory.h"
 #include "src/app/application_internal.h"
@@ -76,7 +75,7 @@ int Application::RunChannel() {
   PublishChannelState();
   while (std::optional<ApplicationInput> input = channel_->NextInput()) {
     // An idle session takes background work's result up at once, as a turn.
-    McpPollTasks(runtime_.mcp);
+    runtime_.processes.Tick(true);
     agent_.DrainActivities(input->wake);
     agent_.DeliverMail();
     agent_.AccountSideUsage();

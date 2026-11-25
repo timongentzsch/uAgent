@@ -191,7 +191,8 @@ std::vector<Tool> BuildTools(AppContext& context,
   // its own fleet would multiply them.
   if (AgentDepth() == 0) {
     runtime.mcp.processes = &runtime.processes;
-    runtime.processes.SetTick([mcp = &runtime.mcp] { McpPollTasks(*mcp); });
+    runtime.processes.SetTick(
+        [mcp = &runtime.mcp](bool ask) { McpPollTasks(*mcp, ask); });
     if (context.channel && InteractiveApprovalAvailable()) {
       runtime.mcp.elicit = [](const json& shown, bool* eof) {
         return ReadInteraction({.kind = "elicit",

@@ -232,14 +232,19 @@ conversation the task is an activity of kind `mcp_task` with no process,
 labelled `<server>/<tool>` with its status message as progress. After a
 command's default yield (10 s), or at once on Ctrl+B, the web's background
 button or guidance, the call returns as a backgrounded `run` does. The
-session's own thread then polls it: before each model step, on an idle
-wake the activity supervisor times, and inside `activity wait` and `poll`.
-A background `tasks/get` waits at most 3 s; a slower reply is skipped and
-the task asked again at its next poll. Its input requests open the card at
-that point, at once in an idle conversation. Its end delivers the result as
+session then polls it, one poll at a time through
+`ActivitySupervisor::Tick`: on the runtime's thread before each model step
+and on an idle wake the supervisor times, and inside `activity wait` and
+`poll`, never from the thread that takes a client's commands. A background
+`tasks/get` waits at most 3 s and is never stopped by a person's Stop,
+which is the turn's; a slower reply is skipped, and the wait to the next
+poll doubles, up to 60 s, until one answers. Its input requests open the
+card only on the runtime's thread, at once in an idle conversation; an
+`activity wait` on it returns so the step can end and ask. Its end delivers the result as
 a finished command's does, starting a turn when the conversation is idle;
 `activity stop` sends `tasks/cancel`, and `write` and `resize` refuse it. A
-headless run keeps the task in the call, bounded by the turn
+headless run, and a conversation in a remote workspace, whose activity
+controls reach that host, keep the task in the call, bounded by the turn
 (`limits.maxTurnSeconds`) and stopping. A background task ends with its
 runtime: shutdown sends each one `tasks/cancel`, its stdio server stops,
 and the row reads cancelled when the conversation is opened again.

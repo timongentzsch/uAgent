@@ -51,6 +51,8 @@ struct McpTask {
   std::string shown = {};
   std::string note = {};  // lines for the model from answering its input
   std::chrono::steady_clock::time_point next = {};
+  // Grows while its server does not answer; a reply resets it.
+  std::chrono::milliseconds backoff = {};
 };
 
 // Puts an elicitation to the person; empty where nobody can answer, and then

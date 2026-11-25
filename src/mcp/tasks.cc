@@ -19,6 +19,7 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
+#include "include/core/workspace.h"
 #include "include/mcp/elicit.h"
 #include "include/mcp/result.h"
 #include "include/mcp/rpc.h"
@@ -45,16 +46,22 @@ bool TaskEnded(const json& task) {
   return status == "completed" || status == "failed" || status == "cancelled";
 }
 
-Clock::time_point NextPoll(const json& task) {
-  return Clock::now() +
-         std::chrono::milliseconds(
-             std::clamp(JsonValue(task, "pollIntervalMs", kTaskPollDefaultMs),
-                        kTaskPollFloorMs, kTaskPollCeilingMs));
+std::chrono::milliseconds Interval(const json& task) {
+  return std::chrono::milliseconds(
+      std::clamp(JsonValue(task, "pollIntervalMs", kTaskPollDefaultMs),
+                 kTaskPollFloorMs, kTaskPollCeilingMs));
 }
 
+Clock::time_point NextPoll(const json& task) {
+  return Clock::now() + Interval(task);
+}
+
+// A background request is not the call's to stop: a person's Stop is aimed
+// at the turn, so it leaves the task for its next poll.
 json Request(McpServer& server, const char* method, const json& params,
-             Clock::time_point deadline) {
-  return McpRpc(server, method, params, SecondsUntil(deadline), true, deadline);
+             Clock::time_point deadline, bool cancellable) {
+  return McpRpc(server, method, params, SecondsUntil(deadline), cancellable,
+                deadline);
 }
 
 // Waits, still taking the server's notifications; false when the call was
@@ -68,27 +75,29 @@ bool AwaitPoll(McpServer& server, Clock::time_point until) {
   return server.alive && !AbortRequested();
 }
 
-// A new status message: the running call's label, and its activity's line.
-void Show(const McpServer& server, McpTask& t, const ToolContext* context,
-          ActivitySupervisor* processes) {
+// The task's status message when it changed, as "server: message".
+std::optional<std::string> NewStatus(const McpServer& server, McpTask& t) {
   const std::string message = JsonValue(t.task, "statusMessage", "");
-  if (message.empty() || message == t.shown) return;
+  if (message.empty() || message == t.shown) return std::nullopt;
   t.shown = message;
-  const std::string label = server.name + ": " + message;
-  if (context && context->progress) context->progress(label);
-  if (t.session && processes) {
-    {
-      std::lock_guard lock(t.session->mutex);
-      t.session->transcript.Push(OneLine(label) + "\n");
-    }
-    processes->Wake();
+  return server.name + ": " + message;
+}
+
+// The activity row's progress line.
+void ShowOnRow(McpTask& t, const std::string& status,
+               ActivitySupervisor& processes) {
+  {
+    std::lock_guard lock(t.session->mutex);
+    t.session->transcript.Push(OneLine(status) + "\n");
   }
+  processes.Wake();
 }
 
 // Answers the task's new input requests through tasks/update; an error reply
 // when it cannot go on.
 std::optional<json> Answer(McpServer& server, McpTask& t,
-                           Clock::time_point deadline, std::string& note) {
+                           Clock::time_point deadline, bool background,
+                           std::string& note) {
   if (JsonValue(t.task, "status", "") != "input_required") return std::nullopt;
   // Keys stay unique for a task, and a poll may repeat one just answered.
   const json requested = JsonValue(t.task, "inputRequests", json());
@@ -102,19 +111,24 @@ std::optional<json> Answer(McpServer& server, McpTask& t,
       !McpInputResponses(server, pending, responses, wait, note)) {
     return McpErrorReply("task requires unsupported input");
   }
-  if (AbortRequested()) return McpErrorReply("cancelled");
+  // A stop closes the card: in the background it is asked again next poll.
+  if (AbortRequested()) {
+    return background ? std::nullopt
+                      : std::optional(McpErrorReply("cancelled"));
+  }
   if (pending.empty()) return std::nullopt;
   for (const auto& [key, _] : pending.items()) t.answered.insert(key);
-  json ack =
-      Request(server, "tasks/update",
-              {{"taskId", t.id}, {"inputResponses", responses}}, deadline);
+  json ack = Request(server, "tasks/update",
+                     {{"taskId", t.id}, {"inputResponses", responses}},
+                     deadline, !background);
   return ack.contains("result") ? std::nullopt : std::optional(ack);
 }
 
 // tasks/get into `t.task`; an error reply when it fails.
 std::optional<json> Refresh(McpServer& server, McpTask& t,
-                            Clock::time_point deadline) {
-  json reply = Request(server, "tasks/get", {{"taskId", t.id}}, deadline);
+                            Clock::time_point deadline, bool cancellable) {
+  json reply =
+      Request(server, "tasks/get", {{"taskId", t.id}}, deadline, cancellable);
   const json* got = JsonObject(reply, "result");
   if (!got) return reply;
   if (JsonValue(*got, "resultType", "") != "complete" ||
@@ -212,9 +226,10 @@ ToolResult McpFollowTask(McpServer& server, const json& created,
   // A created task carries no result or input requests; tasks/get does.
   t.task["status"] = "working";
   // Only a conversation returns to a task's result; a headless run waits.
+  // A remote workspace's activity controls reach its host, never this task.
   ActivitySupervisor* processes =
       server.runtime ? server.runtime->processes : nullptr;
-  if (processes && processes->WakesSession()) {
+  if (processes && processes->WakesSession() && !RemoteWorkspace()) {
     if (auto reservation = processes->ReserveActivity(MaxActivities())) {
       t.session = std::make_shared<ActivitySession>();
       const std::optional<int64_t> id =
@@ -231,14 +246,16 @@ ToolResult McpFollowTask(McpServer& server, const json& created,
   }
   const auto yield = Clock::now() + std::chrono::milliseconds(kDefaultYieldMs);
   bool handed_off = false;
+  bool person_stopped = false;
   auto handover = [&] {
     if (!t.session) return false;
     {
       std::lock_guard lock(t.session->mutex);
       handed_off = t.session->background_requested;
+      person_stopped = t.session->stop_requested;
     }
     handed_off = handed_off || SteeringYieldRequested();
-    return handed_off || Clock::now() >= yield;
+    return person_stopped || handed_off || Clock::now() >= yield;
   };
   bool moved = false;
   json ended;
@@ -247,15 +264,18 @@ ToolResult McpFollowTask(McpServer& server, const json& created,
       return std::min(context.deadline, DeadlineAfter(timeout));
     };
     while (!TaskEnded(t.task)) {
-      Show(server, t, &context, processes);
-      if (auto error = Answer(server, t, request_deadline(), note)) {
+      if (auto status = NewStatus(server, t)) {
+        if (context.progress) context.progress(*status);
+        if (t.session) ShowOnRow(t, *status, *processes);
+      }
+      if (auto error = Answer(server, t, request_deadline(), false, note)) {
         ended = *error;
         return;
       }
       const auto due = std::min(context.deadline, NextPoll(t.task));
       while (Clock::now() < due) {
         if (handover()) {
-          moved = true;
+          moved = !person_stopped;
           return;
         }
         if (!AwaitPoll(server, std::min(due, Clock::now() + kHandoverCheck))) {
@@ -269,15 +289,16 @@ ToolResult McpFollowTask(McpServer& server, const json& created,
         ended = McpErrorReply("task did not end before the call's deadline");
         return;
       }
-      if (auto error = Refresh(server, t, request_deadline())) {
+      if (auto error = Refresh(server, t, request_deadline(), true)) {
         ended = *error;
         return;
       }
     }
     ended = t.task;
   });
-  if (moved && !stopped && processes) {
-    processes->MoveForegroundToBackground(t.activity);
+  // Only shutdown takes the foreground entry away; the task then ends.
+  if (moved && !stopped && processes &&
+      processes->MoveForegroundToBackground(t.activity)) {
     t.next = NextPoll(t.task);
     processes->WakeAt(t.next);
     const int64_t activity = t.activity;
@@ -286,14 +307,22 @@ ToolResult McpFollowTask(McpServer& server, const json& created,
   }
   if (t.session && processes) (void)processes->RemoveForeground(t.activity);
   if (!TaskEnded(ended)) CancelTask(server, t.id);
-  if (stopped) return ToolCancelled("error: call cancelled by user");
+  if (stopped || person_stopped || moved) {
+    return ToolCancelled("error: call cancelled by user");
+  }
   return EndedResult(server, ended, context.call_id);
 }
 
-void McpPollTasks(McpRuntime& runtime) {
+void McpPollTasks(McpRuntime& runtime, bool ask) {
   auto next = Clock::time_point::max();
   for (auto it = runtime.tasks.begin(); it != runtime.tasks.end();) {
     McpTask& t = *it;
+    // A pending stop is the turn's; this task is polled after it.
+    if (AbortRequested()) {
+      next = std::min(next, t.next);
+      ++it;
+      continue;
+    }
     McpServer* server = LiveServer(runtime, t.server);
     bool stop = false;
     {
@@ -310,16 +339,36 @@ void McpPollTasks(McpRuntime& runtime) {
       continue;
     } else if (Clock::now() >= t.next) {
       const auto deadline = DeadlineAfter(kBackgroundGetSeconds);
-      if (auto error = Refresh(*server, t, deadline)) {
-        // A slow reply is skipped when it comes: the next poll asks again.
-        if (!server->alive || Clock::now() < deadline) ended = *error;
-      } else if (TaskEnded(t.task)) {
-        ended = t.task;
+      std::optional<json> error = Refresh(*server, t, deadline, false);
+      if (error && server->alive &&
+          (Clock::now() >= deadline || AbortRequested())) {
+        // Not this time: a late reply is skipped when it comes, and a server
+        // that keeps not answering is asked less and less often.
+        t.backoff = std::min(std::chrono::milliseconds(kTaskPollCeilingMs),
+                             2 * std::max(t.backoff, Interval(t.task)));
+        t.next = Clock::now() + t.backoff;
       } else {
-        Show(*server, t, nullptr, runtime.processes);
-        ended = Answer(*server, t, DeadlineAfter(t.timeout), t.note);
+        t.backoff = {};
+        t.next = NextPoll(t.task);
+        if (error) {
+          ended = *error;
+        } else if (TaskEnded(t.task)) {
+          ended = t.task;
+        } else if (auto status = NewStatus(*server, t)) {
+          ShowOnRow(t, *status, *runtime.processes);
+        }
       }
-      t.next = NextPoll(t.task);
+    }
+    // Input is asked only where a person can be waited for: the runtime's
+    // own step and idle paths, never a tool's wait.
+    const bool asks =
+        !ended && server && JsonValue(t.task, "status", "") == "input_required";
+    if (asks && ask) {
+      ended = Answer(*server, t, DeadlineAfter(t.timeout), true, t.note);
+    }
+    {
+      std::lock_guard lock(t.session->mutex);
+      t.session->waiting_for_person = asks && !ask;
     }
     if (ended) {
       if (server && !TaskEnded(*ended)) CancelTask(*server, t.id);

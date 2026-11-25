@@ -868,7 +868,6 @@ ToolResult ToolActivityStop(ActivitySupervisor& supervisor, int64_t requested) {
       supervised->session->stop_requested = true;
     }
     supervisor.Wake();
-    supervisor.Tick();
     return ToolSuccess("asked the MCP server to cancel its task");
   }
   if (!supervised && requested > std::numeric_limits<pid_t>::max()) {
@@ -1229,6 +1228,19 @@ ToolResult ToolActivityWait(ActivitySupervisor& supervisor,
     size_t running = static_cast<size_t>(
         std::count_if(ids.begin(), ids.end(),
                       [&](int64_t id) { return supervisor.IsLive(id); }));
+    // Its card opens only once this step ends.
+    for (const int64_t id : ids) {
+      const std::optional<Activity> job = supervisor.Find(id);
+      if (!job || !job->session) continue;
+      std::lock_guard lock(job->session->mutex);
+      if (job->session->waiting_for_person) {
+        return WaitResult(taken,
+                          "[activity " + std::to_string(id) +
+                              " waits for the person's answer, asked when "
+                              "this step ends]",
+                          cap);
+      }
+    }
     if ((mode == "any" && !completed.empty()) || running == 0) {
       return WaitResult(taken, {}, cap);
     }

@@ -579,14 +579,14 @@ bool ActivitySupervisor::WakesSession() const {
   return notify_fd_ >= 0;
 }
 
-void ActivitySupervisor::SetTick(std::function<void()> tick) {
+void ActivitySupervisor::SetTick(std::function<void(bool)> tick) {
   std::lock_guard lock(tick_mutex_);
   tick_ = std::move(tick);
 }
 
-void ActivitySupervisor::Tick() const {
+void ActivitySupervisor::Tick(bool ask) const {
   std::lock_guard lock(tick_mutex_);
-  if (tick_) tick_();
+  if (tick_) tick_(ask);
 }
 
 void ActivitySupervisor::WakeAt(std::chrono::steady_clock::time_point when) {
@@ -728,7 +728,9 @@ void ActivitySupervisor::IoLoop(const std::stop_token& stop) {
       }
 
       int status = 0;
-      pid_t waited = waitpid(session->pid, &status, WNOHANG);
+      // -1 would reap any child, MCP servers included.
+      pid_t waited =
+          session->pid > 0 ? waitpid(session->pid, &status, WNOHANG) : 0;
       {
         std::lock_guard<std::mutex> lock(session->mutex);
         if (waited == session->pid && !session->wait_status) {

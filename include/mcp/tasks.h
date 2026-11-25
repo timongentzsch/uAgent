@@ -21,8 +21,11 @@ ToolResult McpFollowTask(McpServer& server, const json& created,
                          const std::string& label, int64_t timeout,
                          const ToolContext& context, std::string& note);
 
-// Polls the background tasks that are due, and asks to be woken for the next.
-void McpPollTasks(McpRuntime& runtime);
+// Polls the background tasks that are due and asks to be woken for the next;
+// `ask` puts their requests for input to the person. Run only through
+// ActivitySupervisor::Tick: from the runtime's thread at a step or while idle
+// (ask), and from a tool's wait while that thread waits on the batch.
+void McpPollTasks(McpRuntime& runtime, bool ask);
 
 // One tasks/cancel to each background task, without waiting for replies.
 void McpCancelTasks(McpRuntime& runtime);

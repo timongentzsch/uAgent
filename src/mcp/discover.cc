@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/activity_supervisor.h"
 #include "include/core/env.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
@@ -19,7 +20,6 @@
 #include "include/mcp/result.h"
 #include "include/mcp/rpc.h"
 #include "include/mcp/server.h"
-#include "include/mcp/tasks.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -277,7 +277,7 @@ bool McpAdvanceStartup(std::vector<Tool>& tools, McpServer& server,
 bool McpRefreshTools(std::vector<Tool>& tools, McpRuntime& runtime,
                      const RuntimeConfig& config,
                      std::chrono::steady_clock::time_point turn_deadline) {
-  McpPollTasks(runtime);
+  if (runtime.processes) runtime.processes->Tick(true);
   bool changed = std::exchange(runtime.registry_changed, false);
   for (const auto& owned : runtime.Servers()) {
     McpServer& server = *owned;

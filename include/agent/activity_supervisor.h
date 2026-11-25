@@ -69,6 +69,8 @@ struct ActivitySession {
   std::optional<int> wait_status UAGENT_GUARDED_BY(mutex);
   bool background_requested UAGENT_GUARDED_BY(mutex) = false;
   bool stop_requested UAGENT_GUARDED_BY(mutex) = false;
+  // An MCP task waits on a card only the runtime's next step can show.
+  bool waiting_for_person UAGENT_GUARDED_BY(mutex) = false;
   bool output_eof UAGENT_GUARDED_BY(mutex) = false;
   HeadTailBuffer pending_output UAGENT_GUARDED_BY(mutex);
   HeadTailBuffer transcript UAGENT_GUARDED_BY(mutex);
@@ -175,10 +177,11 @@ class ActivitySupervisor {
   void SetNotifyFd(int fd);
   // True for a conversation runtime; a headless run's answer is final.
   bool WakesSession() const;
-  // Work done on a waiter's thread, such as polling MCP tasks: a wait calls
-  // Tick, and WakeAt wakes waiters and an idle session when it is due.
-  void SetTick(std::function<void()> tick);
-  void Tick() const;
+  // Work done on a waiter's thread, one tick at a time, such as polling MCP
+  // tasks: a wait calls Tick, the runtime's step and idle paths Tick(true),
+  // and WakeAt wakes waiters and an idle session when it is due.
+  void SetTick(std::function<void(bool)> tick);
+  void Tick(bool ask = false) const;
   void WakeAt(std::chrono::steady_clock::time_point when);
   void WaitForChange(uint64_t generation) const;
   bool WaitForChange(uint64_t generation,
@@ -222,7 +225,7 @@ class ActivitySupervisor {
       std::chrono::steady_clock::time_point::max();
   // Taken for a whole tick: parallel waits must not poll one server at once.
   mutable std::mutex tick_mutex_;
-  std::function<void()> tick_;
+  std::function<void(bool)> tick_;
 };
 
 }  // namespace uagent

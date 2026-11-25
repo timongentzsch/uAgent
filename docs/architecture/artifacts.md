@@ -112,7 +112,10 @@ with its revision; `applyEdit` finds the block in the parsed source by the
 same place and neighbours, keeps of the typed HTML only the block's own
 tags and attributes, bare marks and links, and serialises the document; the
 saver posts `{path, text, revision}` to `/api/sessions/<id>/files`. One
-write runs at a time. The first save rewrites the file as a parser reads
+write runs at a time. The host checks the revision and replaces the file
+under an advisory lock on its folder (`FolderLock`), which the agent's
+`write_file`, `edit_file` and `delete_file` take too, on the machine that
+holds the folder; a save meanwhile waits and then sees the agent's text. The first save rewrites the file as a parser reads
 it; line endings and a byte-order mark are kept.
 
 **Undo.** `fileSaver` keeps each write as `{path, before, after}`. ⌘Z (or

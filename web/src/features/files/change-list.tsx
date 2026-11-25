@@ -31,24 +31,18 @@ export default function ChangeList({
   scope?: GitScope;
   open: (path: string, scope?: GitScope) => void;
 }) {
-  // Older workspace hosts return only the combined status.
-  const scopes: (GitScope | undefined)[] = changes.some(
-    (c) => c.working || c.staged,
-  )
-    ? ["working", "staged"]
-    : [undefined];
   return (
     <div class="files-changes dense">
-      {scopes.map((group) => {
-        const rows = group ? changes.filter((c) => c[group]) : changes;
+      {(["working", "staged"] as const).map((group) => {
+        const rows = changes.filter((c) => c[group]);
         if (!rows.length) return null;
-        const label = group && scopeLabels[group];
+        const label = scopeLabels[group];
         return (
-          <section key={group ?? "combined"} aria-label={label}>
-            {label && <SectionTitle>{label}</SectionTitle>}
+          <section key={group} aria-label={label}>
+            <SectionTitle>{label}</SectionTitle>
             <ul class="files-tree">
               {rows.map((change) => {
-                const state = group ? change[group]! : change.state;
+                const state = change[group]!;
                 return (
                   <li key={change.path}>
                     <Button

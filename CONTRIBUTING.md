@@ -111,7 +111,8 @@ one debug trace. Benchmarks are trend signals, not gates.
 
 1. In a pull request, set `project(uagent VERSION ...)` in `CMakeLists.txt`
    and turn the `## Unreleased` heading in `CHANGELOG.md` into
-   `## <version>`.
+   `## v<version> - <date>` (add that heading if there is no
+   `## Unreleased`).
 2. Merge it and wait for CI on master to pass. It builds and uploads the
    release archives with their remote bundle and the web bundle, which are
    kept for 7 days.

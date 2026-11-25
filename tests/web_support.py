@@ -13,6 +13,10 @@ from integration_support import assert_true, base_env, budget, live_process_stat
 from session_support import close_sessions, remove_runtime, stop_sessions
 
 
+def idle(value):
+    return value["metadata"]["status"] == "idle"
+
+
 def session_workers(host_pid):
     rows = subprocess.check_output(["ps", "-axo", "pid=,ppid=,args="], text=True)
     fields = (row.split(maxsplit=2) for row in rows.splitlines())

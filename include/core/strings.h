@@ -87,10 +87,9 @@ size_t DisplayWidth(const std::string& s);
 // Physical rows at a fixed width; SGR is zero-width, tabs stop every eight.
 size_t DisplayRows(const std::string& s, size_t columns);
 
-// The first, and the last, `columns` display columns, with … when cut. Plain
-// text only: a cut can drop a style's escape, so style the result.
+// The first `columns` display columns, with … when cut. Plain text only: a
+// cut can drop a style's escape, so style the result.
 std::string DisplayTrunc(std::string s, size_t columns);
-std::string DisplayTail(std::string text, size_t columns);
 std::string StatusLabel(const std::string& label, size_t columns);
 
 // Rows each bounded by `columns` display columns, never splitting a UTF-8

@@ -2,7 +2,7 @@
 // source. The block is found by its place among those design-helper.js lists.
 // And a slide's elements changed by hand (slideEdit).
 
-import { contentOf, identity } from "../../../sheet/slide.js";
+import { contentOf, identity, squash } from "../../../sheet/slide.js";
 import { spliced } from "./splice.ts";
 import {
   maxItemEntries,
@@ -67,9 +67,6 @@ const fresh = (kind: string) =>
 // The addresses a link made here may have: the web's, mail's, or "#" and
 // the id of a place in the page.
 export const LINK = /^((https?|mailto):|#\S)/i;
-
-// A text as two readings of it are compared: without its white space.
-const squash = (text?: string | null) => String(text ?? "").replace(/\s+/g, "");
 
 // The kind of a block that can be turned into another, from its tag and its
 // parent's: an item is named by its list.

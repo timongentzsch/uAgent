@@ -111,6 +111,7 @@ int SpawnPtyShell(const std::vector<std::string>& program,
 constexpr auto kStopGrace = std::chrono::seconds(1);
 
 void SignalShellGroup(pid_t pid, int signal_number) {
+  if (pid <= 1) return;
   if (kill(-pid, signal_number) != 0) (void)kill(pid, signal_number);
 }
 
@@ -469,7 +470,7 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
 
   if (cancelled) {
     ActivityTrackSignal(pid, false);
-    (void)supervisor.RemoveForeground(pid);
+    (void)supervisor.RemoveForeground(activity_id);
     RemoveLog(log);
     (void)SandboxRestoreNote(watch.get(), CanonicalCwd());
     return {ToolCancelled("error: command cancelled by user"), std::nullopt,
@@ -477,14 +478,14 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
   }
   if (exited) {
     ActivityTrackSignal(pid, false);
-    (void)supervisor.RemoveForeground(pid);
+    (void)supervisor.RemoveForeground(activity_id);
     return finish([](std::string output, int status) {
       return ExitResult(std::move(output), status);
     });
   }
   if (!spec.background && !handed_off && spec.yield_ms <= 0) {
     ActivityTrackSignal(pid, false);
-    (void)supervisor.RemoveForeground(pid);
+    (void)supervisor.RemoveForeground(activity_id);
     (void)TerminateGroup(supervisor, pid, kStopGrace, false);
     WaitForTerminal(supervisor, session, DeadlineAfter(2));
     return finish([](std::string output, int) {
@@ -494,7 +495,8 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
     });
   }
 
-  std::optional<Activity> moved = supervisor.MoveForegroundToBackground(pid);
+  std::optional<Activity> moved =
+      supervisor.MoveForegroundToBackground(activity_id);
   if (!moved) {
     ActivityTrackSignal(pid, false);
     SignalShellGroup(pid, SIGKILL);
@@ -517,16 +519,8 @@ ShellCommandResult RunShellCommand(ActivitySupervisor& supervisor,
         LimitOutput(session->pending_output.Drain(), interaction_cap);
     session->last_used = std::chrono::steady_clock::now();
   }
-  ToolResult running = LinkResult(
-      kRunningActivityMarker + std::to_string(activity_id) +
-          (handed_off ? " moved to background; " : "; ") +
-          (supervisor.WakesSession()
-               ? "it keeps running while you work, and its result reaches "
-                 "you when it ends, even after this turn"
-               : "it keeps running while you work; poll or wait on it for "
-                 "output"),
-      LinkPart("activity", activity_id, "Open activity"));
-  running.background = activity_id;
+  ToolResult running =
+      RunningActivityResult(supervisor, activity_id, handed_off);
   if (!initial_output.empty()) {
     running.output = std::move(initial_output);
     running.body_kind = "tail";

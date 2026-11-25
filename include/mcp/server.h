@@ -42,7 +42,28 @@ struct McpSkill {
 };
 
 struct McpServer;
+class McpRuntime;
+class ActivitySupervisor;
+struct ActivitySession;
 void McpShutdown(McpServer& server);
+
+// A task left running in the background: its activity and what polling it
+// needs.
+struct McpTask {
+  std::string server;
+  std::string id;
+  std::string call_id = {};
+  int64_t timeout = 0;  // seconds a request to its server has
+  int64_t activity = 0;
+  std::shared_ptr<ActivitySession> session = {};
+  json task = {};  // its last state
+  std::set<std::string> answered = {};
+  std::string shown = {};
+  std::string note = {};  // lines for the model from answering its input
+  std::chrono::steady_clock::time_point next = {};
+  // Grows while its server does not answer; a reply resets it.
+  std::chrono::milliseconds backoff = {};
+};
 
 // Puts an elicitation to the person; empty where nobody can answer, and then
 // elicitation is not declared.
@@ -62,6 +83,7 @@ struct McpServer {
   json config;
   json roots = json::array();
   McpElicitPerson elicit;
+  McpRuntime* runtime = nullptr;
   bool tools_changed = false;
   int64_t subscription_id = -1;
   bool tools_subscribed = false;
@@ -137,6 +159,11 @@ class McpRuntime {
 
   // What each server's `elicit` is.
   McpElicitPerson elicit;
+
+  // Where a task that outlives its call runs as an activity; null keeps it
+  // in the call, as a run nobody returns to must.
+  ActivitySupervisor* processes = nullptr;
+  std::vector<McpTask> tasks;
 
  private:
   std::vector<std::unique_ptr<McpServer>> servers_;

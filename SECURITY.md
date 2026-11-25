@@ -198,10 +198,10 @@ command sandbox unless its entry, in `~/.mcp.json` or a trusted folder's
 `.mcp.json`, sets `"sandbox": false`; the prompt to trust a folder names
 the servers that would run unconfined. Server stderr goes to a
 size-bounded log. An agent starts no MCP servers. A server may answer a
-call with a task, which µAgent polls inside that call under the same
-approval; a task's requests for input reach the person exactly as the
-call's own do, and stopping the call sends `tasks/cancel`, which the
-server may ignore.
+call with a task, which µAgent polls under that call's approval, in the
+call or after it in the background; a task's requests for input reach the
+person exactly as the call's own do, and stopping the call or its activity
+sends `tasks/cancel`, which the server may ignore.
 
 A skill an MCP server serves is untrusted text. Loading one is the gate: it
 always asks a person, in every approval mode and whatever the remembered

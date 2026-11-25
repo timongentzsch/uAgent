@@ -199,6 +199,7 @@ bool ReapPidFor(pid_t pid, int* status, std::chrono::milliseconds timeout) {
 
 bool StopProcess(pid_t pid, bool group, std::chrono::milliseconds grace,
                  int* status) {
+  if (pid <= 1) return false;
   const pid_t target = group ? -pid : pid;
   if (grace.count() > 0) {
     kill(target, SIGTERM);

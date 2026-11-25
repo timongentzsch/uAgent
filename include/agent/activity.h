@@ -65,6 +65,8 @@ int PumpLog(int input, const std::string& path, int64_t max_bytes,
             const std::stop_token& stop = {});
 int ToolLogPump(const std::string& path, int64_t max_bytes);
 bool ProcessGroupAlive(pid_t leader);
+// False, and nothing sent, for a leader of 1 or less.
+bool SignalProcessGroup(pid_t leader, int signal_number);
 std::string DetachedRecordPath(pid_t pid);
 std::vector<json> DetachedRecords();
 std::optional<DetachedActivity> FindRunningDetachedActivity(
@@ -94,6 +96,9 @@ std::string ActivityCompletionText(const ActivityCompletion& completion,
 EndedCommand EndedOf(const ActivityCompletion& completion);
 std::vector<ActivityCompletion> ActivityTakeCompletedDetails(
     ActivitySupervisor& supervisor, std::string_view kind = {});
+// What a call returns when its work continues as activity `id`.
+ToolResult RunningActivityResult(const ActivitySupervisor& supervisor,
+                                 int64_t id, bool handed_off);
 void ActivityShutdownAll(ActivitySupervisor& supervisor);
 
 }  // namespace uagent

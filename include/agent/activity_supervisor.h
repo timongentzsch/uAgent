@@ -10,6 +10,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -28,7 +29,8 @@
 
 namespace uagent {
 
-enum class ActivityKind : uint8_t { kCommand, kDetached };
+// An MCP task has no process: its server is polled from the session's thread.
+enum class ActivityKind : uint8_t { kCommand, kDetached, kMcpTask };
 enum class ActivityState : uint8_t {
   kStarting,
   kRunning,
@@ -67,6 +69,8 @@ struct ActivitySession {
   std::optional<int> wait_status UAGENT_GUARDED_BY(mutex);
   bool background_requested UAGENT_GUARDED_BY(mutex) = false;
   bool stop_requested UAGENT_GUARDED_BY(mutex) = false;
+  // An MCP task waits on a card only the runtime's next step can show.
+  bool waiting_for_person UAGENT_GUARDED_BY(mutex) = false;
   bool output_eof UAGENT_GUARDED_BY(mutex) = false;
   HeadTailBuffer pending_output UAGENT_GUARDED_BY(mutex);
   HeadTailBuffer transcript UAGENT_GUARDED_BY(mutex);
@@ -103,6 +107,7 @@ struct Activity {
       std::chrono::steady_clock::now();
 
   bool Detached() const { return kind == ActivityKind::kDetached; }
+  bool McpTask() const { return kind == ActivityKind::kMcpTask; }
 };
 
 inline int64_t ActivityId(const Activity& job) {
@@ -144,8 +149,8 @@ class ActivitySupervisor {
   void RegisterIo(const std::shared_ptr<ActivitySession>& session,
                   int output_fd, int input_fd, int log_fd, int64_t log_limit);
   std::optional<ActivityReservation> ReserveActivity(int64_t max_pending);
-  std::optional<Activity> RemoveForeground(pid_t pid);
-  std::optional<Activity> MoveForegroundToBackground(pid_t pid);
+  std::optional<Activity> RemoveForeground(int64_t id);
+  std::optional<Activity> MoveForegroundToBackground(int64_t id);
   bool WaitForForeground(size_t count,
                          std::chrono::steady_clock::time_point deadline) const;
   bool RequestForegroundBackground();
@@ -172,6 +177,12 @@ class ActivitySupervisor {
   void SetNotifyFd(int fd);
   // True for a conversation runtime; a headless run's answer is final.
   bool WakesSession() const;
+  // Work done on a waiter's thread, one tick at a time, such as polling MCP
+  // tasks: a wait calls Tick, the runtime's step and idle paths Tick(true),
+  // and WakeAt wakes waiters and an idle session when it is due.
+  void SetTick(std::function<void(bool)> tick);
+  void Tick(bool ask = false) const;
+  void WakeAt(std::chrono::steady_clock::time_point when);
   void WaitForChange(uint64_t generation) const;
   bool WaitForChange(uint64_t generation,
                      std::chrono::steady_clock::time_point deadline) const;
@@ -180,7 +191,7 @@ class ActivitySupervisor {
   friend class ActivityReservation;
   std::optional<int64_t> CommitReservation(Activity job);
   void ReleaseReservation();
-  std::optional<Activity> TakeForegroundLocked(pid_t pid)
+  std::optional<Activity> TakeForegroundLocked(int64_t id)
       UAGENT_REQUIRES(mutex_);
   void AssignId(Activity& job) UAGENT_REQUIRES(mutex_);
   size_t IndexOfLocked(int64_t id) const UAGENT_REQUIRES(mutex_);
@@ -210,6 +221,11 @@ class ActivitySupervisor {
   std::vector<EndedCommand> stopped_ UAGENT_GUARDED_BY(mutex_);
   std::string owner_ UAGENT_GUARDED_BY(mutex_);
   int64_t next_id_ UAGENT_GUARDED_BY(mutex_) = int64_t{1} << 30;
+  std::chrono::steady_clock::time_point wake_at_ UAGENT_GUARDED_BY(mutex_) =
+      std::chrono::steady_clock::time_point::max();
+  // Taken for a whole tick: parallel waits must not poll one server at once.
+  mutable std::mutex tick_mutex_;
+  std::function<void(bool)> tick_;
 };
 
 }  // namespace uagent

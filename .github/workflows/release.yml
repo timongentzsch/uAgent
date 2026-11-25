@@ -24,9 +24,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # GitHub's status filter can omit a run that passed on retry.
           run_id=$(gh run list --workflow ci.yml --branch master --event push \
-            --commit "$GITHUB_SHA" --status success --limit 1 \
-            --json databaseId --jq '.[0].databaseId // empty')
+            --commit "$GITHUB_SHA" --limit 20 --json databaseId,conclusion \
+            --jq '[.[] | select(.conclusion == "success")][0].databaseId // empty')
           if [ -n "$run_id" ]; then
             # A run that skipped the native jobs or whose artifacts expired
             # does not count.

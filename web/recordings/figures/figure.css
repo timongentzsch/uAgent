@@ -1,0 +1,187 @@
+/* The figures under docs/images, in the web client's own look. */
+:root {
+  --ink: #000;
+  --paper: #fff;
+  --muted: #555;
+  --line: #ccc;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  width: 1280px;
+  background: var(--paper);
+  color: var(--ink);
+  font:
+    14px / 22px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+}
+h1,
+p,
+figure {
+  margin: 0;
+}
+h1 {
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -0.5px;
+}
+b {
+  display: block;
+  color: var(--ink);
+}
+img {
+  display: block;
+}
+code {
+  font: inherit;
+}
+.note,
+figcaption,
+footer {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 19px;
+}
+.shot {
+  border: 1px solid var(--ink);
+}
+.phone {
+  border: 4px solid var(--ink);
+  border-radius: 12px;
+}
+
+/* Cover: two headline panels, a row of the rest. */
+.cover {
+  display: grid;
+  gap: 24px;
+  padding: 44px 48px 0;
+}
+.cover header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+.cover header p {
+  width: 470px;
+  font-size: 14px;
+  line-height: 21px;
+}
+.cover .brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: auto;
+  margin-bottom: 12px;
+  font-size: 22px;
+  font-weight: 700;
+}
+.cover .brand img {
+  width: 32px;
+}
+.cover h1 {
+  font-size: 38px;
+  line-height: 44px;
+  letter-spacing: -1px;
+}
+.cover section {
+  display: flex;
+  gap: 24px;
+}
+.cover figure {
+  width: 580px;
+}
+.cover figcaption {
+  height: 99px;
+}
+.cover figcaption b {
+  margin-bottom: 6px;
+  font-size: 20px;
+  line-height: 24px;
+}
+.cover figure > .shot {
+  width: 580px;
+  height: 407px;
+}
+.cover .note {
+  flex: 1;
+  padding-top: 12px;
+  border-top: 1px solid var(--ink);
+}
+.cover .note b {
+  margin-bottom: 6px;
+  font-size: 15px;
+}
+.cover .more img {
+  height: 168px;
+}
+.cover footer {
+  display: flex;
+  gap: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.cover footer b {
+  letter-spacing: 1px;
+}
+
+/* Diagrams: everything placed on a 1280 px sheet. */
+.sheet {
+  position: relative;
+  height: 700px;
+}
+.sheet > * {
+  position: absolute;
+}
+.sheet .note b {
+  font-size: 14px;
+}
+.sheet .label {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 16px;
+  text-align: center;
+}
+.box {
+  padding: 24px 28px;
+  border: 1px solid var(--ink);
+}
+.box b {
+  font-size: 20px;
+}
+.box.host {
+  background: var(--ink);
+  color: var(--paper);
+}
+.box.host b {
+  color: var(--paper);
+}
+.crop {
+  object-fit: cover;
+  object-position: left top;
+}
+.wire {
+  background: var(--ink);
+}
+.wire.to-right::after,
+.wire.to-left::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  border: 5px solid transparent;
+}
+.wire.to-right::after {
+  right: -1px;
+  border-left-color: var(--ink);
+  border-right-width: 0;
+}
+.wire.to-left::after {
+  left: -1px;
+  border-right-color: var(--ink);
+  border-left-width: 0;
+}

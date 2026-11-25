@@ -1,0 +1,160 @@
+{
+  "provenance": {
+    "release": "v1.12.0",
+    "commit": "d312c15c38c465827e43331c675937c5484b4618",
+    "release_url": "https://github.com/timongentzsch/uAgent/releases/tag/v1.12.0",
+    "build_run": "https://github.com/timongentzsch/uAgent/actions/runs/45435410298",
+    "archive": "uagent-1.12.0-linux-arm64.tar.gz",
+    "archive_sha256": "349f28b1014bf25079f13b40cfdd031eb4d8bdc079419c1671ae28ab11fa4a6d",
+    "binary_sha256": "793f888bef03af12211343c5923121430665afd48d2c486e58b4a7691dfd7a53",
+    "public_checksum_verified": true,
+    "runtime_image_id": "sha256:3c8b2e00cb48019705c4e4996884ac2481f4aad21a233449040bbdc71bd71eb2",
+    "docker_engine": "29.9.3",
+    "container_runtime": "aarch64, glibc 2.39, Python 3.12.3, unprivileged user bench",
+    "constraints": "Local Apple M1 Pro, Linux ARM64, --init --platform linux/arm64 --cpus=2 --memory=4g --memory-swap=4g --network=none. Archive extracted on macOS and mounted read-only at /opt/uagent.",
+    "machine": {
+      "platform": "Linux-7.0.14-linuxkit-aarch64-with-glibc2.39",
+      "machine": "aarch64",
+      "chip": "Apple M1 Pro, Linux ARM64 container, 2 CPU / 4 GiB",
+      "cpus": 2,
+      "date": "2026-11-24",
+      "runs": {
+        "version": 30,
+        "session": 5
+      },
+      "provider": "scripted"
+    },
+    "harness_commit": "d312c15c38c465827e43331c675937c5484b4618",
+    "harness_git_trees": {
+      "benchmarks": "9ae4ef5e06714f0d883c2d9815e276a333c22747",
+      "tests": "bdb112879c13d0e198dbe3f255613fae5a61aa77"
+    },
+    "harness_sha256": {
+      "benchmarks/release_probe.py": "04cfb6b55b0923491f9e724e33a87582478f13a32f163d2cf9a0c584a1e8d8a6",
+      "benchmarks/compare_agents.py": "baa9a2f7c44161e46c5a82d193b7c28c6d500da81745f28617b17f3e029242a4",
+      "benchmarks/first_request.py": "192217d8fb76612dfec5c0839c165abeaeb6a1ed4fbcd209cb94da91c59883f3",
+      "benchmarks/scripted_provider.py": "a147489806e2533113dd331005885bdb6d013f2f061033120582df8d1df009b4",
+      "benchmarks/egress_record.py": "d6aa4fa088ce4f15e38b81e90cf5094f6fe98792519ace5d5d72a4cf72143b19",
+      "benchmarks/dns_sink.py": "21b2bc49ba7c55035951dbc9a8450efb7a3162551c03669cd3c94cc7dda42c4f",
+      "tests/integration_support.py": "8ececff62fcda7769b3d6cac8259c47f25f0e7bc4ea9ebdd20e89aaf07c50e6f",
+      "tests/web_support.py": "f2e50f8273b1d7fed693f5d433080974307056d41ad1b686756fb7d2d77ea489",
+      "benchmarks/eval.py": "b6e3c6de36efaf456304b0e223a05dacedb74498de3b4a89d5302e54690b7f89",
+      "benchmarks/run_trace.py": "6e9a14ed5415adaf49314e809a8ad80740bc845131c47dc938b581e4540b4aca",
+      "benchmarks/baselines/hermetic.json": "e714b30392fa10aa6b4fc6758241211b2593921411fc31e40d759ee96227bfda",
+      "tests/session_support.py": "e670527cf5b45ddd72bab6dfd5b382fd1050fc89d42a7172676c7018ece5c5d1"
+    },
+    "provider": "Scripted Chat Completions provider on loopback. Isolated temporary workspaces and home directories.",
+    "prompt": "Reply with the single word: ok"
+  },
+  "first_request": {
+    "file": "first-request-1.12.0-linux-arm64.json",
+    "request_sha256": "7c3ce5ba643a76da45c56cc77bdcf4004c6d156b6ca56ce444cada54a38829ed",
+    "request_bytes": 13829,
+    "model": "test",
+    "tools": 13,
+    "encoding": "o200k_base",
+    "tokenizer": "tiktoken 0.14.0",
+    "compact_tool_tokens": 2396,
+    "normalized_tool_tokens": 2852,
+    "instruction_tokens": 627,
+    "compact_tools_and_instructions": 3023,
+    "normalized_tools_and_instructions": 3479,
+    "scope": "Tools and system/developer instructions only. Compact tools serialize as UTF-8 without whitespace; normalized tools use json.dumps defaults for comparability. Counts exclude user-role context and prompt, protocol framing and generated tokens."
+  },
+  "idle_samples": [
+    {
+      "rss_kib": 27340,
+      "idle_cpu_ms": 0.0,
+      "first_screen_ms": 62.1841249994759,
+      "process_count": 2,
+      "settled": true
+    },
+    {
+      "rss_kib": 27368,
+      "idle_cpu_ms": 0.0,
+      "first_screen_ms": 69.4260000000213,
+      "process_count": 2,
+      "settled": true
+    },
+    {
+      "rss_kib": 27332,
+      "idle_cpu_ms": 0.0,
+      "first_screen_ms": 68.28029200005403,
+      "process_count": 2,
+      "settled": true
+    },
+    {
+      "rss_kib": 27320,
+      "idle_cpu_ms": 0.0,
+      "first_screen_ms": 73.80758299950685,
+      "process_count": 2,
+      "settled": true
+    },
+    {
+      "rss_kib": 27336,
+      "idle_cpu_ms": 0.0,
+      "first_screen_ms": 67.51450000047043,
+      "process_count": 2,
+      "settled": true
+    }
+  ],
+  "headless_samples": [
+    {
+      "wall_ms": 56.49391699989792,
+      "cpu_ms": 17.418,
+      "peak_rss_kib": 7072,
+      "ok": true
+    },
+    {
+      "wall_ms": 55.10212499939371,
+      "cpu_ms": 17.8,
+      "peak_rss_kib": 5560,
+      "ok": true
+    },
+    {
+      "wall_ms": 56.83862499972747,
+      "cpu_ms": 19.441,
+      "peak_rss_kib": 5036,
+      "ok": true
+    },
+    {
+      "wall_ms": 56.13483400156838,
+      "cpu_ms": 17.543,
+      "peak_rss_kib": 4776,
+      "ok": true
+    },
+    {
+      "wall_ms": 55.36449999999604,
+      "cpu_ms": 18.730999999999998,
+      "peak_rss_kib": 8784,
+      "ok": true
+    }
+  ],
+  "summary": {
+    "idle_rss_mib_median": 26.6953125,
+    "headless_cpu_ms_median": 17.8,
+    "headless_wall_ms_median": 56.13483400156838,
+    "startup_runs": 30,
+    "startup_warmups": 3,
+    "version_wall_ms_median": 4.472999500649166,
+    "idle_window_seconds": 10
+  },
+  "package": {
+    "executable_bytes": 6823440,
+    "install_bytes": 19804488,
+    "install_files": 79,
+    "install_counts": "bin/ and share/uagent/",
+    "non_system_libraries": 0
+  },
+  "hermetic_evaluation": {
+    "method": "Tagged benchmarks/eval.py --check, same container and resource bounds, same package copied onto Linux container storage before the run.",
+    "scenarios": 13,
+    "variants": 16,
+    "checks_passed": 110,
+    "checks_total": 110,
+    "comparisons_passed": 17,
+    "comparisons_total": 17,
+    "failed_checks": {},
+    "failed_comparisons": []
+  }
+}

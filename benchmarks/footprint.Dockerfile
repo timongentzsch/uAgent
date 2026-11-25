@@ -23,7 +23,7 @@ RUN cmake -S . -B /tmp/build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
 
 # Select this stage to measure a published, checksum-verified release.
 FROM ubuntu:24.04 AS published
-ARG UAGENT_VERSION=1.11.0
+ARG UAGENT_VERSION=1.12.0
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl
 COPY install.sh /tmp/install.sh
 RUN UAGENT_PREFIX=/opt/uagent UAGENT_NONINTERACTIVE=1 UAGENT_VERSION="$UAGENT_VERSION" sh /tmp/install.sh
@@ -49,7 +49,7 @@ RUN platform=$(echo "$TARGETARCH" | sed s/amd64/x64/) && mkdir -p ~/.local/bin ~
 RUN mkdir codex && curl -fsSL "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-package-$(uname -m)-unknown-linux-musl.tar.gz" | tar -xz -C codex
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
 COPY --chown=bench:bench benchmarks/footprint-omp/ /home/bench/omp/
-RUN cd omp && ~/.bun/bin/bun install --frozen-lockfile
+RUN cd omp && ~/.bun/bin/bun install
 ENV PATH=/home/bench/.local/bin:/home/bench/.bun/bin:$PATH
 COPY benchmarks/compare_agents.py benchmarks/charts.py benchmarks/scripted_provider.py benchmarks/footprint-run.sh /opt/bench/
 ENTRYPOINT ["bash", "/opt/bench/footprint-run.sh"]

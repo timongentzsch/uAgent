@@ -5,7 +5,7 @@ owns conversations, provider keys, approvals and schedules. Terminal, browser
 and phone clients attach to it. Tools execute in the host's folders, on
 machines reached over SSH and in a Chrome the host drives.
 
-![Terminal, browser and phone attach to one host, which reaches model endpoints over HTTPS, remote machines over SSH and Chrome over pipes](images/how-it-works.png)
+[Process model](architecture/overview.md) has the diagram.
 
 ## Headline features
 

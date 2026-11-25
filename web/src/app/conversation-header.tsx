@@ -10,6 +10,7 @@ import {
   FolderOpen,
   Globe2,
   Menu,
+  MessagesSquare,
   Settings,
   Terminal,
 } from "lucide-preact";
@@ -55,6 +56,7 @@ export default function ConversationHeader({
   booting,
   browserAvailable,
   terminal,
+  sides,
   filesOpen,
   setFilesOpen,
   outgoing,
@@ -74,6 +76,8 @@ export default function ConversationHeader({
   booting: boolean;
   browserAvailable: boolean;
   terminal?: { open: boolean; toggle: () => void };
+  // The conversation's side chats, where their column fits.
+  sides?: { count: number; shown: boolean; toggle: () => void };
   filesOpen: boolean;
   setFilesOpen: (open: boolean) => void;
   outgoing: Outgoing[];
@@ -108,7 +112,7 @@ export default function ConversationHeader({
       <>
         {detach && (
           <MenuItem disabled={!!session?.turn_active} onClick={detach}>
-            Open as a conversation of its own
+            Open as its own conversation
           </MenuItem>
         )}
         {inMenu && terminal && (
@@ -194,6 +198,18 @@ export default function ConversationHeader({
           <Globe2 />
           {browsing && <StatusLed state="running" />}
         </IconButton>
+      )}
+      {sides && (
+        <Button
+          variant="quiet"
+          aria-label={sides.count ? `Side chats, ${sides.count}` : "Side chats"}
+          title="Side chats"
+          aria-pressed={sides.shown}
+          onClick={sides.toggle}
+        >
+          <MessagesSquare />
+          {sides.count > 0 && sides.count}
+        </Button>
       )}
       {terminal && !inMenu && (
         <IconButton

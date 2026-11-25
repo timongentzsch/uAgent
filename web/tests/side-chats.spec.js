@@ -17,7 +17,31 @@ const parts = (page) => ({
     .getByRole("tab"),
   activity: page.locator(".composer .activity-button"),
   rows: page.getByRole("dialog", { name: "Activity" }).locator(".activity-row"),
+  toggle: page
+    .locator(".conversation-head")
+    .getByRole("button", { name: /^Side chats/ }),
 });
+
+// Picks an item of a side chat's menu: the one in front, or `row`'s.
+const pick = async (page, item, row) => {
+  await (row ?? page.getByRole("complementary", { name: "Side chats" }))
+    .getByRole("button", { name: row ? /^Menu for/ : "This side chat" })
+    .click();
+  await page.getByRole("menuitem", { name: item }).click();
+};
+
+// Deletes it through its menu, after the confirmation.
+const remove = async (page, question, row) => {
+  await pick(page, "Delete side chat…", row);
+  const dialog = page.getByRole("dialog", { name: "Delete this side chat?" });
+  await expect(dialog).toContainText(
+    `“${question}” and its answers are removed for good. What was merged into the conversation stays.`,
+  );
+  // An idle side chat's runtime closes unsaid: it is not the conversation.
+  await expect(dialog).not.toContainText("closes first");
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+};
 
 test("a side chat asked on one device is one on another, shown there when asked for", async ({
   browser,
@@ -45,14 +69,20 @@ test("a side chat asked on one device is one on another, shown there when asked 
   );
   await there.activity.click();
   await expect(there.rows).toHaveText([/Second side question\s*Ready/]);
-  await there.rows.getByRole("button").click();
+  await there.rows.getByRole("button").first().click();
   await expect(there.tabs).toHaveText(["Second side question"]);
   await expect(there.side).toContainText("Verified response");
   await roomy(other);
   // Hiding it there leaves it shown here.
-  await there.side.getByRole("button", { name: "Hide side chat" }).click();
+  await there.side.getByRole("button", { name: "Hide side chats" }).click();
   await expect(there.side).toHaveCount(0);
   await expect(here.tabs).toHaveText(["Second side question"]);
+  // Deleted here, it is gone there too, without an error.
+  await remove(page, "Second side question");
+  await expect(here.side).toHaveCount(0);
+  await expect(there.toggle).toHaveCount(0);
+  await expect(there.activity).toHaveCount(0);
+  await expect(other.getByRole("alert")).toHaveCount(0);
   await other.context().close();
 });
 
@@ -104,7 +134,7 @@ test("a side chat opened from anywhere is shown as one, its tab in front", async
   await ask(page, "Second side question");
   const { side, tabs } = parts(page);
   await expect(side).toContainText("Verified response");
-  await side.getByRole("button", { name: "Hide side chat" }).click();
+  await side.getByRole("button", { name: "Hide side chats" }).click();
   await expect(side).toHaveCount(0);
   // Its own address, as a notification or Search opens it.
   const sideId = await page.evaluate(async (parent) => {
@@ -117,6 +147,92 @@ test("a side chat opened from anywhere is shown as one, its tab in front", async
   await expect(page).toHaveURL(new RegExp(`session=${session.id}$`));
   await expect(tabs).toHaveText(["Second side question"]);
   await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+});
+
+test("the header shows and hides the whole column; a side chat goes only when deleted", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  const { side, tabs, activity, rows, toggle } = parts(page);
+  await expect(toggle).toHaveCount(0);
+  await ask(page, "First side question");
+  await expect(side).toContainText("Verified response");
+  await ask(page, "Second side question");
+  await expect(tabs).toHaveCount(2);
+  await expect(side.locator(".message.response")).toContainText(
+    "Native worker",
+  );
+  await expect(toggle).toHaveAccessibleName("Side chats, 2");
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await roomy(page);
+  // The panel button hides the column; the header shows it as it was.
+  await side.getByRole("button", { name: "Hide side chats" }).click();
+  await expect(side).toHaveCount(0);
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(activity).toContainText("2 side chats");
+  await roomy(page);
+  await toggle.click();
+  await expect(tabs).toHaveText([
+    "First side question",
+    "Second side question",
+  ]);
+  await expect(tabs.last()).toHaveAttribute("aria-selected", "true");
+  // Hidden stays hidden on this device after a reload.
+  await toggle.click();
+  await expect(side).toHaveCount(0);
+  await page.reload();
+  await online(page);
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(side).toHaveCount(0);
+  // A question asked while hidden shows the column, its tab in front.
+  await ask(page, "Third side question");
+  await expect(tabs).toHaveCount(3);
+  await expect(tabs.last()).toHaveAttribute("aria-selected", "true");
+  await expect(side.locator(".message.response")).toContainText(
+    "Native worker",
+  );
+  // Closing every tab hides the column; the header opens the newest.
+  for (const _ of [1, 2, 3]) await pick(page, "Close tab");
+  await expect(side).toHaveCount(0);
+  await expect(toggle).toHaveAccessibleName("Side chats, 3");
+  await toggle.click();
+  await expect(tabs).toHaveText(["Third side question"]);
+  // A row of the Activity list shows the column with its tab in front.
+  await toggle.click();
+  await activity.click();
+  await rows
+    .filter({ hasText: "First side question" })
+    .getByRole("button")
+    .first()
+    .click();
+  // Tabs keep the order asked.
+  await expect(tabs).toHaveText(["First side question", "Third side question"]);
+  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+  // Delete asks first; Cancel keeps it.
+  await pick(page, "Delete side chat…");
+  await page
+    .getByRole("dialog", { name: "Delete this side chat?" })
+    .getByRole("button", { name: "Cancel" })
+    .click();
+  await expect(tabs).toHaveCount(2);
+  await remove(page, "First side question");
+  await expect(tabs).toHaveText(["Third side question"]);
+  await expect(toggle).toHaveAccessibleName("Side chats, 2");
+  await expect(activity).toContainText("2 side chats");
+  // A hidden one is deleted from its row, without opening it.
+  await activity.click();
+  await remove(
+    page,
+    "Second side question",
+    rows.filter({ hasText: "Second side question" }),
+  );
+  await expect(activity).toContainText("1 side chat");
+  await page.keyboard.press("Escape");
+  await expect(tabs).toHaveText(["Third side question"]);
+  await roomy(page);
 });
 
 // Says "Release the summary" in a conversation of its own, which lets the
@@ -158,7 +274,7 @@ test("Merge sums up in view, then the conversation gets one row and answers", as
   await expect(pending).toContainText("is summing up");
   await roomy(page);
   // Hidden, it still says so in the conversation.
-  await side.getByRole("button", { name: "Hide side chat" }).click();
+  await side.getByRole("button", { name: "Hide side chats" }).click();
   await expect(side).toHaveCount(0);
   await expect(pending).toHaveCount(1);
   await releaseSummary(command, host);
@@ -197,6 +313,52 @@ test("Merge sums up in view, then the conversation gets one row and answers", as
     side.getByRole("button", { name: "Merge", exact: true }),
   ).toBeEnabled();
   await expect(side.locator(".merged-at")).toHaveCount(0);
+  // Deleted, its summary stays in the conversation, with no way to it.
+  await remove(page, "Held summary probe");
+  await expect(side).toHaveCount(0);
+  await expect(row).toContainText("Merged side chat · Held summary probe");
+  await expect(row.getByRole("button", { name: "Show side chat" })).toHaveCount(
+    0,
+  );
+  await expect(activity).toHaveCount(0);
+});
+
+test("a side chat deleted while it sums up leaves nothing waiting in the conversation", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  const transcript = page.locator(".transcript").first();
+  await ask(page, "Held summary probe");
+  const { side, activity, toggle } = parts(page);
+  await expect(side).toContainText("Native worker");
+  await side.getByRole("button", { name: "Merge", exact: true }).click();
+  await expect(
+    side.getByRole("button", { name: "Summing up…" }),
+  ).toBeDisabled();
+  const pending = transcript.locator('[data-message-id^="summing-"]');
+  await expect(pending).toHaveCount(1);
+  await pick(page, "Delete side chat…");
+  const dialog = page.getByRole("dialog", { name: "Delete this side chat?" });
+  await expect(dialog).toContainText("The running turn stops first.");
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(side).toHaveCount(0);
+  await expect(toggle).toHaveCount(0);
+  await expect(activity).toHaveCount(0);
+  await expect(pending).toHaveCount(0);
+  await expect(transcript.locator(".merged-row")).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  // Nothing arrives later either: a reload draws the same.
+  await page.reload();
+  await online(page);
+  await expect(transcript).not.toHaveAttribute("aria-busy", "true");
+  await expect(page.locator(".sidebar .session-row")).not.toHaveCount(0);
+  await expect(pending).toHaveCount(0);
+  await expect(transcript.locator(".merged-row")).toHaveCount(0);
+  await expect(activity).toHaveCount(0);
 });
 
 test("a merge that is stopped leaves the side chat as it was and says why", async ({
@@ -248,19 +410,61 @@ test.describe("phone", () => {
     await expect(page.getByRole("complementary")).toHaveCount(0);
     const { activity, rows } = parts(page);
     await activity.click();
-    await rows.getByRole("button").click();
+    await rows.getByRole("button").first().click();
     await expect(page).not.toHaveURL(here);
-    // The arrow's action is in the page's menu: it opens there as a
-    // conversation of its own.
+    // The page's menu opens it as a conversation of its own.
     await head.getByRole("button", { name: "Conversation menu" }).click();
     await page
-      .getByRole("menuitem", { name: "Open as a conversation of its own" })
+      .getByRole("menuitem", { name: "Open as its own conversation" })
       .click();
     await expect(head.getByRole("button", { name: "Merge" })).toHaveCount(0);
     await expect(head.getByRole("button", { name: /^‹/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Side chats/ })).toHaveCount(
+      0,
+    );
     await page.getByRole("button", { name: "Open conversations" }).click();
     await expect(page.locator(".sidebar")).toContainText(
       "Second side question",
     );
+  });
+  test("on a phone a side chat's page deletes it, then goes back", async ({
+    page,
+    session,
+  }) => {
+    await page.goto(`/#session=${session.id}`);
+    await online(page);
+    const here = new RegExp(`session=${session.id}$`);
+    await ask(page, "Second side question");
+    await expect(page).not.toHaveURL(here);
+    await expect(page.locator(".transcript")).toContainText("Native worker");
+    // Its turn has ended: the press probe would find Stop held.
+    await expect(
+      page.getByRole("button", { name: "Send", exact: true }),
+    ).toBeVisible();
+    const head = page.locator(".conversation-head");
+    await expect(page.getByRole("button", { name: /^Side chats/ })).toHaveCount(
+      0,
+    );
+    await head.getByRole("button", { name: "Conversation menu" }).click();
+    // The last item, after a line; More holds no second Delete.
+    const menu = page.getByRole("menu", { name: "Conversation menu" });
+    await expect(menu.locator(":scope > *").last()).toHaveText(
+      "Delete side chat…",
+    );
+    await expect(menu.locator("hr")).toHaveCount(1);
+    await roomy(page);
+    await menu.getByRole("menuitem", { name: "More" }).click();
+    await expect(
+      menu.getByRole("menuitem", { name: "Delete", exact: true }),
+    ).toHaveCount(0);
+    await page.keyboard.press("ArrowLeft");
+    await menu.getByRole("menuitem", { name: "Delete side chat…" }).click();
+    const dialog = page.getByRole("dialog", { name: "Delete this side chat?" });
+    await expect(dialog).toContainText("“Second side question”");
+    await roomy(page);
+    await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page).toHaveURL(here);
+    await expect(page.locator(".composer .activity-button")).toHaveCount(0);
+    await expect(page.getByRole("alert")).toHaveCount(0);
   });
 });

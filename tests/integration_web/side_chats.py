@@ -146,3 +146,37 @@ def test_web_merge_reaches_the_conversation_and_keeps_its_title(root, home, *, b
                 and "body" not in summed[-1],
                 summed,
             )
+
+
+def test_web_side_chat_is_deleted_alone_and_its_merge_stays(root, home, *, binary):
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        if "merges this side chat" in text:
+            return event({"content": "SIDE-SUMMARY"})
+        return event({"content": "said"})
+
+    with Server([route]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            parent = client.create(root)
+            client.command("submit", parent, text="hello")
+            client.until(parent, lambda value: idle(value) and "said" in json.dumps(value))
+            gone, kept = (started(client, parent, f"request-{n}") for n in range(2))
+            session = client.command("activate", {"id": gone, "generation": ""})["session"]
+            client.until(session, idle)
+            client.command("side", client.snapshot(session)["metadata"], operation="merge")
+            parent = client.command("activate", {"id": parent["id"], "generation": ""})["session"]
+
+            def summary(value):
+                nodes = value["state"]["view"]["nodes"]
+                return any((node.get("agent") or {}).get("session") == gone for node in nodes)
+
+            client.until(parent, summary)
+            merged = client.until(
+                session, lambda value: (value["metadata"]["side"] or {}).get("merged")
+            )["metadata"]
+            client.command("close", merged)
+            client.command("delete", listing(client)[gone])
+            left = listing(client)
+            assert_true(gone not in left and {parent["id"], kept} <= left.keys(), left)
+            assert_true(summary(client.snapshot(parent)), "the merged summary stays")

@@ -93,7 +93,7 @@ without `generation` starts the runtime first; one with a stale
 | places | `space` (`action`, `cwd`, `name`), `pins` (`pins`: `[{kind, id}]`) |
 | library | `memory`, `skills`, `schedule`, `import`, `instructions`, `permission_rules`, `models`, `provider`, `openrouter`: the [`--control`](headless.md#--control-json-) request; its reply is `result` |
 | browser | `browser` (`action` `takeover`, `done`, `stop`, `create_profile`, `select_profile`, `setup_profile`, `configure`, `viewport`; `instance_id`, `interaction_id`, `name`, `profile_id`, `viewport`, `parallel_capacity`) |
-| a conversation's lifecycle (host) | `create` (`cwd` or `space`), `activate`, `close`, `delete` (only when stopped), `move` (`cwd` or `space`) |
+| a conversation's lifecycle (host) | `create` (`cwd` or `space`), `activate`, `close`, `delete` (only when stopped; a side chat goes alone, a conversation with its side chats and agents), `move` (`cwd` or `space`) |
 | a conversation (runtime) | `submit` and `steer` (`text`, `attachment_ids`, `queue`), `reply` (`interaction_id`, `text`, `cancelled`), `interrupt`, `recall` and `insert` (`target_id`), `rename` (`title`), `keep`, `refresh`, `permissions` (`mode`), `activity`, `tools`, `model`, `config`, `context`, `revert` (`turn`, `path`), `changes` (`turn`, `path`: the file's change in that turn as a unified diff), `fork` (`argument` or `message_id`), `share`, `side` (`operation`: `create` with `text` starts a side chat and accepts a `request` ID for its first question; `merge`, sent to a side chat, sums it up for the conversation it branched from; `detach` opens the side chat as an independent conversation) |
 
 A runtime command is forwarded with a host-made id

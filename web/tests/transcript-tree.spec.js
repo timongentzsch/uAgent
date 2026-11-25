@@ -638,7 +638,14 @@ test("a merged side chat stays inline and opens its side conversation", async ({
       text: '[side chat "One more idea" merged]\nInclude the cheaper flight.',
     },
   };
-  await open(page, "default", [merged, ...arrivals.slice(1)]);
+  // Opened as a conversation of its own since; a deleted one has no way to it.
+  const side = {
+    ...SESSION,
+    id: "side",
+    title: "One more idea",
+    side: { parent: ID, request: "r", asked: 1, detached: true },
+  };
+  await open(page, "default", [merged, ...arrivals.slice(1)], [side]);
   const message = page.locator('article[data-message-id="m-82"]');
   const toggle = message.getByRole("button", {
     name: /Merged side chat · One more idea/,

@@ -52,7 +52,7 @@ import {
   reconnectGraceMs,
   reconnectMaxDelayMs,
 } from "../shared/limits.ts";
-import { needsYou, sessionById } from "./attention.ts";
+import { isSideChat, needsYou, sessionById } from "./attention.ts";
 
 // A draft is saved once typing pauses, not per key; an upload still in
 // flight when the page went away never finishes, and its chip has no id.
@@ -312,6 +312,9 @@ export function useHost(
   );
   const forget = useCallback(
     (id: string) => {
+      // A deleted side chat that was open leaves its conversation open.
+      const gone = live.current[id]?.metadata;
+      const back = gone && isSideChat(gone) ? gone.parent || "" : "";
       loads.current.delete(id);
       delete live.current[id];
       delete readCounts.current[id];
@@ -340,9 +343,9 @@ export function useHost(
         sessions: prior.sessions.filter((item) => item.id !== id),
       }));
       if (selection.current === id) {
-        selection.current = "";
-        writeSelection("", true);
-        setSelected("");
+        selection.current = back;
+        writeSelection(back, true);
+        setSelected(back);
       }
     },
     [snapshots, drafts],

@@ -24,10 +24,7 @@ namespace {
 using Entry = TranscriptEntry;
 const json kNone = json::object();
 
-using AgentLabels = std::map<std::string_view, std::string_view>;
-
-std::map<uint64_t, Entry> Entries(const Conversation& conversation,
-                                  AgentLabels& agent_labels) {
+std::map<uint64_t, Entry> Entries(const Conversation& conversation) {
   std::map<uint64_t, Entry> entries;
   for (const json& segment : conversation.Archive()) {
     const json* messages = JsonArray(segment, "messages");
@@ -53,21 +50,6 @@ std::map<uint64_t, Entry> Entries(const Conversation& conversation,
                                       MessageKindName(conversation.KindAt(i))});
   }
   for (const auto& facts : conversation.DisplayFacts()) {
-    if (JsonValue(facts, "name", "") == "agent_start") {
-      if (const json* parts = JsonArray(facts, "parts")) {
-        for (const auto& part : *parts) {
-          const auto* id = JsonStringRef(part, "id");
-          const auto* label = JsonStringRef(part, "label");
-          if (id && id->size() == kAgentNameChars && label && !label->empty() &&
-              *label != "Open agent" && JsonValue(part, "kind", "") == "link" &&
-              JsonValue(part, "to", "") == "agent") {
-            const auto bytes = Utf8BoundaryBefore(*label, kStatusLabelBytes);
-            agent_labels.try_emplace(*id,
-                                     std::string_view(*label).substr(0, bytes));
-          }
-        }
-      }
-    }
     std::string kind = JsonValue(facts, "kind", "");
     if (kind == "activity" || kind == "turn_summary" || kind == "compaction") {
       entries.try_emplace(JsonValue(facts, "sequence", uint64_t{0}),
@@ -75,21 +57,6 @@ std::map<uint64_t, Entry> Entries(const Conversation& conversation,
     }
   }
   return entries;
-}
-
-// A report can be on another page from its assignment. Leave recognition of
-// the message kind to its renderer and preserve all recorded facts and text.
-void LabelAgent(json& node, const AgentLabels& labels) {
-  if (labels.empty()) return;
-  std::string_view id;
-  if (const json* agent = JsonObject(node, "agent")) {
-    const std::string outcome = JsonValue(*agent, "outcome", "");
-    if (outcome == "merged" || outcome == "note") return;
-    if (const auto* sender = JsonStringRef(*agent, "session")) id = *sender;
-  }
-  if (auto found = labels.find(id); found != labels.end()) {
-    node["agent_label"] = std::string(found->second);
-  }
 }
 
 // `nodes` with the work and group nodes they sit under, each before its
@@ -119,8 +86,7 @@ TranscriptView::TranscriptView(const Conversation& conversation)
     : conversation_(conversation) {}
 
 const std::map<uint64_t, TranscriptEntry>& TranscriptView::Index() const {
-  std::call_once(indexed_,
-                 [this] { entries_ = Entries(conversation_, agent_labels_); });
+  std::call_once(indexed_, [this] { entries_ = Entries(conversation_); });
   return entries_;
 }
 
@@ -145,7 +111,6 @@ json TranscriptView::Page(uint64_t before) const {
           HoldsOthers(parent)) {
         ids.insert(parent);
       }
-      LabelAgent(*node, agent_labels_);
       bytes += JsonDump(*node).size();
       more = ids.size() > kViewNodes || bytes > kViewBytes;
       if (more) break;
@@ -164,7 +129,6 @@ json TranscriptView::Page(uint64_t before) const {
       EntryNodes(conversation_, it->first, it->second, true, made);
       for (json& node : made) {
         if (node["kind"] != "turn") continue;
-        LabelAgent(node, agent_labels_);
         page.push_back(std::move(node));
         head = true;
         break;

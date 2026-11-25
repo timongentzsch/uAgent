@@ -36,7 +36,7 @@ and terminal calls there. To the agent the remote folder is its working
 folder: it calls the same tools with the same arguments, and nothing is
 mounted or synced. **Files** and the terminal dock show the remote folder.
 
-![Your host keeps the agent loop, keys and approvals and sends checked tool calls over a forwarded Unix socket to a worker in the remote folder](images/remote-execution.png)
+[Execution gateway](architecture/execution-gateway.md) has the sequence of a remote tool call.
 
 Adding a host needs an SSH name that works without a prompt; the host
 copies its own build there. When the link drops, remote commands and

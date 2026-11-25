@@ -6,7 +6,16 @@ layers the source is built in. What happens inside a turn is in
 [Turn loop](turn-loop.md); the web host's routes are in
 [Web host](web-host.md) and [HTTP API](../interfaces/http-api.md).
 
-![Terminal, browser and phone attach to one host, which reaches model endpoints over HTTPS, remote machines over SSH and Chrome over pipes](../images/how-it-works.png)
+```mermaid
+flowchart TB
+  terminal["Terminal<br/>Unix socket"] --- host
+  browser["Browser<br/>HTTP, SSE, WebSocket"] --- host
+  phone["Phone<br/>the same web client"] --- host
+  host["<b>µAgent host</b><br/>session runtimes · web host · scheduler<br/>keys, history, approvals"]
+  host -->|HTTPS| models["Model endpoints<br/>Responses · Chat Completions · Messages"]
+  host -->|"SSH, a forwarded Unix socket"| remote["Remote machines<br/>one worker per conversation"]
+  host -->|"pipes, no TCP port"| chrome["Chrome on your profile<br/>browser service, Xvnc"]
+```
 
 ## Responsibility
 

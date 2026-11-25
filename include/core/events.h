@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -138,7 +139,7 @@ class SessionJournal {
 
  private:
   std::mutex mutex_;
-  std::vector<std::string> pending_ UAGENT_GUARDED_BY(mutex_);
+  std::deque<std::string> pending_ UAGENT_GUARDED_BY(mutex_);
   int64_t sequence_ UAGENT_GUARDED_BY(mutex_) = 0;
   bool enabled_ UAGENT_GUARDED_BY(mutex_) = true;
 };

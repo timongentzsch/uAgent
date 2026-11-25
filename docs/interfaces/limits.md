@@ -79,6 +79,7 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kMemoryEventJournalBytes` | `256 KiB` | The journal's size before compaction, and the longest event line taken. |
 | `kSessionJournalBytes` | `4 MiB` | A conversation's event journal; past it, the newest half is kept. |
 | `kMemoryEventLineBytes` | `4096` |  |
+| `kJournalPendingLines` | `4096` | Journal lines a runtime holds until a session file takes them. |
 | `kPrivateFileMode` | `0600` | Owner-only: a shared machine cannot read transcripts or credentials. |
 | `kPrivateDirMode` | `0700` |  |
 | `kGroupOtherModeBits` | `0077` | The group and other permission bits; a private file has none set. |

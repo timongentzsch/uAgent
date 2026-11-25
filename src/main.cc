@@ -296,6 +296,8 @@ int Main(int argc, char** argv) {
   }
   if (parsed.options.web) {
     observability.SetRole("web");
+    // The host is no conversation: it has no journal to keep.
+    observability.EnableJournal(false);
     return WebMain(parsed.options, argv);
   }
   if (parsed.options.prompt.empty() && !parsed.options.json &&

@@ -283,6 +283,8 @@ void SessionJournal::Append(const Event& event,
                  {"time", UtcStamp()},
                  {"type", policy.journal_type},
                  {"data", JournalProjection(event)}};
+  // Until a session file takes them, the oldest go past the bound.
+  if (pending_.size() >= kJournalPendingLines) pending_.pop_front();
   pending_.push_back(JsonDump(record));
 }
 
@@ -299,24 +301,31 @@ bool SessionJournal::Load(const std::string& path, std::string& error) {
   }
   const std::string text{std::istreambuf_iterator<char>(input),
                          std::istreambuf_iterator<char>()};
+  // Lines that do not parse, and the unterminated last line of an append cut
+  // short (the next one would join it), are dropped from the file.
+  std::string kept;
+  int64_t dropped = 0;
   size_t start = 0;
   for (size_t end; (end = text.find('\n', start)) != std::string::npos;
        start = end + 1) {
-    json record = json::parse(text.substr(start, end - start), nullptr, false);
+    const std::string_view line(text.data() + start, end - start);
+    json record = json::parse(line, nullptr, false);
     if (!record.is_object() ||
         JsonValue(record, "schema", "") != "uagent.session.event.v1" ||
         !record.contains("type") || !record["type"].is_string() ||
         !record.contains("data") || !record["data"].is_object()) {
-      error = "session journal contains an invalid record";
+      ++dropped;
       continue;
     }
     sequence_ = std::max(sequence_, JsonValue(record, "seq", int64_t{0}));
+    kept.append(line) += '\n';
   }
-  // An append that was cut short leaves an unterminated last line; the next
-  // one would join it.
-  if (start < text.size()) {
-    std::error_code ignored;
-    std::filesystem::resize_file(path, start, ignored);
+  if (kept.size() != text.size() && !WritePrivateFile(path, kept, error)) {
+    return false;
+  }
+  if (dropped) {
+    error = "dropped " + std::to_string(dropped) + " invalid session journal " +
+            (dropped == 1 ? "line" : "lines");
   }
   // A runtime records its start before it knows which file it continues.
   for (std::string& line : pending_) {
@@ -473,10 +482,14 @@ void Observability::Diagnostic(Severity severity, const std::string& name,
     line["session_id"] = session;
   }
   if (debug_.Enabled()) debug_.Write(name, line);
-  if (Logs(LogKind::kDiagnostics) &&
-      (diagnostics_.Enabled() ||
-       diagnostics_.Start(UagentDir(kLogsDir) + "/" + UtcStamp("%Y-%m-%d") +
-                          ".jsonl"))) {
+  if (!Logs(LogKind::kDiagnostics)) return;
+  // Each line goes to its own day's file.
+  const std::string day =
+      UagentDir(kLogsDir) + "/" + UtcStamp("%Y-%m-%d") + ".jsonl";
+  if (diagnostics_.Enabled() && diagnostics_.Path() != day) {
+    diagnostics_.Stop();
+  }
+  if (diagnostics_.Enabled() || diagnostics_.Start(day)) {
     diagnostics_.Write(name, std::move(line));
   }
 }

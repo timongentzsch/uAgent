@@ -397,10 +397,26 @@ TEST_CASE(TestObservabilityEvents) {
   }
   SessionJournal damaged;
   CHECK(!damaged.Load(path, error));
+  CHECK(error == "dropped 1 invalid session journal line");
   error.clear();
   damaged.Append(turn(0), PolicyFor(EventId::kTurnCompleted));
   CHECK(damaged.Flush(path, error));
   CHECK(JsonValue(lines_of(path).back(), "seq", int64_t{0}) == 605);
+  // The bad line went with that read, so the next one finds none.
+  SessionJournal mended;
+  CHECK(mended.Load(path, error) && error.empty());
+  CHECK(lines_of(path).size() == 605);
+
+  // Without a session file to take them, the oldest lines go past a bound.
+  SessionJournal unsaved;
+  for (size_t sequence = 0; sequence <= kJournalPendingLines; ++sequence) {
+    unsaved.Append(turn(0), PolicyFor(EventId::kTurnCompleted));
+  }
+  const std::string unsaved_path = (workspace.root / "unsaved.jsonl").string();
+  CHECK(unsaved.Flush(unsaved_path, error));
+  records = lines_of(unsaved_path);
+  CHECK(records.size() == kJournalPendingLines);
+  CHECK(JsonValue(records.front(), "seq", int64_t{0}) == 2);
 
   // Past its cap the file keeps its newest half.
   SessionJournal large;

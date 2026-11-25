@@ -130,6 +130,8 @@ inline constexpr size_t kMemoryEventJournalBytes = KiB(256);
 // A conversation's event journal; past it, the newest half is kept.
 inline constexpr size_t kSessionJournalBytes = MiB(4);
 inline constexpr size_t kMemoryEventLineBytes = 4096;
+// Journal lines a runtime holds until a session file takes them.
+inline constexpr size_t kJournalPendingLines = 4096;
 
 // Owner-only: a shared machine cannot read transcripts or credentials.
 inline constexpr int kPrivateFileMode = 0600;

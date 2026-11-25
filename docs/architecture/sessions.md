@@ -66,8 +66,10 @@ Files beside `<name>.json`, all private:
 
 **Journal.** One line per durable event:
 `{"schema":"uagent.session.event.v1","seq","time","type","data"}`. `data` is
-a projection (`JournalProjection`) of turn, tool, activity, capability,
-configuration and prompt metadata: names, outcomes, digests, sizes, usage.
+a projection (`JournalProjection`) of turn, model request, tool, activity,
+capability, configuration and prompt metadata: names, outcomes, digests,
+sizes, usage. A `request.completed` line holds what one model request's
+context came to (`context_tokens`, bytes per part) and what it used.
 It never holds prompts, answers, reasoning or tool output. At most 512
 records and 256 KiB (`SessionJournal::kMaxEvents`, `kMaxBytes`); a flush
 appends, and rewrites only after lines left the ring or a load.

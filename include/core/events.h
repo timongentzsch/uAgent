@@ -50,6 +50,7 @@ enum class EventId : uint16_t {
   kAnswerDelta,
   kHostedToolActivity,
   kResponseFinished,
+  kRequestCompleted,
   kApprovalRequested,
   kApprovalResolved,
   kInteractionRequested,
@@ -140,6 +141,7 @@ class SessionJournal {
   static constexpr size_t kMaxBytes = size_t{256} * 1024;
 
   void ClearLocked() UAGENT_REQUIRES(mutex_);
+  void PushLocked(std::string line) UAGENT_REQUIRES(mutex_);
 
   mutable std::mutex mutex_;
 

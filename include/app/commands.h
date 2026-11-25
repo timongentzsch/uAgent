@@ -44,7 +44,7 @@ CommandReply RunSlashCommand(AppSession& session,
                              const ParsedSlashCommand& command);
 
 // Adopts the journal of a session that was just resumed into.
-void LoadSessionJournal(AppSession& session, const std::string& previous_path);
+void LoadSessionJournal(AppSession& session, bool resumed);
 
 void SaveSessionSettings(AppSession& session);
 // Takes a saved conversation's own settings into `manager`. A choice the

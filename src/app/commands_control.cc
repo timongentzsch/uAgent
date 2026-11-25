@@ -46,12 +46,11 @@ json ApprovalState(const EffectiveConfigSnapshot& configured,
   const bool chosen = source == "conversation";
   ApprovalMode effective = parsed(configured.Get(kApprovalKey));
   ApprovalMode inherited = parsed(configured.Inherited(kApprovalKey));
-  // Roles saved before mode inheritance used Auto as their default.
   if (!agent.empty()) {
-    inherited = parsed(JsonValue(agent, "approval", "auto"));
+    inherited = parsed(JsonValue(agent, "approval", ""));
     if (!chosen) {
       effective = inherited;
-      source = agent.contains("approval") ? "parent" : "agent_default";
+      source = "parent";
     }
   }
   return {{"mode", chosen ? ApprovalModeName(effective) : "default"},

@@ -427,7 +427,6 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
   if (entry.kind == "activity" || entry.kind == "turn_summary" ||
       entry.kind == "compaction") {
     out.push_back(EntryNode(message));
-    if (entry.legacy_work) out.back()["parent"] = *entry.legacy_work;
   }
   if (entry.kind != "user" && entry.kind != "attachment" &&
       entry.kind != "assistant" && entry.kind != "tool_result") {

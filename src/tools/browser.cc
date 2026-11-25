@@ -582,13 +582,9 @@ std::string Served(const std::string& path,
   }
   // Logout revokes every old URL. The web host atomically updates the
   // worker's private grant so even a long-lived turn sees the replacement.
-  std::string base = served.substr(split + 1), error;
-  // A worker launched by an older web host receives the URL directly.
-  if (!base.starts_with("http://127.0.0.1:")) {
-    const std::string grant = std::move(base);
-    if (!ReadRegularFile(grant, 512, base, error)) return "";
-  }
-  if (!base.starts_with("http://127.0.0.1:") || !base.ends_with("/")) {
+  std::string base, error;
+  if (!ReadRegularFile(served.substr(split + 1), 512, base, error) ||
+      !base.starts_with("http://127.0.0.1:") || !base.ends_with("/")) {
     return "";
   }
   const auto target = file.lexically_relative(folder);

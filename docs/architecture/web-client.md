@@ -67,7 +67,7 @@ and unread marks, theme, zoom, panes and display preferences. Per tab, in
 bookmarks. When storage is denied or full, values live in memory for the
 visit. Signing out clears the catalogue, drafts and outgoing rows.
 Each conversation persists its draft under its own key, so writes from
-different tabs preserve each other. Older draft maps migrate on first load.
+different tabs preserve each other.
 Only the composer subscribes to the selected draft. Upload and submit read
 its current value, and an available app update observes whether any
 conversation has unsent work. The transcript subscribes to live frames

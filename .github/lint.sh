@@ -6,7 +6,7 @@ find include src tests benchmarks -path tests/fixtures -prune -o \
   -type f \( -name '*.h' -o -name '*.cc' \) \
   -exec uvx --from clang-format==22.1.8 clang-format --dry-run --Werror {} +
 uvx --from cpplint==2.0.2 cpplint --quiet \
-  --recursive --exclude=third_party --exclude=tests/fixtures \
+  --recursive --exclude=tests/fixtures \
   --extensions=h,cc \
   --filter=-build/c++17,-build/header_guard,-whitespace/indent_namespace,-readability/check \
   include src tests benchmarks

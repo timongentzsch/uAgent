@@ -32,8 +32,10 @@ Archives exist for `linux-x86_64` and `linux-arm64` (glibc 2.38 or newer)
 and `macos-arm64` (macOS 15 or newer). Elsewhere, or when the unpacked
 binary fails `uagent --version` (a missing library), the installer clones
 that release's tag into `~/.local/share/uagent/src` and builds it: git,
-CMake 3.21+, a C++20 compiler, libcurl 7.66+, zlib and OpenSSL 3. To build
-the web client from source, use Node.js 24 and npm as CI does.
+CMake 3.21+, a C++20 compiler, libcurl 7.66+, zlib and OpenSSL 3. Configuring
+downloads two pinned header libraries from `github.com`; CONTRIBUTING says how
+to build offline. To build the web client from source, use Node.js 24 and npm
+as CI does.
 
 ## What is installed where
 

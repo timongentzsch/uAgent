@@ -11,6 +11,7 @@ import {
   unwatched,
   writeFiles,
   openAlone,
+  enter,
 } from "./fixtures.js";
 
 // Tasks with a list of statuses, a box to tick, costs and what doubles them,
@@ -59,9 +60,7 @@ test("what is typed into a cell or the formula bar is saved to the file, and und
   );
   // Typing replaces; Enter writes it and moves down. What depends on the
   // cell follows, on the other tab too.
-  await cell("Tasks", "D2").click();
-  await app.keyboard.type("2000");
-  await app.keyboard.press("Enter");
+  await enter(cell("Tasks", "D2"), "2000");
   await expect(cell("Tasks", "D2")).toHaveText("2,000.00");
   await expect(cell("Tasks", "E2")).toHaveText("4,000.00");
   await expect(cell("Tasks", "D5")).toHaveText("10,700.50");
@@ -243,9 +242,7 @@ test("rows are put in and taken out, filled down and sorted: formulas follow on 
 
   // A formula over a range that the sort would split has no place after
   // it: nothing is sorted, and the pane says why.
-  await cell("Tasks", "E2").click();
-  await app.keyboard.type("=SUM(D2:D3)");
-  await app.keyboard.press("Enter");
+  await enter(cell("Tasks", "E2"), "=SUM(D2:D3)");
   await expect.poll(saved).toContain("<td>8400.5<td>=SUM(D2:D3)");
   const written = await saved();
   await cell("Tasks", "D1").getByRole("button").click();
@@ -575,9 +572,7 @@ test("a block is pasted, cells are copied with their formulas, a box is ticked a
   // and no cell is cleared where the cut cells lay.
   await cell("Tasks", "A2").click();
   await act("cut");
-  await cell("Tasks", "A4").click();
-  await app.keyboard.type("Fees");
-  await app.keyboard.press("Enter");
+  await enter(cell("Tasks", "A4"), "Fees");
   await cell("Tasks", "B5").click();
   await act("paste");
   await expect(cell("Tasks", "B5")).toHaveText("Write");
@@ -633,9 +628,7 @@ test("a save the file refuses, because it was rewritten meanwhile, shows the she
     PLAN,
   );
   const type = async (ref, text) => {
-    await cell("Tasks", ref).click();
-    await app.keyboard.type(text);
-    await app.keyboard.press("Enter");
+    await enter(cell("Tasks", ref), text);
   };
   await type("A2", "Draft");
   await expect.poll(saved).toContain("<td>Draft<td>");
@@ -679,18 +672,14 @@ test("a cell written with a bare < is reported, and its tab is not edited over i
   const why = "Tasks!E4 holds markup: write < as &lt;";
   await files.getByRole("button", { name: "Ask agent to fix" }).click();
   await expect(app.locator("#prompt")).toHaveValue(new RegExp(why));
-  await cell("Tasks", "A2").click();
-  await app.keyboard.type("Draft");
-  await app.keyboard.press("Enter");
+  await enter(cell("Tasks", "A2"), "Draft");
   await expect(
     files.locator(".page-tools .notice, .open-page > .page-notice .notice"),
   ).toHaveText(why);
   await expect(cell("Tasks", "A2")).toHaveText("Write");
   // Another tab is edited as ever.
   await tabs.nth(1).click();
-  await cell("Inputs", "A2").click();
-  await app.keyboard.type("Sum");
-  await app.keyboard.press("Enter");
+  await enter(cell("Inputs", "A2"), "Sum");
   await expect
     .poll(saved)
     .toBe(with_(broken, { "<td>Budget<td>": "<td>Sum<td>" }));
@@ -709,9 +698,7 @@ test("the agent's write to another file leaves the open sheet, its undo and its 
     PLAN,
   );
   const type = async (ref, text) => {
-    await cell("Tasks", ref).click();
-    await app.keyboard.type(text);
-    await app.keyboard.press("Enter");
+    await enter(cell("Tasks", ref), text);
   };
   await type("A2", "Draft");
   const drafted = with_(PLAN, { "<td>Write<td>": "<td>Draft<td>" });
@@ -811,9 +798,7 @@ test("the grid runs on past the table: what is typed there joins it, and the fil
   // Typed five thousand rows down, the file holds every row between, and
   // Undo gives them back.
   await toRow(stage, 4990);
-  await cell("Inputs", "A5000").click();
-  await app.keyboard.type("far");
-  await app.keyboard.press("Enter");
+  await enter(cell("Inputs", "A5000"), "far");
   await expect
     .poll(async () => (await saved()).match(/\n<tr/g).length)
     .toBe(5 + 5000);
@@ -953,9 +938,7 @@ test("past the table: a row or column is selected across the table only, a spare
   await words.fill("do");
   await words.press("Enter");
   await expect(files.locator(".sheet-note")).toHaveText("1 row hidden");
-  await cell("Tasks", "G2").click();
-  await app.keyboard.type("x");
-  await app.keyboard.press("Enter");
+  await enter(cell("Tasks", "G2"), "x");
   await expect.poll(saved).toContain("<td>=D2*2<td><td>x");
   await expect(files.locator(".sheet-note")).toHaveText("1 row hidden");
   await cell("Tasks", "G2").click();
@@ -1022,9 +1005,7 @@ test("a table of five thousand rows is drawn a screenful at a time, wherever it 
   expect(await rows()).toBeLessThan(120);
   // The header row is held; a value typed there is saved as any.
   await expect(cell("Data", "A1")).toBeInViewport();
-  await cell("Data", "B2510").click();
-  await app.keyboard.type("7");
-  await app.keyboard.press("Enter");
+  await enter(cell("Data", "B2510"), "7");
   await expect.poll(saved).toContain("<tr><td>Row 2510<td>7\n");
   expect(await rows()).toBeLessThan(120);
 });
@@ -1376,9 +1357,7 @@ for (const [pane, phone] of [
     expect(bare.map(([name]) => name)).toContain(
       phone ? "More tools" : "Open alone",
     );
-    await cell("Tasks", "A2").click();
-    await app.keyboard.type("Draft");
-    await app.keyboard.press("Enter");
+    await enter(cell("Tasks", "A2"), "Draft");
     await expect(notice).toHaveText("Saved");
     expect(await places()).toEqual(bare);
     // A refusal is longer than the row: said over it in full, on as many
@@ -1446,9 +1425,7 @@ test("tabs are added, renamed, duplicated, moved and deleted from the bar, and t
   await expect(shown).toHaveText("Sheet");
   const added = `${PLAN}<table data-sheet="Sheet">\n</table>\n`;
   await expect.poll(saved).toBe(added);
-  await cell("Sheet", "A1").click();
-  await app.keyboard.type("x");
-  await app.keyboard.press("Enter");
+  await enter(cell("Sheet", "A1"), "x");
   const typed = added.replace('"Sheet">\n', '"Sheet">\n<tr><td>x\n');
   await expect.poll(saved).toBe(typed);
   // A new name is written into the formulas that read the tab.
@@ -1754,9 +1731,7 @@ test("the selection's cells are made bold, coloured, filled, aligned, patterned 
   await expect(cell("Tasks", "D3")).toHaveText("$8,400.50");
 
   // Wrapped, a long text takes the lines its column leaves it.
-  await cell("Tasks", "A4").click();
-  await app.keyboard.type("Brief the whole team");
-  await app.keyboard.press("Enter");
+  await enter(cell("Tasks", "A4"), "Brief the whole team");
   const high = () =>
     cell("Tasks", "A4").evaluate((drawn) => drawn.parentElement.offsetHeight);
   const line = await high();
@@ -2067,9 +2042,7 @@ test("a sheet with nothing in it shows a pane of cells to type in", async ({
       ),
   ).toBeTruthy();
   expect(await saved()).toBe(blank);
-  await cell("One", "C3").click();
-  await app.keyboard.type("here");
-  await app.keyboard.press("Enter");
+  await enter(cell("One", "C3"), "here");
   await expect
     .poll(saved)
     .toBe(
@@ -2184,9 +2157,7 @@ test("a rule strikes, fills and emboldens what matches, until an edit ends the m
     /Tasks: rule `B = Nope: sparkle` is not understood/,
   );
 
-  await cell("Tasks", "B2").click();
-  await app.keyboard.type("To do");
-  await app.keyboard.press("Enter");
+  await enter(cell("Tasks", "B2"), "To do");
   await expect(cell("Tasks", "A2")).not.toHaveClass(/sheet-strike/);
   await expect(cell("Tasks", "A2")).not.toHaveAttribute("data-fill");
   await expect(cell("Tasks", "C2")).toHaveClass(/sheet-bold/);
@@ -2239,9 +2210,7 @@ test("a chart is drawn from its cells, follows an edit, is put in from a selecti
   await expect(chart.locator("rect")).toHaveCount(6);
   await expect(stage.locator(".sheet-chart li")).toHaveText(["Net", "Tax"]);
   expect(Math.max(...(await heights()))).toBe((await heights())[0]);
-  await cell("Costs", "B3").click();
-  await app.keyboard.type("2400");
-  await app.keyboard.press("Enter");
+  await enter(cell("Costs", "B3"), "2400");
   await expect
     .poll(async () => (await heights()).indexOf(Math.max(...(await heights()))))
     .toBe(1);
@@ -2401,14 +2370,10 @@ test("a figure that does not directly follow its table is reported and left in t
     /chart A1:B3: a chart must directly follow its table/,
   );
   // Each tab is saved in its place; no figure is taken, added or lost.
-  await cell("Costs", "B2").click();
-  await app.keyboard.type("1500");
-  await app.keyboard.press("Enter");
+  await enter(cell("Costs", "B2"), "1500");
   const first = with_(apart, { "<td>Rent<td>1200": "<td>Rent<td>1500" });
   await expect.poll(saved).toBe(first);
   await tabs.nth(1).click();
-  await cell("Notes", "A1").click();
-  await app.keyboard.type("Kept");
-  await app.keyboard.press("Enter");
+  await enter(cell("Notes", "A1"), "Kept");
   await expect.poll(saved).toBe(with_(first, { "<td>Keep me": "<td>Kept" }));
 });

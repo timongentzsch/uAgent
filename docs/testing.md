@@ -88,9 +88,7 @@ repository path in a code span is tracked. Generated pages are skipped.
 `tests/fixtures/` holds the provider route contract, saved sessions, the
 stand-in Chrome and Xvnc (`browser_runtime.py`) and an SSH relay;
 `tests/package_contents.py` validates a release archive and its bundled skill
-tree; `tests/reviewer_eval/` holds labelled tool calls for the approval
-reviewer (`run.py` checks a model by hand with an API key, with the questions
-the build embeds from `src/app/`).
+tree.
 
 ### Selecting cases
 
@@ -226,9 +224,7 @@ provider and the checks that define a good run (answer, files read, forbidden
 tools, model rounds, batch width, deduplication, cumulative request and result
 size, folder immutability). Results are compared with
 `benchmarks/baselines/hermetic.json`. `benchmarks/run_trace.py` holds the run
-timing and trace aggregation the eval and `memory_quality.py` share.
-The [benchmark snapshot](../benchmarks/README.md#current-measurements) records
-dated package sizes and local CPU samples.
+timing and trace aggregation.
 
 ```sh
 python3 benchmarks/eval.py build/debug/uagent --check
@@ -276,8 +272,8 @@ On a pull request, `.github/changes.py` selects jobs by the paths changed:
 
 For native changes, `clang-tidy` reads the changed `.cc` files under `src/`,
 `tests/` and `benchmarks/` in one job. A changed header, `.clang-tidy`,
-`CMakeLists.txt`, `CMakePresets.json`, `.dockerignore`, `.github/` or
-`third_party/` selects all units across three runners. A push to `master`
+`CMakeLists.txt`, `CMakePresets.json`, `.dockerignore` or `.github/`
+selects all units across three runners. A push to `master`
 reads the same way from the commit it followed (the pull request already
 read it); weekly and manual runs read all units. `coverage` runs weekly and
 by hand only. The selection source is
@@ -298,7 +294,7 @@ promotes, but not ThreadSanitizer; scheduled and manual runs run them all:
 
 | Leg | Runs on a pull request that touches (`.github/changes.py`) |
 | --- | --- |
-| ThreadSanitizer (`heavy`) | `src/web/`, `src/browser/`, `include/web/`, `include/browser/`, `.github/`, `cmake/`, `deploy/`, `third_party/`, `CMakeLists.txt`, `CMakePresets.json`, `.dockerignore` |
+| ThreadSanitizer (`heavy`) | `src/web/`, `src/browser/`, `include/web/`, `include/browser/`, `.github/`, `cmake/`, `deploy/`, `CMakeLists.txt`, `CMakePresets.json`, `.dockerignore` |
 | remote bundle (`bundle`) | `.github/`, `cmake/`, `deploy/`, `CMakeLists.txt`, `CMakePresets.json`, `.dockerignore`, `install.sh` |
 | Linux ARM64 build | either list |
 | container image (`image`) | `deploy/`, `.github/workflows/`, `.dockerignore` |

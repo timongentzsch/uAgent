@@ -28,6 +28,7 @@
 #include "include/mcp/register.h"
 #include "include/mcp/result.h"
 #include "include/mcp/rpc.h"
+#include "include/mcp/server.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
 #include "include/tools/memory.h"
@@ -116,10 +117,8 @@ TEST_CASE(TestMcpContractHelpers) {
       {"type", "object"},
       {"properties", {{"value", {{"type", "string"}}}}},
       {"additionalProperties", false}};
-  json listed = json::array({{{"name", "echo"}, {"inputSchema", input_schema}},
-                             {{"name", "async"},
-                              {"inputSchema", json{{"type", "object"}}},
-                              {"execution", {{"taskSupport", "required"}}}}});
+  json listed =
+      json::array({{{"name", "echo"}, {"inputSchema", input_schema}}});
   std::vector<Tool> tools;
   McpReplaceServerTools(tools, server, config, listed);
   CHECK(tools.size() == 1);
@@ -469,9 +468,7 @@ TEST_CASE(TestWorkspaceScopedSession) {
   ActivitySupervisor processes;
   UsageAccumulator usage;
   std::vector<Tool> tools;
-  Agent agent(
-      api, tools, processes, usage,
-      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
+  Agent agent(api, tools, processes, usage, Denied);
   api.capabilities.image_input = false;
   agent.RouteChanged();
   CHECK(!api.capabilities.image_input);
@@ -596,10 +593,7 @@ TEST_CASE(TestContextBreakdown) {
   instructions.text = "Indent with tabs.";
   instructions.sources = {(test.workspace / "AGENTS.md").string()};
   instructions.memory_always = "The user prefers tabs.";
-  Agent agent(
-      api, tools, processes, usage,
-      [](const Tool&, const json&, int64_t) { return std::string("denied"); },
-      {}, instructions);
+  Agent agent(api, tools, processes, usage, Denied, {}, instructions);
 
   const std::string path = (test.root / "session.json").string();
   std::string error;
@@ -957,6 +951,19 @@ TEST_CASE(TestScopedBaseAndMemory) {
 
   unsetenv("UAGENT_MODEL");
   unsetenv("UAGENT_MEMORY_MODEL");
+}
+
+// A server flooding short lines is read in one pass over its buffer.
+TEST_CASE(TestMcpTakesEveryLineOfAFullBuffer) {
+  McpServer server;
+  constexpr size_t kLines = 1 << 19;
+  for (size_t i = 0; i < kLines; ++i) server.rbuf += "{}\n";
+  server.rbuf += "{\"partial";
+  std::string line;
+  size_t taken = 0;
+  while (McpTakeLine(server, line)) taken += line == "{}";
+  CHECK(taken == kLines);
+  CHECK(server.rbuf == "{\"partial");
 }
 
 }  // namespace uagent

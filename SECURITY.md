@@ -197,7 +197,11 @@ true` and the tool declares itself read-only. A stdio server runs under the
 command sandbox unless its entry, in `~/.mcp.json` or a trusted folder's
 `.mcp.json`, sets `"sandbox": false`; the prompt to trust a folder names
 the servers that would run unconfined. Server stderr goes to a
-size-bounded log. An agent starts no MCP servers.
+size-bounded log. An agent starts no MCP servers. A server may answer a
+call with a task, which µAgent polls inside that call under the same
+approval; a task's requests for input reach the person exactly as the
+call's own do, and stopping the call sends `tasks/cancel`, which the
+server may ignore.
 
 ### Paired devices and the web host
 
@@ -249,7 +253,7 @@ analytics or error reporting.
 | --- | --- | --- | --- |
 | The model endpoints you configure; setup offers `api.anthropic.com`, `api.openai.com` and `openrouter.ai` | every turn, and the title, memory, search and image requests of a conversation | the conversation | not optional |
 | The decision endpoint of the conversation's provider (`openrouter.ai` has one), or of the provider `approval.reviewerModel` names | a call judged in Auto | the tool, the folder, your latest and first messages and the action preview, 16 KiB each | any other approval mode; no other provider is asked |
-| `api.github.com`, `raw.githubusercontent.com`, `github.com` | you check for or apply an update in About; daily only with `web.updateCheck`; the installer | nothing of yours | off by default |
+| `api.github.com`, `raw.githubusercontent.com`, `github.com` | you check for or apply an update in About; daily only with `web.updateCheck`; the installer; a build from source, for its two pinned header libraries | nothing of yours | off by default |
 | `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com` | a device subscribed to notifications, with `web.pushContact` set | the encrypted title and reason, or a generic notice with `web.notificationDetail` off | off by default |
 | `dl.google.com`, `ghcr.io` | the installer or the container fetching Chrome and the image | nothing of yours | no browser, no container |
 | Hosts the agent names | `web_fetch`, hosted search at the model endpoint, a command, an MCP server, the agent's browser | what the agent sends | approval and the sandbox (`sandbox.network`) |

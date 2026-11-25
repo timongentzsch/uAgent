@@ -8,8 +8,8 @@ Paths are under `~/.uagent`; the whole tree is in
 
 ## Responsibility
 
-One table, `kLogRecords` (`include/core/logs.h`), names every record, its
-folder and the lowest level that writes it. Writers ask `Logs(kind)` and
+One table, `kLogRecords` (`include/core/logs.h`), names every record a
+level decides, its files and the lowest level that writes it. Writers ask `Logs(kind)` and
 nothing else. The level is the setting `logs.level`:
 
 | Level | Writes |
@@ -54,11 +54,12 @@ Credentials are never written: a capture's credential headers are redacted
 - The journal is capped at 4 MiB (`kSessionJournalBytes`); past it an append
   first keeps the newest half. An MCP server's stderr is capped at 16 MiB
   (`kMcpLogBytes`), a command log at `activities.logMb`.
-- Retention runs once a day (`MaintainArtifacts`). In the log folders
-  (`logs/`, `mcp/`, `artifacts/`, `sessions/`, `activity/`) files older than
-  `logs.keepDays` go, then the oldest across all of them until together they
-  fit `logs.keepMb`. The journal goes with its session (`history.days`,
-  `history.files`).
+- Retention runs once a day (`MaintainArtifacts`). In `logs/`, `mcp/`,
+  `artifacts/`, `sessions/` and `activity/` files older than `logs.keepDays`
+  go. Then the oldest files a level writes (the table's records) go until
+  together they fit `logs.keepMb`; what tools need to work (large tool
+  output, command logs, a child's spend ledger, attached images) only ages.
+  The journal goes with its session (`history.days`, `history.files`).
 
 ## Failure modes
 

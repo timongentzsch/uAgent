@@ -598,11 +598,20 @@ TEST_CASE(TestLogsAreKeptWithinTheirSize) {
       fs::path(UagentDir(kArtifactsDir)) / "http-oldest",
       fs::path(UagentDir(kMcpDir)) / "server-older.log",
       fs::path(UagentDir(kArtifactsDir)) / "exchange-newer",
-      fs::path(UagentDir(kActivityDir)) / "newest.log",
+      fs::path(UagentDir(kLogsDir)) / "2026-11-26.jsonl",
+  };
+  // What tools still use is older than all of them, and stays.
+  const fs::path in_use[] = {
+      fs::path(UagentDir(kActivityDir)) / "usage-s.jsonl",
+      fs::path(UagentDir(kActivityDir)) / "1-2.log",
+      fs::path(UagentDir(kArtifactsDir)) / "output-old",
+      fs::path(UagentDir(kMcpDir)) / "image-old.png",
   };
   for (size_t i = 0; i < std::size(files); ++i) {
     std::ofstream(files[i]) << std::string(400 * 1024, 'x');
     fs::last_write_time(files[i], now - std::chrono::hours(4 - i));
+    std::ofstream(in_use[i]) << std::string(400 * 1024, 'x');
+    fs::last_write_time(in_use[i], now - std::chrono::hours(6));
   }
   // Sessions keep their own rules, however large.
   const fs::path journal =
@@ -616,6 +625,7 @@ TEST_CASE(TestLogsAreKeptWithinTheirSize) {
   CHECK(fs::exists(files[2]));
   CHECK(fs::exists(files[3]));
   CHECK(fs::exists(journal));
+  for (const fs::path& file : in_use) CHECK(fs::exists(file));
 }
 
 TEST_CASE(TestLogLevelsWriteTheirRecords) {
@@ -628,12 +638,12 @@ TEST_CASE(TestLogLevelsWriteTheirRecords) {
       {LogKind::kDiagnostics, false, true, true, true},
       {LogKind::kMcpStderr, false, true, true, true},
       {LogKind::kCapture, false, false, true, true},
-      {LogKind::kExchange, false, false, true, true},
       {LogKind::kTrace, false, false, false, true},
-      {LogKind::kToolOutput, true, true, true, true},
-      {LogKind::kCommandLog, true, true, true, true},
   };
-  CHECK(std::size(kExpected) == std::size(kLogRecords));
+  for (const LogRecord& record : kLogRecords) {
+    CHECK(std::ranges::find(kExpected, record.kind, &Expected::kind) !=
+          std::end(kExpected));
+  }
   for (const Expected& expected : kExpected) {
     for (const auto& [level, written] :
          {std::pair{"off", expected.off}, std::pair{"events", expected.events},

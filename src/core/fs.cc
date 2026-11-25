@@ -320,9 +320,9 @@ void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
   });
 }
 
-// The oldest files across `dirs` go until together they fit `max_bytes`.
-void PruneTreesToSize(const std::vector<std::string>& dirs,
-                      uintmax_t max_bytes) {
+// The oldest files a log level writes go until together they fit
+// `max_bytes`.
+void PruneLogsToSize(uintmax_t max_bytes) {
   namespace fs = std::filesystem;
   struct Entry {
     fs::file_time_type modified;
@@ -331,17 +331,25 @@ void PruneTreesToSize(const std::vector<std::string>& dirs,
   };
   std::vector<Entry> files;
   uintmax_t total = 0;
-  for (const std::string& dir : dirs) {
-    ForEachTreeEntry(dir, [&](const fs::directory_entry& entry) {
-      std::error_code ec;
-      if (entry.is_symlink(ec) || !entry.is_regular_file(ec)) return;
-      std::error_code time_error;
-      Entry file{entry.last_write_time(time_error), entry.file_size(ec),
-                 entry.path()};
-      if (ec || time_error) return;
-      total += file.size;
-      files.push_back(std::move(file));
-    });
+  for (const LogRecord& record : kLogRecords) {
+    if (record.folder.empty()) continue;
+    ForEachTreeEntry(UagentDir(std::string(record.folder).c_str()),
+                     [&](const fs::directory_entry& entry) {
+                       std::error_code ec;
+                       const std::string name =
+                           entry.path().filename().string();
+                       if (entry.is_symlink(ec) || !entry.is_regular_file(ec) ||
+                           !name.starts_with(record.prefix) ||
+                           !name.ends_with(record.suffix)) {
+                         return;
+                       }
+                       std::error_code time_error;
+                       Entry file{entry.last_write_time(time_error),
+                                  entry.file_size(ec), entry.path()};
+                       if (ec || time_error) return;
+                       total += file.size;
+                       files.push_back(std::move(file));
+                     });
   }
   std::ranges::sort(files, {}, &Entry::modified);
   for (const Entry& file : files) {
@@ -376,15 +384,14 @@ void MaintainArtifacts() {
   PruneSessionJournalOrphans(history);
   PruneArtifactTree(GlobalBase() + "/" + kMemoryDir + "/.processed",
                     HistoryDays(), HistoryFiles());
-  std::vector<std::string> logs;
-  for (const LogRecord& record : kLogRecords) {
-    if (record.folder.empty()) continue;
-    const std::string dir = UagentDir(std::string(record.folder).c_str());
-    if (std::ranges::find(logs, dir) != logs.end()) continue;
-    PruneArtifactTree(dir, LogKeepDays(), 0);
-    logs.push_back(dir);
+  // Logs and what tools keep to work (spilled output, attached images,
+  // command logs, the spend ledger) age by days; only logs also fit a size,
+  // so a file still in use is never taken to make room.
+  for (const char* dir :
+       {kLogsDir, kMcpDir, kArtifactsDir, kSessionsDir, kActivityDir}) {
+    PruneArtifactTree(UagentDir(dir), LogKeepDays(), 0);
   }
-  PruneTreesToSize(logs, static_cast<uintmax_t>(LogKeepMb()) * kMiB);
+  PruneLogsToSize(static_cast<uintmax_t>(LogKeepMb()) * kMiB);
   // Mail by age only: a size limit would drop mail still waiting to be read.
   PruneArtifactTree(UagentDir(kMailDir), LogKeepDays(), 0);
   // A catalogue is fresh for a day; the log retention keeps one still read.

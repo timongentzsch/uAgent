@@ -160,8 +160,8 @@ bootstrap calls `MaintainArtifacts`. Files in `history/` older than
 their own mtime and do not count against the file limit. Orphaned journals,
 and the socket and lease of a runtime that was killed, are removed. Files
 in the log folders (`logs/`, `sessions/`, `activity/`, `artifacts/`,
-`mcp/`) older than `logs.keepDays` go, then the oldest across all of them
-until together they fit `logs.keepMb`; mail goes by age only. A capture or
+`mcp/`) older than `logs.keepDays` go, then the oldest logs until together
+they fit `logs.keepMb`; what tools still use, and mail, go by age only. A capture or
 exchange the cleanup removed reads as such, and a tool exchange falls back
 to what the transcript holds. Every log is in [Logging](logging.md); see
 also [Settings](../interfaces/settings.md).

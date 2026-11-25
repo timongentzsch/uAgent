@@ -838,6 +838,7 @@ json Request(const fs::path& root, const json& request) {
     }
     std::string previous, error;
     bool exists = false;
+    const FolderLock lock(*target);
     json refused = create ? json()
                           : CheckRevision(request, *target, kFileViewBytes,
                                           "file", previous, exists);

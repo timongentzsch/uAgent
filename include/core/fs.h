@@ -194,6 +194,22 @@ std::string WorkspaceId(const std::string& root, const std::string& host = {});
 
 bool LockFileExclusive(int fd);
 
+// While it lives, an advisory lock on the folder holding `path`, so one
+// writer's read, check and replace of a file there is not interleaved with
+// another's. Take one at a time, never two. A folder that cannot be opened
+// or locked holds nothing, and the write goes on as it would without.
+class FolderLock {
+ public:
+  explicit FolderLock(const std::filesystem::path& path)
+      : fd_(open(path.parent_path().empty() ? "." : path.parent_path().c_str(),
+                 O_RDONLY | O_DIRECTORY | O_CLOEXEC)) {
+    if (fd_ && !LockFileExclusive(fd_.Get())) fd_.Reset();
+  }
+
+ private:
+  Fd fd_;
+};
+
 // The last `bytes` of a file, or all of it when `bytes` is negative; `start`
 // receives the offset read from. Empty when the file cannot be opened.
 std::string ReadFileTail(const std::string& path, int64_t bytes,

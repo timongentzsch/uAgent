@@ -645,15 +645,16 @@ def test_a_new_event_stream_replaces_the_oldest_one_when_the_limit_is_reached(
     pages that are actually there."""
     with web_host(binary, root, home, "http://127.0.0.1:1") as (client, code, _, _):
         client.pair(code)
+        # Eight pages stay connected together.
         open_streams = []
-        for _ in range(4):
+        for _ in range(8):
             open_streams.append(client.events())
         watched = [watch_event_stream(response) for _, response in open_streams]
         for ready, _ in watched:
             assert_true(ready.wait(budget(5)), "a stream never caught up")
         connection, response = client.events()
         newest_ready, _ = watch_event_stream(response)
-        assert_true(newest_ready.wait(budget(5)), "the fifth stream never caught up")
+        assert_true(newest_ready.wait(budget(5)), "the ninth stream never caught up")
         assert_true(watched[0][1].wait(budget(5)), "the oldest stream stayed open")
         assert_true(not any(ended.is_set() for _, ended in watched[1:]), "a newer stream ended")
         for open_connection, _ in [*open_streams, (connection, response)]:

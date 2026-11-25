@@ -23,7 +23,6 @@ export const permissionNotes: Record<string, string> = {
 };
 export const approvalSources: Record<string, string> = {
   parent: "Inherited from the parent at launch",
-  agent_default: "Default for older agents",
   default: "Built-in default",
   user: "All conversations setting",
   project: "Folder setting",

@@ -10,7 +10,6 @@ export const storageKeys = {
   // The remote hosts last listed, shown disconnected until the host answers.
   hosts: "uagent-hosts",
   page: "uagent-page",
-  drafts: "uagent-drafts", // Legacy map; each chat now has its own key below.
   draftPrefix: "uagent-drafts:",
   outgoing: "uagent-outgoing",
   read: "uagent-read",

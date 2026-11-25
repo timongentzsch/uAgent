@@ -1,4 +1,4 @@
-import { deviceStorage, scheduleSave, stored } from "../shared/storage.ts";
+import { deviceStorage, scheduleSave } from "../shared/storage.ts";
 import { storageKeys } from "../shared/storage-keys.ts";
 import { draftSaveDelayMs } from "../shared/limits.ts";
 import type { Draft } from "../shared/types.ts";
@@ -49,15 +49,6 @@ function replace(drafts: Drafts, id: string, value?: Draft) {
 // the same time touch different keys, and an unchanged tab never rewrites one.
 export function draftStore() {
   const initial: Drafts = {};
-  if (deviceStorage.getItem(storageKeys.drafts) !== null) {
-    const legacy = stored<Drafts>(storageKeys.drafts, {});
-    for (const [id, raw] of Object.entries(legacy.read())) {
-      const draft = restored(raw);
-      if (draft && deviceStorage.getItem(key(id)) === null)
-        deviceStorage.setItem(key(id), JSON.stringify(draft));
-    }
-    legacy.write({});
-  }
   for (const name of keys()) {
     const draft = read(name);
     if (draft) initial[name.slice(prefix.length)] = draft;

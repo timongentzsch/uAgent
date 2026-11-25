@@ -1402,10 +1402,11 @@ TEST_CASE(TestBrowserToolSteps) {
   // In the folder the host serves it opens at its address there, and is told
   // what is wrong with it as a window of its artboard's size draws it.
   {
-    // Older web hosts supplied the preview URL directly at worker launch.
-    const ScopedEnv served("UAGENT_INTERNAL_PREVIEW",
-                           fs::canonical(fake.workspace.root).string() +
-                               "\nhttp://127.0.0.1:1/preview/token/");
+    const fs::path grant = fake.data / "preview-grant";
+    std::ofstream(grant) << "http://127.0.0.1:1/preview/token/";
+    const ScopedEnv served(
+        "UAGENT_INTERNAL_PREVIEW",
+        fs::canonical(fake.workspace.root).string() + "\n" + grant.string());
     const fs::path checked = fake.data / "profile" / "page-checked";
     std::ofstream(checked) << R"({"w":1920,"h":1080,"fits":false})";
     CHECK(tool.run({{"action", "open"}, {"path", page.string()}}, {})

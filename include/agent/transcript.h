@@ -23,7 +23,6 @@ inline constexpr size_t kViewBytes = KiB(384);
 struct TranscriptEntry {
   const json* message;
   std::string kind;
-  const std::string* legacy_work = nullptr;
 };
 
 // Oldest first; with `calls`, an assistant message's calls too.

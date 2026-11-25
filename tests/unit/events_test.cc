@@ -510,6 +510,36 @@ TEST_CASE(TestObservabilityEvents) {
         (tightened.st_mode & 0777) == 0600);
 }
 
+TEST_CASE(TestLogsAreKeptWithinTheirSize) {
+  TestWorkspace workspace("log-size");
+  ScopedEnv limit("UAGENT_LOG_MB", "1");
+  namespace fs = std::filesystem;
+  const auto now = fs::file_time_type::clock::now();
+  // Oldest first, across two folders: 4 x 400 KiB is more than 1 MiB.
+  const fs::path files[] = {
+      fs::path(UagentDir(kArtifactsDir)) / "http-oldest",
+      fs::path(UagentDir(kMcpDir)) / "server-older.log",
+      fs::path(UagentDir(kArtifactsDir)) / "exchange-newer",
+      fs::path(UagentDir(kActivityDir)) / "newest.log",
+  };
+  for (size_t i = 0; i < std::size(files); ++i) {
+    std::ofstream(files[i]) << std::string(400 * 1024, 'x');
+    fs::last_write_time(files[i], now - std::chrono::hours(4 - i));
+  }
+  // Sessions keep their own rules, however large.
+  const fs::path journal =
+      fs::path(UagentDir(kHistoryDir)) / "s.json.events.jsonl";
+  std::ofstream(fs::path(UagentDir(kHistoryDir)) / "s.json") << "session";
+  std::ofstream(journal) << std::string(2 * 1024 * 1024, 'x');
+  fs::last_write_time(journal, now - std::chrono::hours(8));
+  MaintainArtifacts();
+  CHECK(!fs::exists(files[0]));
+  CHECK(!fs::exists(files[1]));
+  CHECK(fs::exists(files[2]));
+  CHECK(fs::exists(files[3]));
+  CHECK(fs::exists(journal));
+}
+
 TEST_CASE(TestLogLevelsWriteTheirRecords) {
   struct Expected {
     LogKind kind;

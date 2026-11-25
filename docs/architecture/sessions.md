@@ -158,9 +158,12 @@ Retention: once a day (`kMaintenanceIntervalHours`), a top-level runtime's
 bootstrap calls `MaintainArtifacts`. Files in `history/` older than
 `history.days` go, then the oldest beyond `history.files`; sidecars age by
 their own mtime and do not count against the file limit. Orphaned journals,
-and the socket and lease of a runtime that was killed, are removed. Log
-trees follow `logs.keepDays` and `logs.keepFiles` (mail by age only); see
-[Settings](../interfaces/settings.md).
+and the socket and lease of a runtime that was killed, are removed. Files
+in the log folders (`sessions/`, `activity/`, `artifacts/`, `mcp/`) older
+than `logs.keepDays` go, then the oldest across all of them until together
+they fit `logs.keepMb`; mail goes by age only. A capture or exchange the
+cleanup removed reads as such, and a tool exchange falls back to what the
+transcript holds. See [Settings](../interfaces/settings.md).
 
 ## Source and tests
 

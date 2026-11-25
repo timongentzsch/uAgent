@@ -14,6 +14,7 @@
 
 #include "include/agent/node.h"
 #include "include/agent/transcript.h"
+#include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/private_store.h"
 #include "include/core/strings.h"
@@ -251,8 +252,11 @@ json PageText(const std::string& text, size_t offset) {
 json TranscriptView::Exchange(const std::string& id, size_t offset) const {
   const json& facts = conversation_.DisplayFacts();
   const json& detail = JsonValue(facts, id.c_str(), kNone);
+  // One the cleanup removed falls back to what the transcript holds.
   std::string path = JsonValue(detail, "exchange_path", "");
-  if (!path.empty()) return ReadPrivateArtifact(path, offset);
+  if (!path.empty() && PathExists(path)) {
+    return ReadPrivateArtifact(path, offset);
+  }
   json exchange = JsonValue(detail, "exchange", json(nullptr));
   if (exchange.is_null()) {
     if (!id.starts_with("t-")) return Detail(id, offset);

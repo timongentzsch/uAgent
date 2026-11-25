@@ -701,10 +701,10 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "days of session, activity, mail and MCP logs kept"),
         "Logs kept"),
     registry::Named(
-        registry::Int("logs.keepFiles", "UAGENT_LOG_FILES", {}, 200, 1, 100000,
+        registry::Int("logs.keepMb", "UAGENT_LOG_MB", {}, 1024, 1, 1048576,
                       ReloadPolicy::kNextUserTurn, "retention",
-                      "most files kept per log folder"),
-        "Log files kept"),
+                      "mebibytes of logs kept; the oldest go first"),
+        "Log space"),
     registry::Named(
         registry::Choice(
             registry::Str("logs.level", "UAGENT_LOG_LEVEL", {}, "full",

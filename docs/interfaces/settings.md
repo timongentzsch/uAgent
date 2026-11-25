@@ -150,5 +150,5 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 | `history.days` | `UAGENT_HISTORY_DAYS` | `30` |  | user, project | next message | days of saved sessions kept |
 | `history.files` | `UAGENT_HISTORY_FILES` | `200` | 1–100000 | user, project | next message | most saved sessions kept |
 | `logs.keepDays` | `UAGENT_LOG_DAYS` | `14` | 1–3650 | user, project | next message | days of session, activity, mail and MCP logs kept |
-| `logs.keepFiles` | `UAGENT_LOG_FILES` | `200` | 1–100000 | user, project | next message | most files kept per log folder |
+| `logs.keepMb` | `UAGENT_LOG_MB` | `1024` | 1–1048576 | user, project | next message | mebibytes of logs kept; the oldest go first |
 | `logs.level` | `UAGENT_LOG_LEVEL` | `full` | `off`, `events`, `full`, `debug` | user, project | next message | what the agent records of its work: off, events (journal, MCP stderr), full (also requests and tool exchanges) or debug (also the trace) |

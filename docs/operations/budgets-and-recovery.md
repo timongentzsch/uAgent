@@ -138,7 +138,7 @@ holds content, reasoning, tool calls, usage, timings, `http_status`,
 faults, approvals and tool starts. Child agents and the runtimes a run
 starts append to the same file. The trace holds prompts, file content and
 tool output: it is sensitive and is pruned with the log trees
-(`logs.keepDays`). `/http` shows the captured HTTP attempts of a running
+(`logs.keepDays`, `logs.keepMb`). `/http` shows the captured HTTP attempts of a running
 conversation without a trace.
 
 ## When it goes wrong

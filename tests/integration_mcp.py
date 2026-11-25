@@ -224,7 +224,7 @@ def test_mcp_elicitation_ends_with_a_stopped_turn(root, home, *, binary):
 
 
 TASK_SERVER = """
-INTERVAL = {'done': 300, 'fail': 1, 'ask': 300, 'hang': 300}
+INTERVAL = {'done': 300, 'fail': 1, 'ask': 300, 'hang': 300, 'slow': 300}
 polls, answered = {}, {}
 
 
@@ -244,6 +244,10 @@ def step(case, n):
         return task(case, status='failed', error={'code': -32603, 'message': 'rate limit hit'})
     if case == 'hang':
         return task(case, status='working', statusMessage='still crunching')
+    if case == 'slow' and n < 10:
+        return task(case, status='working', statusMessage='slow step %d' % n)
+    if case == 'slow':
+        return task(case, status='completed', result={'content': [{'type': 'text', 'text': 'slow done'}]})
     # The poll right after tasks/update still shows the answered request.
     if case not in answered or n <= answered[case][1] + 1:
         form = {'type': 'object', 'properties': {'name': {'type': 'string'}}}
@@ -368,6 +372,67 @@ def test_mcp_task_is_cancelled_at_the_turn_deadline(root, home, *, binary):
         run(workspace, env, "--yolo", "-p", "go", binary=binary)
     methods = [row["method"] for row in requests("hang")]
     assert_true(methods.count("tasks/cancel") == 1 and methods[-1] == "tasks/cancel", methods)
+
+
+def test_mcp_task_in_the_background_ends_in_an_idle_turn(root, home, *, binary):
+    """A task moved to the background frees the turn; its result starts a
+    turn in the idle conversation as a finished command's does. Another one
+    refuses input and is cancelled once when stopped."""
+    workspace = root / "mcp-task-background"
+    workspace.mkdir()
+    requests = write_task_server(home, workspace)
+    activity = {}
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        results = tool_results(body["messages"])
+        done = "[completed activities" in text and "slow done" in text
+        if done and "completed" not in activity:
+            # A new turn: the one that moved it ended with "waiting".
+            activity["completed"] = '"waiting"' in text
+            return tool_call("probe_job", {"case": "hang"}, call_id="c2")
+        last = results[-1] if results else ""
+        if "[running] activity " in last:
+            started = int(last.split("[running] activity ")[1].split()[0])
+            if "completed" not in activity:
+                activity["slow"] = started
+                return event({"content": "waiting"})
+            activity["hang"] = started
+            write = {"operation": "write", "id": started, "chars": "x"}
+            return tool_call("activity", write, call_id="c3")
+        if "takes no input" in last:
+            activity["refused"] = True
+            return event({"content": "left running"})
+        return tool_call("probe_job", {"case": "slow"})
+
+    with Server([route]) as server, web_host(binary, root, home, server.url) as (web, code, _, _):
+        web.pair(code)
+        session = web.create(workspace)
+        web.command("permissions", session, mode="yolo")
+        web.command("submit", session, text="go")
+        for case in ("slow", "hang"):
+            row = web.until(
+                session,
+                lambda value: any(
+                    item.get("kind") == "mcp_task"
+                    and item.get("foreground")
+                    and (item.get("progress") or "").startswith("probe: ")
+                    for item in value["state"]["activities"]
+                ),
+            )
+            labels = [item["label"] for item in row["state"]["activities"]]
+            assert_true("probe/job" in labels, labels)
+            web.command("activity", session, operation="background")
+            web.until(session, lambda _, case=case: case in activity)
+        web.until(session, lambda _: activity.get("refused"))
+        web.until(session, lambda value: value["metadata"]["status"] == "idle")
+        web.command("activity", session, operation="stop", activity_id=activity["hang"])
+        web.until(session, lambda _: "tasks/cancel" in [r["method"] for r in requests("hang")])
+    assert_true(activity["completed"], activity)
+    slow = [row["method"] for row in requests("slow")]
+    assert_true(slow[-1] == "tasks/get" and "tasks/cancel" not in slow, slow)
+    hang = [row["method"] for row in requests("hang")]
+    assert_true(hang.count("tasks/cancel") == 1, hang)
 
 
 def test_mcp_image_reaches_the_model(root, home, *, binary):

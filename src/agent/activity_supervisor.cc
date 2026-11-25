@@ -97,6 +97,8 @@ std::string ActivityKindName(ActivityKind kind) {
       return "detached";
     case ActivityKind::kCommand:
       return "command";
+    case ActivityKind::kMcpTask:
+      return "mcp_task";
   }
   return "";
 }
@@ -274,27 +276,27 @@ void ActivitySupervisor::ReleaseReservation() {
   NotifyLocked();
 }
 
-std::optional<Activity> ActivitySupervisor::RemoveForeground(pid_t pid) {
+std::optional<Activity> ActivitySupervisor::RemoveForeground(int64_t id) {
   std::lock_guard<std::mutex> lock(mutex_);
-  std::optional<Activity> job = TakeForegroundLocked(pid);
+  std::optional<Activity> job = TakeForegroundLocked(id);
   if (job) NotifyLocked();
   return job;
 }
 
 std::optional<Activity> ActivitySupervisor::MoveForegroundToBackground(
-    pid_t pid) {
+    int64_t id) {
   std::lock_guard<std::mutex> lock(mutex_);
-  std::optional<Activity> job = TakeForegroundLocked(pid);
+  std::optional<Activity> job = TakeForegroundLocked(id);
   if (!job) return std::nullopt;
   activities_.push_back(std::move(*job));
   NotifyLocked();
   return activities_.back();
 }
 
-std::optional<Activity> ActivitySupervisor::TakeForegroundLocked(pid_t pid) {
+std::optional<Activity> ActivitySupervisor::TakeForegroundLocked(int64_t id) {
   auto found =
       std::find_if(foreground_.begin(), foreground_.end(),
-                   [pid](const Activity& job) { return job.pid == pid; });
+                   [id](const Activity& job) { return ActivityId(job) == id; });
   if (found == foreground_.end()) return std::nullopt;
   Activity job = std::move(*found);
   foreground_.erase(found);
@@ -577,6 +579,23 @@ bool ActivitySupervisor::WakesSession() const {
   return notify_fd_ >= 0;
 }
 
+void ActivitySupervisor::SetTick(std::function<void()> tick) {
+  std::lock_guard lock(tick_mutex_);
+  tick_ = std::move(tick);
+}
+
+void ActivitySupervisor::Tick() const {
+  std::lock_guard lock(tick_mutex_);
+  if (tick_) tick_();
+}
+
+void ActivitySupervisor::WakeAt(std::chrono::steady_clock::time_point when) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  wake_at_ = std::min(wake_at_, when);
+  StartIoLocked();
+  WakeDescriptor(wake_write_.Get());
+}
+
 void ActivitySupervisor::Wake() {
   int wake_fd = -1;
   {
@@ -632,6 +651,13 @@ void ActivitySupervisor::IoLoop(const std::stop_token& stop) {
       int candidate = PollTimeoutMs(session->exited_at + kTrailingOutputGrace);
       timeout_ms = timeout_ms < 0 ? candidate : std::min(timeout_ms, candidate);
     }
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (wake_at_ != std::chrono::steady_clock::time_point::max()) {
+        const int due = PollTimeoutMs(wake_at_);
+        timeout_ms = timeout_ms < 0 ? due : std::min(timeout_ms, due);
+      }
+    }
     int ready =
         poll(poll_fds.data(), static_cast<nfds_t>(poll_fds.size()), timeout_ms);
     if (ready < 0 && errno != EINTR) continue;
@@ -639,6 +665,13 @@ void ActivitySupervisor::IoLoop(const std::stop_token& stop) {
       DrainDescriptor(wake_read_.Get());
       std::lock_guard<std::mutex> lock(mutex_);
       NotifyLocked(false);
+    }
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (std::chrono::steady_clock::now() >= wake_at_) {
+        wake_at_ = std::chrono::steady_clock::time_point::max();
+        NotifyLocked(false);
+      }
     }
 
     auto now = std::chrono::steady_clock::now();

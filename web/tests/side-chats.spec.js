@@ -321,6 +321,44 @@ test("Merge sums up in view, then the conversation gets one row and answers", as
   await expect(activity).toHaveCount(0);
 });
 
+test("a side chat deleted while it sums up leaves nothing waiting in the conversation", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`/#session=${session.id}`);
+  await online(page);
+  const transcript = page.locator(".transcript").first();
+  await ask(page, "Held summary probe");
+  const { side, activity, toggle } = parts(page);
+  await expect(side).toContainText("Native worker");
+  await side.getByRole("button", { name: "Merge", exact: true }).click();
+  await expect(
+    side.getByRole("button", { name: "Summing up…" }),
+  ).toBeDisabled();
+  const pending = transcript.locator('[data-message-id^="summing-"]');
+  await expect(pending).toHaveCount(1);
+  await pick(page, "Delete side chat…");
+  const dialog = page.getByRole("dialog", { name: "Delete this side chat?" });
+  await expect(dialog).toContainText("The running turn stops first.");
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(side).toHaveCount(0);
+  await expect(toggle).toHaveCount(0);
+  await expect(activity).toHaveCount(0);
+  await expect(pending).toHaveCount(0);
+  await expect(transcript.locator(".merged-row")).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  // Nothing arrives later either: a reload draws the same.
+  await page.reload();
+  await online(page);
+  await expect(transcript).not.toHaveAttribute("aria-busy", "true");
+  await expect(page.locator(".sidebar .session-row")).not.toHaveCount(0);
+  await expect(pending).toHaveCount(0);
+  await expect(transcript.locator(".merged-row")).toHaveCount(0);
+  await expect(activity).toHaveCount(0);
+});
+
 test("a merge that is stopped leaves the side chat as it was and says why", async ({
   page,
   session,

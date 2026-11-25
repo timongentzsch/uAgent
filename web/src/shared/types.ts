@@ -562,6 +562,8 @@ export interface McpServer {
   command: string;
   overrides: boolean;
   tools: number;
+  // What the server serves to this conversation, named `<server>:<path>`.
+  skills: { name: string; description: string }[];
   error?: string;
   log?: string;
 }

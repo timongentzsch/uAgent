@@ -29,6 +29,16 @@ enum class McpStartupState : uint8_t {
   kReady,
   kDiscovering,
   kDiscoveringTools,
+  kDiscoveringSkills,
+};
+
+// A skill a server serves: `name` is `<server>:<path>`; `resources` its
+// verified manifest, [{uri, digest, size}].
+struct McpSkill {
+  std::string name;
+  std::string description;
+  std::string uri;
+  json resources;
 };
 
 struct McpServer;
@@ -57,11 +67,18 @@ struct McpServer {
   bool tools_subscribed = false;
   McpStartupState startup = McpStartupState::kReady;
   int64_t discovery_id = -1;
-  int64_t tools_list_id = -1;
+  int64_t list_id = -1;
   int64_t startup_pages = 0;
+  json startup_listed = json::array();
   json startup_tools = json::array();
   std::string startup_cursor;
   std::set<std::string> startup_cursors;
+  // What it declared at discovery: tools, and skills with resources.
+  bool serves_tools = false;
+  bool serves_skills = false;
+  std::vector<McpSkill> skills;
+  // SKILL.md URIs opened in this conversation, whose files may be read.
+  std::set<std::string> opened_skills;
   // Why a configured server is not running; empty while it runs.
   std::string error;
   // Copies the server's stderr into its bounded log until the pipe closes.

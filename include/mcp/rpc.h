@@ -60,7 +60,9 @@ json McpRpc(McpServer& s, const std::string& method, const json& params,
             std::chrono::steady_clock::time_point deadline =
                 std::chrono::steady_clock::time_point::max());
 
-bool McpValidateDiscovery(const json& discovery, std::string& error);
+// Records whether the server serves skills (extension and resources).
+bool McpValidateDiscovery(McpServer& s, const json& discovery,
+                          std::string& error);
 
 }  // namespace uagent
 

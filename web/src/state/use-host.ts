@@ -171,6 +171,7 @@ export function useHost(
   const subscribed = useRef(false);
   const reading = useRef(false);
   const readCounts = useRef(kept.read.read());
+  const busy = useRef<Record<string, boolean>>({});
   const outgoingRef = useRef(outgoing);
   const localRequests = useRef(new Set<string>());
   subscribed.current = !!catalogue.capabilities.subscribed;
@@ -472,7 +473,14 @@ export function useHost(
           return;
         }
         applyEvent(event);
-        if (event.kind === "turn_status") refreshUserStyle();
+        const active = !!event.metadata?.turn_active;
+        if (
+          event.kind === "turn_status" &&
+          busy.current[event.session_id] !== active
+        ) {
+          busy.current[event.session_id] = active;
+          refreshUserStyle();
+        }
         resume.current = message.lastEventId || resume.current;
       });
     };
@@ -518,10 +526,15 @@ export function useHost(
       revoked.current = false;
       catalogueRef.current = list;
       setCatalogue(list);
+      const listed = new Set(list.sessions.map((item) => item.id));
+      readCounts.current = Object.fromEntries(
+        Object.entries(readCounts.current).filter(([id]) => listed.has(id)),
+      );
+      kept.read.write(readCounts.current);
       setUnread(
         (prior) =>
           new Set([
-            ...prior,
+            ...[...prior].filter((id) => listed.has(id)),
             ...list.sessions
               .filter(
                 (item) =>

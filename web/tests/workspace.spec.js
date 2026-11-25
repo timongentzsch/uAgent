@@ -164,6 +164,22 @@ test("appearance and configuration remain usable at large scales", async ({
   ).toBe(true);
 });
 
+test("read marks of conversations the host no longer lists are dropped", async ({
+  page,
+  session,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("uagent-read", JSON.stringify({ gone: 3 }));
+    localStorage.setItem("uagent-unread", JSON.stringify(["gone"]));
+  });
+  await page.goto(`/#session=${session.id}`);
+  await expect(connected(page)).toBeVisible();
+  const kept = (key) =>
+    page.evaluate((key) => localStorage.getItem(key) ?? "", key);
+  await expect.poll(() => kept("uagent-read")).not.toContain("gone");
+  await expect.poll(() => kept("uagent-unread")).not.toContain("gone");
+});
+
 test("unread completions, background activity and conversation lifecycle", async ({
   page,
   context,

@@ -5,6 +5,7 @@
 ### Fixes
 
 - A `web_fetch` rule for a site no longer matches an address whose query or fragment holds `@` and that site's name; the rule is keyed by the host the fetch goes to. A preview's sheet engine route no longer serves a file outside the engine's folder.
+- The app reads your stylesheet again only when a conversation's turn starts or ends, not on every status update. Read and unread marks of conversations the host no longer lists are dropped from the device.
 
 ## v1.12.0 - 2026-11-24
 

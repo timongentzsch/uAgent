@@ -45,7 +45,10 @@ import { keepFirst, mergeNodes } from "../shared/tree.ts";
 import { maxHistoryNodes } from "../shared/limits.ts";
 import { isAgent } from "../state/attention.ts";
 import { useLatest } from "../shared/use-latest.ts";
-import SideChats, { sideNodes } from "../features/chat/side-answer.tsx";
+import SideChats, {
+  SideChatMenu,
+  sideNodes,
+} from "../features/chat/side-answer.tsx";
 import { SelectionActions } from "../features/chat/selection-actions.tsx";
 import type { useSideConversations } from "./use-side-conversations.ts";
 
@@ -274,7 +277,15 @@ export default function ChatPage({
     () => sessions.filter((item) => item.parent === selected && isAgent(item)),
     [sessions, selected],
   );
-  const participants = useParticipants(nodes, agents);
+  // Its side chats too, so a merged one's row knows whether it still exists.
+  const children = useMemo(
+    () =>
+      sessions.filter(
+        (item) => item.parent === selected || item.side?.parent === selected,
+      ),
+    [sessions, selected],
+  );
+  const participants = useParticipants(nodes, children);
   const latest = useLatest({ side, sideColumn, quote });
   const { list: sideList, starting } = side;
   const showSide = useCallback(
@@ -285,9 +296,27 @@ export default function ChatPage({
     },
     [choose, latest],
   );
+  const detachSide = useCallback(
+    async (item: Session) => {
+      await latest.current.side.detach(item);
+      await choose(item.id);
+    },
+    [choose, latest],
+  );
   const sideRows = useMemo(
-    () => ({ list: sideList, starting, open: showSide }),
-    [sideList, starting, showSide],
+    () => ({
+      list: sideList,
+      starting,
+      open: showSide,
+      menu: (item: Session) => (
+        <SideChatMenu
+          label={`Menu for ${item.title || "Side chat"}`}
+          session={item}
+          detach={detachSide}
+        />
+      ),
+    }),
+    [sideList, starting, showSide, detachSide],
   );
   // A message that opens a side chat shows it as a row of the list does.
   const messageActions = useMemo(
@@ -379,7 +408,7 @@ export default function ChatPage({
     !nodes.some((node) => node.kind === "work" && node.result?.edited)
       ? asked[0].body?.text || ""
       : "";
-  const sideChats = !!session && (side.sides.length > 0 || side.asking) && (
+  const sideChats = !!session && side.column && (
     <SideChats
       sides={side.sides}
       shown={side.shown}
@@ -388,16 +417,14 @@ export default function ChatPage({
       choose={choose}
       show={side.show}
       hide={side.hide}
+      toggle={side.toggle}
       cancel={side.cancel}
       unquote={() => side.quote("")}
       ask={(question, quote) => {
         void side.ask(session, question, quote);
         side.cancel();
       }}
-      detach={async (item) => {
-        await side.detach(item);
-        await choose(item.id);
-      }}
+      detach={detachSide}
     />
   );
   return shown ? (

@@ -360,6 +360,12 @@ export function MenuSub({
   );
 }
 
+// A line between groups of a menu's items.
+export function MenuSeparator() {
+  if (useContext(View).view) return null;
+  return <hr />;
+}
+
 export function MenuItem(
   props: ButtonHTMLAttributes<HTMLButtonElement> & {
     buttonRef?: Ref<HTMLButtonElement>;

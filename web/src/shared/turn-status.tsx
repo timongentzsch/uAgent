@@ -10,6 +10,7 @@ import type {
   Session,
   SessionRef,
 } from "./types.ts";
+import type { ComponentChildren } from "preact";
 import { useRef } from "preact/hooks";
 import {
   ArrowDownToLine,
@@ -38,11 +39,12 @@ import { useElapsed } from "./time.ts";
 import { focusDecision, revealLiveRow } from "./navigation.ts";
 
 // A conversation's side chats: which, those whose first question is still
-// on its way (by its request), and what a row of one does.
+// on its way (by its request), what a row of one does, and its menu.
 export type SideRows = {
   list: Session[];
   starting: string[];
   open: (id: string) => void;
+  menu: (side: Session) => ComponentChildren;
 };
 
 export const active = (item: Activity) =>
@@ -188,6 +190,7 @@ function ActivityButtonView({
                 key={side.id}
                 agent={side}
                 starting={sides.starting.includes(side.side!.request)}
+                menu={sides.menu(side)}
                 online={online}
                 report={report}
                 open={() => {
@@ -455,6 +458,7 @@ function AgentRow({
   name: label,
   status,
   starting = false,
+  menu,
   online,
   report,
   open,
@@ -464,6 +468,7 @@ function AgentRow({
   name?: string;
   status?: string;
   starting?: boolean;
+  menu?: ComponentChildren;
   online: boolean;
   report: Report;
   open: () => void;
@@ -511,6 +516,7 @@ function AgentRow({
           <Square />
         </IconButton>
       )}
+      {menu}
       {!side && (
         <AgentAssignment
           title={title || name}

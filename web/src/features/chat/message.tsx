@@ -1,5 +1,5 @@
 import { MessageText } from "./message-text.tsx";
-import { AgentSender } from "./agent-sender.tsx";
+import { AgentParticipants, AgentSender } from "./agent-sender.tsx";
 import type { ComponentChildren } from "preact";
 import { ArtifactCard } from "./artifact-card.tsx";
 import "../../shared/attachments.css";
@@ -33,19 +33,22 @@ import { TurnFooter } from "./turn-footer.tsx";
 import { SharedFile } from "./bodies.tsx";
 
 // A merged side chat's summary in its conversation: a row that folds as a
-// step does, with the way to the side chat and when it came.
+// step does, with the way to the side chat while it exists, and when it came.
 function MergedRow({
   node,
   title,
+  session,
   show,
   children,
 }: {
   node: Node;
   title: string;
+  session: string;
   show?: () => void;
   children: ComponentChildren;
 }) {
   const [open, setOpen] = useState(true);
+  const exists = useContext(AgentParticipants).sessions.has(session);
   return (
     <article
       class="node merged-row"
@@ -66,7 +69,7 @@ function MergedRow({
             <Time value={node.time} />
           </small>
         </Button>
-        {show && (
+        {show && exists && (
           <Button variant="quiet" size="compact" onClick={show}>
             Show side chat
           </Button>
@@ -239,6 +242,7 @@ function Message({
       <MergedRow
         node={node}
         title={side.title}
+        session={side.session}
         show={open && online ? () => open(side.session) : undefined}
       >
         {words}

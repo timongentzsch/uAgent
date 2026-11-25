@@ -981,6 +981,19 @@ function App({ host, bindResult, reading }: HostAppProps) {
                           ? { open: !!terminalShown, toggle: toggleTerminal }
                           : undefined
                       }
+                      sides={
+                        page === "chat" &&
+                        sideColumn &&
+                        (side.list.length > 0 ||
+                          side.sides.length > 0 ||
+                          !!side.asking)
+                          ? {
+                              count: side.list.length,
+                              shown: side.column,
+                              toggle: side.toggle,
+                            }
+                          : undefined
+                      }
                       filesOpen={!!filesOpen}
                       setFilesOpen={setFilesOpen}
                       outgoing={outgoing}

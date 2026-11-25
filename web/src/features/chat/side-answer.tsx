@@ -1,4 +1,4 @@
-import { ArrowUpRight, CircleAlert, Square, X } from "lucide-preact";
+import { CircleAlert, PanelRightClose, Square, X } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useEffect, useId, useMemo, useRef } from "preact/hooks";
 import {
@@ -7,7 +7,8 @@ import {
   type Node,
   type Session,
 } from "../../shared/types.ts";
-import { Button, IconButton, LoadError, Time } from "../../shared/ui.tsx";
+import { Button, IconButton, Time } from "../../shared/ui.tsx";
+import { Menu, MenuItem, MenuSeparator } from "../../shared/menu.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { Tabs } from "../../shared/tabs.tsx";
 import { useAction } from "../../shared/use-action.ts";
@@ -113,6 +114,50 @@ export function MergeControl({ session }: { session: Session }) {
         Merge
       </Button>
     </>
+  );
+}
+
+// Removes the side chat for good, once the person has confirmed it.
+export function DeleteSideChat({ session }: { session: Session }) {
+  const { online, setModal } = useHostContext();
+  return (
+    <MenuItem
+      disabled={!online}
+      onClick={() => setModal({ type: "delete", session })}
+    >
+      Delete side chat…
+    </MenuItem>
+  );
+}
+
+// What can be done with one side chat; `close` closes its tab, where it has
+// one.
+export function SideChatMenu({
+  label,
+  session,
+  detach,
+  close,
+}: {
+  label: string;
+  session: Session;
+  detach: (session: Session) => Promise<void>;
+  close?: () => void;
+}) {
+  const { online, report } = useHostContext();
+  return (
+    <Menu label={label}>
+      <MenuItem
+        disabled={
+          !online || !!session.merging || statusOf(session, online) !== "idle"
+        }
+        onClick={() => void detach(session).catch(report)}
+      >
+        Open as its own conversation
+      </MenuItem>
+      {close && <MenuItem onClick={close}>Close tab</MenuItem>}
+      <MenuSeparator />
+      <DeleteSideChat session={session} />
+    </Menu>
   );
 }
 
@@ -303,6 +348,7 @@ export default function SideChats({
   choose,
   show,
   hide,
+  toggle,
   cancel,
   unquote,
   ask,
@@ -315,6 +361,7 @@ export default function SideChats({
   choose: (id: string) => Promise<void>;
   show: (key: string) => void;
   hide: (key: string) => void;
+  toggle: () => void;
   cancel: () => void;
   // The new side chat is asked without a quote.
   unquote: () => void;
@@ -322,7 +369,6 @@ export default function SideChats({
   detach: (session: Session) => Promise<void>;
 }) {
   const { online } = useHostContext();
-  const detaching = useAction();
   const side = sides.find((item) => item.key === shown);
   const session = sessions.find((one) => one.id === side?.id);
   const fresh = asking && !asking.to;
@@ -373,24 +419,17 @@ export default function SideChats({
         />
         {session && <MergeControl session={session} />}
         {session && (
-          <IconButton
-            label="Open as a conversation of its own"
-            disabled={
-              !online ||
-              detaching.busy ||
-              !!session.merging ||
-              statusOf(session, online) !== "idle"
-            }
-            onClick={() => void detaching.run(() => detach(session))}
-          >
-            <ArrowUpRight />
-          </IconButton>
+          <SideChatMenu
+            label="This side chat"
+            session={session}
+            detach={detach}
+            close={() => hide(shown)}
+          />
         )}
-        <IconButton label="Hide side chat" onClick={() => hide(shown)}>
-          <X />
+        <IconButton label="Hide side chats" onClick={toggle}>
+          <PanelRightClose />
         </IconButton>
       </header>
-      {!!detaching.error && <LoadError error={detaching.error} />}
       {side ? (
         <SideAnswer
           key={side.key}

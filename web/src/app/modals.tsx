@@ -40,7 +40,7 @@ import Instructions from "../features/settings/instructions.tsx";
 import Tools from "../features/settings/tools.tsx";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
-import { sessionById } from "../state/attention.ts";
+import { isSideChat, sessionById } from "../state/attention.ts";
 import type { Places } from "./use-places.tsx";
 
 const browserDialog = () => import("../features/browser/browser.tsx");
@@ -176,7 +176,9 @@ export default function Modals({
               : modal.type === "delete"
                 ? modal.space
                   ? "Delete workspace?"
-                  : "Delete conversation?"
+                  : isSideChat(modal.session)
+                    ? "Delete this side chat?"
+                    : "Delete conversation?"
                 : "unit" in modal && modal.unit
                   ? `${modal.unit} statistics`
                   : "Conversation statistics"

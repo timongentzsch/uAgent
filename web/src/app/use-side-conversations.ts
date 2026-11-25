@@ -16,10 +16,10 @@ export type Side = {
 };
 // What is being asked about: for the side chat named, or for a new one.
 export type Asking = { to?: string; quote: string };
-// Which of a conversation's side chats this device shows as tabs, and the one
-// in front; "" is the new one being asked. Which side chats there are is the
-// host's.
-type Open = { tabs: string[]; front: string };
+// Which of a conversation's side chats this device shows as tabs, the one
+// in front ("" is the new one being asked), and whether their column is
+// hidden. Which side chats there are is the host's.
+type Open = { tabs: string[]; front: string; hidden?: boolean };
 type Starting = Side & { parent: string };
 
 const CLOSED: Open = { tabs: [], front: "" };
@@ -70,6 +70,7 @@ export function useSideConversations({
       })),
     ...starting.filter((side) => side.parent === selected),
   ];
+  const column = !open.hidden && (sides.length > 0 || !!asking);
   const shown = sides.some((side) => side.key === open.front)
     ? open.front
     : asking && !asking.to
@@ -80,12 +81,19 @@ export function useSideConversations({
       ...current,
       [parent]: to(current[parent] || CLOSED),
     }));
-  // Its tab, in front; `parent` when it is not the open conversation's.
+  // Its tab, in front, in the column shown; `parent` when it is not the open
+  // conversation's.
   const show = (key: string, parent = selected) =>
     change(parent, (open) => ({
       tabs: !key || open.tabs.includes(key) ? open.tabs : [...open.tabs, key],
       front: key,
     }));
+  // The column hides as a whole; shown again with no tab, the newest opens.
+  function toggle() {
+    if (column || sides.length)
+      change(selected, (open) => ({ ...open, hidden: column }));
+    else if (list.length) show(list.at(-1)!.id);
+  }
   const cancel = () => setAsked(undefined);
   // Its tab goes; the side chat stays.
   function hide(key: string) {
@@ -111,7 +119,7 @@ export function useSideConversations({
       ...now,
       { key: request, question, request, parent: parent.id },
     ]);
-    change(parent.id, (open) => ({ ...open, front: request }));
+    change(parent.id, (open) => ({ ...open, front: request, hidden: false }));
     // The side owns an ordinary runtime: tool dispatch, approvals and
     // follow-ups have one implementation, separate from the parent turn.
     return (async () => {
@@ -143,6 +151,7 @@ export function useSideConversations({
       await load(id).catch(() => undefined);
       if (!dropped.current.has(request))
         change(parent.id, (open) => ({
+          ...open,
           tabs: [...open.tabs, id],
           front: open.front === request ? id : open.front,
         }));
@@ -170,8 +179,10 @@ export function useSideConversations({
     starting: requests,
     sides,
     shown,
+    column,
     asking,
     show,
+    toggle,
     hide,
     cancel,
     quote,

@@ -70,10 +70,11 @@ test("btw side chats and their follow-ups stay beside the parent", async ({
   // A column beside the chat.
   expect(layout.left).toBeGreaterThanOrEqual(layout.chat);
   await page.screenshot({ path: testInfo.outputPath("btw.png") });
-  // The arrow makes it a conversation of its own: it leaves the side chats
+  // Its menu makes it a conversation of its own: it leaves the side chats
   // for the list, and keeps the way back.
-  await side
-    .getByRole("button", { name: "Open as a conversation of its own" })
+  await side.getByRole("button", { name: "This side chat" }).click();
+  await page
+    .getByRole("menuitem", { name: "Open as its own conversation" })
     .click();
   await expect(page).not.toHaveURL(new RegExp(`session=${session.id}$`));
   await expect(page.locator(".transcript")).toContainText(
@@ -140,12 +141,13 @@ test("on a phone a side chat is a page of its own, listed in its conversation", 
   await head.getByRole("button", { name: /^‹/ }).click();
   await expect(activity).toContainText("2 side chats");
   await activity.click();
-  // The newest first; an idle one has nothing to end.
+  // The newest first; an idle one has nothing to end, only its menu.
   await expect(rows).toHaveText([
     /Second side question\s*Ready/,
     /Side tool probe\s*Ready/,
   ]);
-  await expect(rows.getByRole("button")).toHaveCount(2);
+  await expect(rows.getByRole("button", { name: /^Stop/ })).toHaveCount(0);
+  await expect(rows.getByRole("button", { name: /^Menu for/ })).toHaveCount(2);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

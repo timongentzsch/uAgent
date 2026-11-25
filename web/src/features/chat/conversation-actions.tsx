@@ -9,6 +9,7 @@ import {
 } from "../../shared/limits.ts";
 import { plural } from "../../shared/quantities.ts";
 import { Actions, Button, LoadError, Input } from "../../shared/ui.tsx";
+import { isSideChat } from "../../state/attention.ts";
 
 // A live one closes first. A closing worker can retire while that spreads,
 // so delete retries until the host has let go of it.
@@ -55,6 +56,7 @@ export default function ConversationActions({
     modal.space?.name || modal.session?.title || modal.terminal?.title || "",
   );
   const { run, busy, error } = useAction();
+  const side = !!modal.session && isSideChat(modal.session);
   return (
     <form
       onSubmit={(event) => {
@@ -114,8 +116,9 @@ export default function ConversationActions({
         </p>
       ) : (
         <p>
-          Delete “{modal.session.title}” and its saved messages and attachments?
-          Files in the folder stay in place. This cannot be undone.{" "}
+          {side
+            ? `“${modal.session.title || "Side chat"}” and its answers are removed for good. What was merged into the conversation stays.`
+            : `Delete “${modal.session.title}” and its saved messages and attachments? Files in the folder stay in place. This cannot be undone.`}{" "}
           {modal.session.generation
             ? modal.session.turn_active
               ? "The running turn stops first."
@@ -133,7 +136,11 @@ export default function ConversationActions({
             !online || busy || (modal.type === "rename" && !title.trim())
           }
         >
-          {modal.type === "rename" ? "Save name" : "Delete permanently"}
+          {modal.type === "rename"
+            ? "Save name"
+            : side
+              ? "Delete"
+              : "Delete permanently"}
         </Button>
       </Actions>
     </form>

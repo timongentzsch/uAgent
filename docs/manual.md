@@ -209,26 +209,32 @@ remove it, and they go before your text when the message is sent. A side
 chat is a `/btw` conversation: it has read the conversation so far,
 answers beside it and leaves it untouched, while a turn runs too. Each question starts a side chat of its own, shown as tabs;
 selecting in a side chat's answer follows up there. They sit in a column
-beside the chat (with Files open, between the chat and Files); X hides a
-tab, and the side chat stays. Where there is no room for the column, on a
-phone or in a narrow window, the input itself asks, marked **Side chat**
-with the quote above it, and the side chat opens as a page of its own,
-with the way back and **Merge** in its header. A side chat belongs to its
-conversation, on every device: it is not in the list of conversations, it
-moves and is deleted with it, and its spend counts toward it. Everywhere,
-a conversation's side chats are counted and listed in its **Activity**
+beside the chat (with Files open, between the chat and Files); the
+**Side chats** button in the conversation's header, with their number,
+shows or hides the whole column, as does the panel button at the
+column's end, and this device remembers which per conversation. The
+side chat in front has a menu (⋯): **Close tab** (the side chat stays),
+**Open as its own conversation**, which makes it an ordinary
+conversation in the list with the way back to where it was asked, and
+**Delete side chat…**, which asks first. Nothing else deletes a side
+chat; what it merged stays in the conversation. Where there is no room
+for the column, on a phone or in a narrow window, the input itself asks,
+marked **Side chat** with the quote above it, and the side chat opens as
+a page of its own, with the way back and **Merge** in its header and the
+same choices in its menu. A side chat belongs to its conversation, on
+every device: it is not in the list of conversations, it moves and is
+deleted with it, and its spend counts toward it. Everywhere, a
+conversation's side chats are counted and listed in its **Activity**
 list under the input, with its commands and agents ("2 side chats"),
-working ones first: a row shows the side chat's tab, or its page. The
-arrow beside **Merge** (in the page's menu on a phone), **Open as a
-conversation of its own**, makes it an ordinary conversation in the list,
-with the way back to where it was asked.
+working ones first: a row shows the side chat's tab, or its page, and
+its ⋯ opens it as its own conversation or deletes it.
 
 **Merge** brings a side chat back: it writes a summary of what it found,
 in view ("Summing up…", and a quiet row in the conversation while it
 does), and the conversation receives that as it does an agent's report
 (data, not instructions; judged in Auto) and answers. There it is one
 row, **Merged side chat**, that folds like a step and holds the summary,
-with **Show side chat**. The side chat stays, saying when it merged, and
+with **Show side chat** while the side chat exists. The side chat stays, saying when it merged, and
 offers Merge again once it has said more; a merge that fails or is
 stopped leaves it as it was and says why. The conversation reads the
 summary, never the side chat, and a report never names a conversation.

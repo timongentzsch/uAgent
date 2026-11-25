@@ -147,7 +147,11 @@ configuration or keys, and `localhost` in a provider means the main. API
 redirects are refused, and requests carrying a key use HTTP(S) only.
 `web_fetch` connects, without credentials, only to public IPv4 or IPv6
 addresses, checked before every connection, redirects included; proxy
-variables are ignored so they cannot bypass that check.
+variables are ignored so they cannot bypass that check. A site rule matches
+the host of the address a call names. The fetch follows a redirect itself
+only on that host, never from https to http or to an address carrying
+credentials, and at most five times; any other target goes back to the
+model, so fetching it is a call of its own, with its own approval and rules.
 
 ### The folder and the processes it starts
 

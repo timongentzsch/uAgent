@@ -5,6 +5,7 @@
 ### Fixes
 
 - A `web_fetch` rule for a site no longer matches an address whose query or fragment holds `@` and that site's name; the rule is keyed by the host the fetch goes to. A preview's sheet engine route no longer serves a file outside the engine's folder.
+- A `web_fetch` allowed for one site no longer follows a redirect to another. It follows redirects itself only on the same host, never from https to http, at most five times; for any other target the model is told the new address, and fetching it asks for approval and checks the site rules again.
 
 ## v1.12.0 - 2026-11-24
 

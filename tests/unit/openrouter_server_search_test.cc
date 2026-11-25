@@ -435,4 +435,30 @@ TEST_CASE(TestOpenRouterServerSearch) {
             .empty());
 }
 
+// A redirect is followed only where the first address's rules hold.
+TEST_CASE(TestRedirectHop) {
+  const std::string first = "https://good.example/a";
+  const auto hop = [&](const std::string& next, int at = 1) {
+    return NextRedirectHop(first, next, at);
+  };
+  CHECK(hop("https://good.example/b") == RedirectHop::kFollow);
+  // A relative Location, as libcurl resolves it against the address.
+  CHECK(hop("https://GOOD.example:443/c?d#e") == RedirectHop::kFollow);
+  CHECK(hop("https://evil.example/a") == RedirectHop::kElsewhere);
+  CHECK(hop("https://evil.example?x@good.example") == RedirectHop::kElsewhere);
+  CHECK(hop("http://good.example/b") == RedirectHop::kElsewhere);
+  CHECK(NextRedirectHop("http://good.example/", "https://good.example/", 1) ==
+        RedirectHop::kFollow);
+  CHECK(hop("https://user@good.example/b") == RedirectHop::kElsewhere);
+  CHECK(hop("https://good.example@evil.example/") == RedirectHop::kElsewhere);
+  CHECK(hop("https://good.example/b", 5) == RedirectHop::kFollow);
+  CHECK(hop("https://good.example/b", 6) == RedirectHop::kTooMany);
+  // The model is told where the page went, as a result it can act on.
+  WebResponse moved;
+  moved.redirect = "https://evil.example/page";
+  const ToolResult told = ReadFetchedPage(first, moved, "call");
+  CHECK(told.Ok());
+  CHECK(told.output.find("fetch that address") != std::string::npos);
+}
+
 }  // namespace uagent

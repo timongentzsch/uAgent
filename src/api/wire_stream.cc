@@ -32,6 +32,11 @@ void AddStreamAnnotation(const json& annotation, ChatResult& result) {
   result.semantic_progress = true;
 }
 
+// The calls a Chat Completions or Responses stream may open: past them, an
+// unindexed fragment's slot search and the Responses replay grow with every
+// event.
+constexpr int64_t kStreamSlots = 256;
+
 // A provider that omits `index` would pile every fragment into slot 0, so
 // slots key on the call id: a known id continues its slot, an unseen id
 // opens the next, an anonymous fragment continues the newest.
@@ -217,9 +222,9 @@ WireStreamDelta DecodeChatCompletionsEvent(
   for (const json& tool_call : event_delta["tool_calls"]) {
     if (!tool_call.is_object()) continue;
     int64_t index = JsonValue(tool_call, "index", int64_t{-1});
-    if (index > std::numeric_limits<int>::max()) continue;
     std::string id = JsonValue(tool_call, "id", "");
     if (index < 0) index = StreamToolSlot(tool_calls, id);
+    if (index >= kStreamSlots) continue;
     ToolCall& target = tool_calls[static_cast<int>(index)];
     if (!id.empty()) MergeStreamIdentity(target.id, id);
     const json* found = JsonObject(tool_call, "function");
@@ -321,6 +326,7 @@ int64_t JsonArraySize(const json& value, const char* key) {
   return array ? static_cast<int64_t>(array->size()) : -1;
 }
 
+// -1 past the slots a response may open.
 int ResponsesSlot(const json& value, ResponsesStreamState& state,
                   const std::map<int, ToolCall>& calls) {
   const std::string* item_id = JsonStringRef(value, "item_id");
@@ -329,8 +335,8 @@ int ResponsesSlot(const json& value, ResponsesStreamState& state,
   }
   const bool named = item_id && !item_id->empty();
   int64_t output_index = JsonValue(value, "output_index", int64_t{-1});
-  if (output_index >= 0 &&
-      output_index <= static_cast<int64_t>(std::numeric_limits<int>::max())) {
+  if (output_index >= kStreamSlots) return -1;
+  if (output_index >= 0) {
     int slot = static_cast<int>(output_index);
     if (named) state.item_slots[*item_id] = slot;
     return slot;
@@ -339,11 +345,13 @@ int ResponsesSlot(const json& value, ResponsesStreamState& state,
     auto found = state.item_slots.find(*item_id);
     if (found != state.item_slots.end()) return found->second;
   }
-  return calls.empty() ? 0 : calls.rbegin()->first + 1;
+  const int next = calls.empty() ? 0 : calls.rbegin()->first + 1;
+  return next < kStreamSlots ? next : -1;
 }
 
 void RecordResponsesReplay(int slot, const json& item,
                            ResponsesStreamState& state, ChatResult& result) {
+  if (slot < 0) return;
   state.replay_items[slot] = item;
   json items = json::array();
   for (const auto& [index, replay] : state.replay_items) {
@@ -443,6 +451,7 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
       type == "response.function_call_arguments.done") {
     delta.tool_arguments = true;
     int slot = ResponsesSlot(value, state, calls);
+    if (slot < 0) return delta;
     ToolCall& call = calls[slot];
     MergeStreamIdentity(call.id, JsonValue(value, "call_id", ""));
     std::string fragment = type.ends_with(".delta")
@@ -464,6 +473,7 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
     if (item_type == "function_call") {
       delta.tool_arguments = true;
       int slot = ResponsesSlot(value, state, calls);
+      if (slot < 0) return delta;
       ToolCall& call = calls[slot];
       MergeStreamIdentity(call.id, JsonValue(*item, "call_id", ""));
       MergeStreamIdentity(call.name, JsonValue(*item, "name", ""));

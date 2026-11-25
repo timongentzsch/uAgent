@@ -73,6 +73,7 @@ function Composer({
   stopped,
   resume,
   agents,
+  reports,
   sides,
   above,
   choose,
@@ -95,6 +96,7 @@ function Composer({
   stopped?: string;
   resume?: () => void;
   agents: Session[];
+  reports: Record<string, string>;
   // The conversation's side chats, for the Activity list.
   sides: SideRows;
   // What sits on the input: Jump to latest stays clear of it.
@@ -261,6 +263,7 @@ function Composer({
       />
       <AgentStack
         agents={agents}
+        reports={reports}
         online={online}
         report={report}
         choose={choose}
@@ -501,6 +504,7 @@ function Composer({
             report={report}
             items={state?.activities || NONE}
             sides={sides}
+            agents={agents}
             running={running}
             started={state?.turn_started_ms}
             pending={!!pending}
@@ -509,6 +513,7 @@ function Composer({
           />
           <AgentsButton
             agents={agents}
+            reports={reports}
             online={online}
             report={report}
             choose={choose}

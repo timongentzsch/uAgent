@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { agentReports } from "../src/shared/message-view.ts";
 import { agentGroups, atWork, statusWord } from "../src/state/attention.ts";
 
 test("one word for where an agent is", () => {
@@ -28,4 +29,22 @@ test("agents group by the call that started them, newest group first", () => {
     [["b", "c"], ["d"], ["a"]],
   );
   assert.equal(groups[0].at, 400);
+});
+
+test("the latest report of each agent is its first line", () => {
+  const node = (session, outcome, text) => ({
+    origin: "agent",
+    agent: { session, title: "x", outcome },
+    body: { text },
+  });
+  assert.deepEqual(
+    agentReports([
+      node("a", "completed", "Old.\nMore"),
+      node("a", "completed", "New.\nMore"),
+      node("b", "needs decision", "Run it?"),
+      node("c", "merged", "Side"),
+      { origin: "message", agent: { session: "d", outcome: "note" } },
+    ]),
+    { a: "New." },
+  );
 });

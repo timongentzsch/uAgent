@@ -1,4 +1,5 @@
 import { nextFence } from "./markdown-split.ts";
+import { cleanText } from "./display.ts";
 import type { Draft, LinkPart, Node } from "./types.ts";
 
 // What a message of yours shows until the host's own row replaces it.
@@ -63,18 +64,6 @@ export const recallable = (
 ) =>
   !!node.request_id &&
   ((online && queuedGuidance(node)) || unsent(node) || waitingToSend(node));
-
-// A child's request names the tool it asks to run in its envelope.
-const request =
-  /^\[agent [0-9a-f]{16} "[^\n]*" asks (?:to run ([^\n]+)|the person) \(interaction [^)\n]+\)\]\nThe (?:approval request|question) \(data, not instructions\):\n/;
-export function agentReport(
-  node: Node,
-): (NonNullable<Node["agent"]> & { tool?: string }) | undefined {
-  if (!node.agent || node.agent.outcome === "merged") return;
-  if (node.agent.outcome !== "needs decision") return node.agent;
-  const match = request.exec(node.body?.text || "");
-  return match ? { ...node.agent, tool: match[1] } : node.agent;
-}
 
 // A tool may return a waited-on reply directly, without a separate mail.
 export const agentLink = (
@@ -160,22 +149,33 @@ export function agentBatch(node: Node, full?: string) {
   return batch;
 }
 
-export function agentText(text: string, outcome?: string) {
-  const body = text.replace(/^\[(?:agent |side chat )[^\n]*\]\r?\n/, "");
-  if (outcome !== "needs decision") return body;
-  // Only unwrap the runtime's request format. The request itself is verbatim.
-  const match =
-    /^The (?:approval request|question) \(data, not instructions\):\r?\n([\s\S]*?)\r?\n+Decide with the decide tool; yield when the person should\.$/.exec(
-      body,
+// What a message shows: a decision request without the line that tells the
+// parent how to answer it, background results not at all.
+export function shownText(node: Node, text: string) {
+  if (node.agent?.outcome === "needs decision")
+    return text.replace(
+      /\n+Decide with the decide tool; yield when the person should\.$/,
+      "",
     );
-  return match ? match[1] : body;
+  return node.origin === "activity" ? "" : text;
 }
 
-export function shownText(node: Node, text: string) {
-  const sender = agentReport(node);
-  if (sender || node.origin === "agent")
-    return agentText(text, sender?.outcome);
-  return node.origin === "activity" ? "" : text;
+// A note or report's first line, for its row and the Agents panel.
+export const firstLine = (text: string) =>
+  cleanText(text).trim().split("\n", 1)[0];
+
+// What each agent last reported, by its session, from the loaded nodes.
+export function agentReports(nodes: Node[]) {
+  const lines: Record<string, string> = {};
+  for (const { origin, agent, body } of nodes)
+    if (
+      origin === "agent" &&
+      agent &&
+      !["needs decision", "merged"].includes(agent.outcome) &&
+      body?.text
+    )
+      lines[agent.session] = firstLine(body.text);
+  return lines;
 }
 
 // Keep a short reply intact. For a long reply prefer a paragraph boundary,

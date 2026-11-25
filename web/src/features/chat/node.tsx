@@ -8,8 +8,7 @@ import {
   useMemo,
   useState,
 } from "preact/hooks";
-import { ChevronRight } from "lucide-preact";
-import { Button, ErrorBoundary } from "../../shared/ui.tsx";
+import { ErrorBoundary } from "../../shared/ui.tsx";
 import { devicePrefs } from "../../shared/device-prefs.ts";
 import { maxRememberedToggles, maxShownSteps } from "../../shared/limits.ts";
 import { capitalize } from "../../shared/display.ts";
@@ -31,8 +30,9 @@ import {
   detailLevels,
 } from "../../shared/tree.ts";
 import type { Node, SessionRef } from "../../shared/types.ts";
-import { agentLink, agentReport } from "../../shared/message-view.ts";
-import { AgentSender } from "./agent-sender.tsx";
+import { agentLink } from "../../shared/message-view.ts";
+import { ReviewDecision } from "./agent-sessions.tsx";
+import { FoldRow } from "./fold-row.tsx";
 import { NodeBody } from "./bodies.tsx";
 import { Refusal, refusalOf } from "./refusal.tsx";
 import { MessageView } from "./message.tsx";
@@ -112,28 +112,17 @@ function Nodes({
   scope,
   ...props
 }: Scope & { items: Item[]; scope: string }) {
-  // Only label the parent when the speaker switches back from a child. Work
-  // rows between their replies do not interrupt the conversation.
-  let afterAgent = false;
-  return list.map((item) => {
-    const node = item.branch.node;
-    const parentReply =
-      afterAgent && node.role === "assistant" && !!node.body?.text;
-    if (parentReply || node.kind === "turn" || node.role === "user")
-      afterAgent = !!agentReport(node);
-    return (
-      <NodeView
-        key={`${scope}${rowKey(node)}`}
-        {...props}
-        {...item}
-        scope={scope}
-        parentReply={parentReply}
-      />
-    );
-  });
+  return list.map((item) => (
+    <NodeView
+      key={`${scope}${rowKey(item.branch.node)}`}
+      {...props}
+      {...item}
+      scope={scope}
+    />
+  ));
 }
 
-type NodeProps = Scope & Item & { scope: string; parentReply: boolean };
+type NodeProps = Scope & Item & { scope: string };
 
 // One node. A message or footer renders again only when its own node (or a
 // footer's answer) changed; a row also when what is under it did.
@@ -145,7 +134,6 @@ class NodeView extends Component<NodeProps> {
         ? next.branch !== prior.branch
         : next.branch.node !== prior.branch.node) ||
       next.answer !== prior.answer ||
-      next.parentReply !== prior.parentReply ||
       next.since !== prior.since ||
       next.online !== prior.online ||
       next.session.id !== prior.session.id ||
@@ -164,7 +152,6 @@ class NodeView extends Component<NodeProps> {
           <MessageView
             node={node}
             answer={props.answer}
-            parentReply={props.parentReply}
             online={props.online}
             session={props.session}
           />
@@ -286,12 +273,9 @@ function RowNode({
             call.parts
               ?.filter(agentLink)
               .map((link) => (
-                <AgentSender
+                <ReviewDecision
                   key={call.id + ":" + link.id}
-                  id={String(link.id)}
-                  title={link.label}
-                  live
-                  waitingOnly
+                  link={link}
                   online={online}
                 />
               )) || [],
@@ -343,18 +327,12 @@ function Kids({
   return (
     <div class="node-kids">
       {earlier.length > 0 && (
-        <Button
-          variant="quiet"
-          class="node-row"
-          aria-expanded="false"
-          data-sequences={sequencesOf(earlier)}
-          onClick={() => setAll(true)}
-        >
-          <ChevronRight class="row-chevron" aria-hidden="true" />
-          <span class="node-headline">
-            … {plural(earlier.length, "earlier step")}
-          </span>
-        </Button>
+        <FoldRow
+          open={false}
+          onToggle={() => setAll(true)}
+          sequences={sequencesOf(earlier)}
+          headline={`… ${plural(earlier.length, "earlier step")}`}
+        />
       )}
       <Nodes
         items={layout(shown, props.level, props.thinking, since)}
@@ -443,32 +421,18 @@ function RowLine({
   const word = [callState === "running" && "Running", outcome, elapsed]
     .filter(Boolean)
     .join(" · ");
-  const content = (
-    <>
-      <ChevronRight class="row-chevron" aria-hidden="true" />
-      <span class="node-headline" title={headline}>
-        {node.state === "failed" && <span class="sr-only">Failed: </span>}
-        {headline}
-      </span>
-      {word && (
-        <small class="node-word" title={word}>
-          {word}
-        </small>
-      )}
-    </>
-  );
-  return openable ? (
-    <Button
-      variant="quiet"
-      class="node-row"
-      aria-expanded={open}
-      aria-controls={open ? bodyId : undefined}
-      onClick={() => toggle()}
+  return (
+    <FoldRow
+      open={open}
+      openable={openable}
+      onToggle={() => toggle()}
       onKeyDown={(event) => arrows(event, open, toggle)}
-    >
-      {content}
-    </Button>
-  ) : (
-    <div class="node-row">{content}</div>
+      bodyId={bodyId}
+      headline={headline}
+      title={headline}
+      facts={word}
+      factsTitle={word}
+      failed={node.state === "failed"}
+    />
   );
 }

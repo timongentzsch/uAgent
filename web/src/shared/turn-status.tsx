@@ -61,6 +61,7 @@ export const active = (item: Activity) =>
 function ActivityButtonView({
   items,
   sides,
+  agents,
   session,
   online,
   connection,
@@ -74,6 +75,7 @@ function ActivityButtonView({
 }: {
   items: Activity[];
   sides: SideRows;
+  agents: Session[];
   session: SessionRef;
   online: boolean;
   connection?: ConnectionPhase;
@@ -128,7 +130,24 @@ function ActivityButtonView({
         {announce}
       </span>
     );
-  const details = [elapsed, ...counts].filter(Boolean).join(" · ");
+  const working = agents.filter(atWork);
+  const waitingFor =
+    !running && working.length
+      ? "Waiting for " +
+        (working.length > 2
+          ? plural(working.length, "agent")
+          : working.map(agentName).join(", "))
+      : "";
+  if (waitingFor && !rows.length && !sides.list.length)
+    return (
+      <>
+        <span class="activity-state">
+          <DataText>{waitingFor}</DataText>
+        </span>
+        {announce}
+      </>
+    );
+  const details = [waitingFor, elapsed, ...counts].filter(Boolean).join(" · ");
   const summary = [running ? "Working" : "", details]
     .filter(Boolean)
     .join(" · ");
@@ -342,6 +361,8 @@ export const AgentStack = updateChecked(function AgentStack(
 
 type AgentsProps = {
   agents: Session[];
+  // What each finished agent last reported, by session: its first line.
+  reports?: Record<string, string>;
   online: boolean;
   report: Report;
   choose: (id: string) => void;
@@ -351,6 +372,7 @@ type AgentsProps = {
 // started it. `children` is what the button shows.
 function AgentsPanel({
   agents,
+  reports,
   online,
   report,
   choose,
@@ -393,6 +415,7 @@ function AgentsPanel({
                     key={agent.id}
                     agent={agent}
                     view="entry"
+                    line={reports?.[agent.id]}
                     online={online}
                     report={report}
                     open={() => {
@@ -433,7 +456,7 @@ export const AgentsButton = updateChecked(function AgentsButton(
   );
 });
 
-const agentName = (agent: Session) =>
+export const agentName = (agent: Session) =>
   cleanText(agent.agent_name || agent.title || "Agent");
 
 // Side chats at work or waiting for you first, then the newest asked.
@@ -452,9 +475,10 @@ const stepOf = (item: Session) =>
 
 // An agent's row (in the stack or the panel) and a side chat's in the
 // Activity list share one component.
-function AgentRow({
+export function AgentRow({
   agent,
   view,
+  line,
   starting = false,
   menu,
   online,
@@ -463,6 +487,8 @@ function AgentRow({
 }: {
   agent: Session;
   view?: "stack" | "entry";
+  // The first line of what a finished agent reported.
+  line?: string;
   starting?: boolean;
   menu?: ComponentChildren;
   online: boolean;
@@ -530,7 +556,9 @@ function AgentRow({
             <small class="agent-figures">
               {[calls, tokens, elapsed, scope].filter(Boolean).join(" · ")}
             </small>
-            {step && <small>{step}</small>}
+            {(step || !atWork(agent)) && (step || line) && (
+              <small>{step || line}</small>
+            )}
           </span>
           <span class="agent-status small muted">{word}</span>
         </Button>

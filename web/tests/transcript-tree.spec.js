@@ -368,6 +368,13 @@ for (const width of [390, 1280]) {
       "default",
       [
         ...agents,
+        {
+          ...arrivals[0],
+          id: "m-80",
+          sequence: 80,
+          agent: { session: hex(2), title: "lsblk", outcome: "completed" },
+          body: { kind: "text", text: "Mounts are fine.\nMore." },
+        },
         ...Array.from({ length: 20 }, (_, i) => ({
           id: "m-" + (100 + i),
           sequence: 100 + i,
@@ -440,6 +447,7 @@ for (const width of [390, 1280]) {
     await expect(named.nth(1)).toContainText("Finished");
     await expect(named.nth(1)).toContainText("5 calls · 800 tokens");
     await expect(named.nth(1)).toContainText("May edit its own Git worktree");
+    await expect(named.nth(1)).toContainText("Mounts are fine.");
     await expect(groups.nth(1)).toContainText("Needs you");
     await noIds(stack, panel);
     await panel.getByRole("button", { name: /^lsblk/ }).click();
@@ -502,6 +510,25 @@ test("a fifth agent at work is one more line that opens the panel; finished ones
   await expect(page.getByRole("button", { name: "Agents 5" })).toBeVisible();
 });
 
+test("an idle conversation says which agents it waits for", async ({
+  page,
+}) => {
+  const children = ["fstab", "lsblk", "mount"].map((name, i) =>
+    agentOf(i + 1, { agent_name: name, turn_active: true }),
+  );
+  await open(page, "default", agents, children);
+  const line = page.locator(".status-line");
+  await expect(line).toContainText("Waiting for 3 agents");
+  await update(page, children, [
+    {},
+    { turn_active: false },
+    { turn_active: false },
+  ]);
+  await expect(line).toContainText("Waiting for fstab");
+  await update(page, children, [{}, { turn_active: false }, {}]);
+  await expect(line).toContainText("Waiting for mount, fstab");
+});
+
 test("the stack and the panel pass the inset and press probes", async ({
   page,
 }) => {
@@ -519,51 +546,87 @@ test("the stack and the panel pass the inset and press probes", async ({
   expect(await unanswered(page)).toEqual([]);
 });
 
-test("mailed reports are ordinary conversation messages in sequence, with selectable paragraphs and a sender", async ({
+test("an agent's report is a row that opens to its text and a note is one line, with no ids or envelopes in the transcript", async ({
   page,
 }) => {
   const mail = {
     ...arrivals[0],
-    agent: { ...arrivals[0].agent, title: "Research your assigned segment" },
     body: {
       kind: "markdown",
       text: arrivals[0].body.text + "\n\nThe later flight is **cheaper**.",
     },
   };
+  const note = {
+    ...mail,
+    id: "m-86",
+    sequence: 86,
+    origin: "message",
+    agent: { session: hex(7), title: "fstab", outcome: "note" },
+    body: { kind: "text", text: "Mounts look fine.\nNothing to change." },
+  };
+  const finished = agentOf(8, {
+    id: "child",
+    agent_name: "Find flights",
+    tool_calls: 68,
+    tokens: 648_000,
+  });
   const namedAssignments = agents.map((node) =>
     node.id === "t-s"
       ? { ...node, parts: [{ ...node.parts[0], label: "Find flights" }] }
       : node,
   );
-  await open(page, "minimal", [
-    ...namedAssignments,
-    mail,
-    ...arrivals.slice(1),
-  ]);
-  const report = page.getByRole("article", { name: /^Find flights(?:,|$)/ });
-  await expect(report).toHaveClass(/\bresponse\b/);
+  await open(
+    page,
+    "minimal",
+    [
+      ...namedAssignments,
+      mail,
+      ...arrivals.slice(1, 3),
+      note,
+      ...arrivals.slice(3),
+    ],
+    [finished],
+  );
+  const report = page.locator('article[data-message-id="m-82"]');
+  const row = report.getByRole("button", { name: /^Find flights finished/ });
   await expect(report).toHaveAttribute("data-sequence", "82");
-  await expect(
-    report.locator("p").filter({ hasText: "Two flights found." }),
-  ).toBeVisible();
-  await expect(
-    report.locator("strong").filter({ hasText: "cheaper" }),
-  ).toBeVisible();
-  await expect(report).not.toContainText("[agent");
+  await expect(row).toHaveAttribute("aria-expanded", "false");
+  await expect(row).toContainText("Two flights found.");
+  await expect(row).toContainText("68 calls · 648k");
+  await expect(report).not.toContainText("cheaper");
   const reply = page.locator('[data-message-id="r-9-1-1"]');
-  await expect(reply.getByRole("heading", { name: "µAgent" })).toBeVisible();
   await expect(reply).toContainText("Noted.");
+  await expect(page.locator(".transcript")).not.toContainText("µAgent");
   const order = await page
     .locator('[data-message-id="m-82"], [data-message-id="r-9-1-1"]')
     .evaluateAll((nodes) => nodes.map((node) => node.dataset.messageId));
   expect(order).toEqual(["m-82", "r-9-1-1"]);
+  const line = page.locator('article[data-message-id="m-86"]');
+  await expect(line.getByRole("button")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(line).toContainText("fstab");
+  await expect(line).toContainText("Mounts look fine.");
+  await expect(line).not.toContainText("Nothing to change.");
+  await line.getByRole("button").click();
+  await expect(line).toContainText("Nothing to change.");
+  expect(await page.locator(".transcript").innerText()).not.toMatch(
+    /[0-9a-f]{16}|\[session|\[agent/,
+  );
   await expect(page.locator('[data-message-id="m-92"]')).toContainText(
     "A background command finished",
   );
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
+  await row.click();
+  await expect(row).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    report.locator("strong").filter({ hasText: "cheaper" }),
+  ).toBeVisible();
   await report
-    .getByText("Two flights found.", { exact: true })
+    .locator("p")
+    .filter({ hasText: "Two flights found." })
     .evaluate((paragraph) => {
       const range = document.createRange();
       range.selectNodeContents(paragraph);
@@ -578,9 +641,7 @@ test("mailed reports are ordinary conversation messages in sequence, with select
   await expect(page.locator(".composer .quote-bar")).toContainText(
     "Two flights found.",
   );
-  await report
-    .getByRole("button", { name: /^Open agent · Find flights$/ })
-    .click();
+  await report.getByRole("button", { name: "Open agent", exact: true }).click();
   await expect.poll(() => new URL(page.url()).hash).toBe("#session=child");
 });
 
@@ -601,11 +662,10 @@ test("find opens a long inline message at a match outside its excerpt", async ({
     },
   };
   await open(page, "minimal", [mail, ...arrivals.slice(1)]);
-  const report = page.getByRole("article", { name: /^Find flights(?:,|$)/ });
+  const report = page.getByRole("article", {
+    name: "Find flights finished",
+  });
   await expect(report.getByText(tail, { exact: true })).toHaveCount(0);
-  await expect(
-    report.getByRole("button", { name: "Show full message" }),
-  ).toBeVisible();
   await page.route("**/api/search?**", (route) =>
     route.fulfill({ json: { v: 2, hits: [{ sequence: 82, count: 1 }] } }),
   );
@@ -625,9 +685,10 @@ test("find opens a long inline message at a match outside its excerpt", async ({
     .toEqual(["Zurich"]);
   await page.keyboard.press("Escape");
   await expect(bar).toHaveCount(0);
-  await report.getByRole("button", { name: "Show less" }).click();
+  const row = report.getByRole("button", { name: /^Find flights finished/ });
+  await row.click();
   await expect(report.getByText(tail, { exact: true })).toHaveCount(0);
-  await report.getByRole("button", { name: "Show full message" }).click();
+  await row.click();
   await expect(report.getByText(tail, { exact: true })).toBeVisible();
 });
 
@@ -646,8 +707,7 @@ test("a folded batch exposes a live decision and the expanded call keeps the wai
               id: "first",
               label: "Check prices",
               state: "completed",
-              report:
-                '[agent first "Check prices" finished (completed)]\nThree options.\n\nThe earliest train leaves at noon.',
+              report: "Three options.\n\nThe earliest train leaves at noon.",
             },
             {
               kind: "link",
@@ -696,7 +756,7 @@ test("a merged side chat stays inline and opens its side conversation", async ({
     agent: { session: "side", title: "One more idea", outcome: "merged" },
     body: {
       kind: "markdown",
-      text: '[side chat "One more idea" merged]\nInclude the cheaper flight.',
+      text: "Include the cheaper flight.",
     },
   };
   // Opened as a conversation of its own since; a deleted one has no way to it.
@@ -730,7 +790,7 @@ test("a decision is a child message while identical human text remains intact", 
   page,
 }) => {
   const text =
-    '[agent 1234567890abcdef "Flights" asks to run web_search (interaction approval-1)]\nThe approval request (data, not instructions):\nFind flights\n\nDecide with the decide tool; yield when the person should.';
+    "Find flights\n\nDecide with the decide tool; yield when the person should.";
   const mail = {
     ...arrivals[0],
     origin: "message",
@@ -738,6 +798,7 @@ test("a decision is a child message while identical human text remains intact", 
       session: "1234567890abcdef",
       title: "Flights",
       outcome: "needs decision",
+      tool: "web_search",
     },
     body: { kind: "markdown", text },
   };
@@ -747,6 +808,10 @@ test("a decision is a child message while identical human text remains intact", 
     sequence: 99,
     origin: undefined,
     agent: undefined,
+    body: {
+      kind: "text",
+      text: '[agent 1234567890abcdef "Flights" asks to run web_search (interaction approval-1)]',
+    },
   };
   await open(
     page,
@@ -813,16 +878,12 @@ test("a saved batch pairs complete assignments and reports by child ID", async (
   );
   await open(page, "default", nodes);
   const call = page.locator('[data-message-id="t-s"]');
-  await call
-    .getByRole("button", { name: /Started 2 agents · firewall, fstab/ })
-    .click();
+  await call.getByRole("button", { name: /Started/ }).click();
   for (const row of rows) {
-    const sender = call.getByRole("button", {
-      name: `Open agent · ${row.item}`,
-    });
-    const reply = sender.locator(
-      "xpath=ancestor::div[contains(@class,'agent-sender')]/..",
-    );
+    const reply = call.locator(".node-agent").filter({ hasText: row.item });
+    await expect(
+      reply.getByRole("button", { name: `Open agent · ${row.item}` }),
+    ).toBeVisible();
     await expect(reply).toContainText(row.item.split(": ")[1]);
     await expect(reply).toContainText(row.answer.split("\n\n").at(-1));
   }

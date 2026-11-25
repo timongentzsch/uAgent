@@ -64,6 +64,14 @@ export function statusWord(item: Session) {
   if (item.error || item.status === "failed") return "Failed";
   return "Finished";
 }
+// Why an agent's turn ended, as the word a note's row says.
+export const outcomeWord = (outcome: string) =>
+  ({
+    completed: "finished",
+    failed: "failed",
+    cancelled: "cancelled",
+    interrupted: "interrupted",
+  })[outcome] || outcome;
 export const atWork = (item: Session) =>
   !["Interrupted", "Failed", "Finished"].includes(statusWord(item));
 

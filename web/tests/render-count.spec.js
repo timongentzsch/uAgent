@@ -267,7 +267,7 @@ test("streaming renders only what changed", async ({ page }) => {
     "Composer",
     "ModelControl",
     "ActivityButtonView",
-    "AgentSender",
+    "ReviewDecision",
   ])
     expect(counts[name] || 0, name).toBe(0);
 

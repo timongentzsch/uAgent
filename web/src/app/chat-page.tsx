@@ -34,9 +34,10 @@ import { SideLayout } from "../shared/side-pane.tsx";
 import Chat, { prepareHistoryNodes } from "../features/chat/chat.tsx";
 import { FindBar, type FindRequest } from "../features/chat/find-bar.tsx";
 import {
-  AgentParticipants,
-  useParticipants,
-} from "../features/chat/agent-sender.tsx";
+  AgentSessions,
+  sessionsById,
+  useAgentReports,
+} from "../features/chat/agent-sessions.tsx";
 import { MessageActions } from "../features/chat/message-actions.ts";
 import { LiveActivities } from "../state/live-activities.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
@@ -285,7 +286,8 @@ export default function ChatPage({
       ),
     [sessions, selected],
   );
-  const participants = useParticipants(nodes, children);
+  const agentSessions = useMemo(() => sessionsById(children), [children]);
+  const reports = useAgentReports(nodes);
   const latest = useLatest({ side, sideColumn, quote });
   const { list: sideList, starting } = side;
   const showSide = useCallback(
@@ -396,6 +398,7 @@ export default function ChatPage({
       stopped={stopped}
       resume={actions.resume}
       agents={agents}
+      reports={reports}
       choose={open}
     />
   );
@@ -459,7 +462,7 @@ export default function ChatPage({
         value={snapshot?.state?.activities || NO_ACTIVITIES}
       >
         <MessageActions.Provider value={messageActions}>
-          <AgentParticipants.Provider value={participants}>
+          <AgentSessions.Provider value={agentSessions}>
             <Chat
               key={selected}
               attachScroller={attachScroller}
@@ -472,7 +475,7 @@ export default function ChatPage({
               session={shown}
               older={older}
             />
-          </AgentParticipants.Provider>
+          </AgentSessions.Provider>
         </MessageActions.Provider>
       </LiveActivities.Provider>
       {session && (

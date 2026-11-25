@@ -30,6 +30,19 @@ div.node-row > .row-chevron {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* An agent's icon and name lead its row. */
+.node-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+}
+/* An agent's icon keeps its size. */
+.node-lead > .lucide {
+  flex: none;
+}
 /* The word takes at most two fifths of the row; the headline keeps the rest. */
 .node-word {
   flex: 0 1 auto;

@@ -21,7 +21,7 @@ import { useHostContext } from "../../state/host-context.ts";
 import { useSnapshots } from "../../state/snapshot-store.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
 import type { Asking, Side } from "../../app/use-side-conversations.ts";
-import { AgentParticipants, useParticipants } from "./agent-sender.tsx";
+import { AgentSessions, sessionsById } from "./agent-sessions.tsx";
 import { Transcript } from "./node.tsx";
 import { MessageActions } from "./message-actions.ts";
 
@@ -262,7 +262,7 @@ function SideAnswer({
   );
   // Follows its end as the transcript does, through the same hook.
   const historyKey = `side:${side.id || ""}`;
-  const participants = useParticipants(nodes, agents);
+  const agentSessions = useMemo(() => sessionsById(agents), [agents]);
   const thread = useTranscriptHistory(() => {}, historyKey, nodes);
   return (
     <>
@@ -276,9 +276,9 @@ function SideAnswer({
           {!nodes.length && <p class="muted">{side.question}</p>}
           {session && (
             <MessageActions.Provider value={{ report, open: choose }}>
-              <AgentParticipants.Provider value={participants}>
+              <AgentSessions.Provider value={agentSessions}>
                 <Transcript nodes={nodes} online={online} session={session} />
-              </AgentParticipants.Provider>
+              </AgentSessions.Provider>
             </MessageActions.Provider>
           )}
           {session &&

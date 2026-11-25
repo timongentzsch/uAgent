@@ -203,12 +203,13 @@ interface MemoryNote {
   key: string;
   automatic: boolean;
 }
-// The agent a report came from: its conversation, its title, and why its
-// turn ended.
+// The agent a note or report came from: its conversation, its name, and why
+// its turn ended; a decision request also names the tool it asks to run.
 interface AgentFacts {
   session: string;
   title: string;
   outcome: string;
+  tool?: string;
 }
 // One node of the transcript tree as the host sends it (include/agent/
 // node.h): `parent` links it into the tree. A node with a headline is a row
@@ -241,8 +242,6 @@ export interface Node {
   // the harness asking a side chat to sum itself up.
   origin?: "tool" | "agent" | "activity" | "message" | "merge";
   agent?: AgentFacts;
-  // Assignment from the retained start call, including when it is on an older page.
-  agent_label?: string;
   request_id?: string;
   incoming?: number;
   streaming?: boolean;

@@ -127,6 +127,8 @@ inline constexpr size_t kAgentNameChars = 16;
 inline constexpr size_t kSystemPromptBytes = KiB(64);
 // The journal's size before compaction, and the longest event line taken.
 inline constexpr size_t kMemoryEventJournalBytes = KiB(256);
+// A conversation's event journal; past it, the newest half is kept.
+inline constexpr size_t kSessionJournalBytes = MiB(4);
 inline constexpr size_t kMemoryEventLineBytes = 4096;
 
 // Owner-only: a shared machine cannot read transcripts or credentials.

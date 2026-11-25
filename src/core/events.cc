@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
-#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
@@ -17,6 +16,7 @@
 
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/turn_status.h"
 
@@ -282,30 +282,12 @@ void SessionJournal::Append(const Event& event,
                  {"time", UtcStamp()},
                  {"type", policy.journal_type},
                  {"data", JournalProjection(event)}};
-  PushLocked(JsonDump(record));
-  ++unflushed_;
-  ++changes_;
-}
-
-void SessionJournal::PushLocked(std::string line) {
-  size_t line_bytes = line.size() + 1;
-  if (line_bytes > kMaxBytes) return;
-  while (!lines_.empty() &&
-         (lines_.size() >= kMaxEvents || bytes_ + line_bytes > kMaxBytes)) {
-    bytes_ -= lines_.front().size() + 1;
-    lines_.pop_front();
-    rewrite_ = true;
-  }
-  bytes_ += line_bytes;
-  lines_.push_back(std::move(line));
+  pending_.push_back(JsonDump(record));
 }
 
 bool SessionJournal::Load(const std::string& path, std::string& error) {
   std::lock_guard lock(mutex_);
-  // A runtime records its start before it knows which file it continues.
-  const std::deque<std::string> early = std::move(lines_);
-  ClearLocked();
-  if (!enabled_) return true;
+  sequence_ = 0;
   std::ifstream input(path);
   if (!input) {
     std::error_code ec;
@@ -314,83 +296,60 @@ bool SessionJournal::Load(const std::string& path, std::string& error) {
       return false;
     }
   }
-  std::string line;
-  while (std::getline(input, line)) {
-    json record = json::parse(line, nullptr, false);
+  const std::string text{std::istreambuf_iterator<char>(input),
+                         std::istreambuf_iterator<char>()};
+  size_t start = 0;
+  for (size_t end; (end = text.find('\n', start)) != std::string::npos;
+       start = end + 1) {
+    json record = json::parse(text.substr(start, end - start), nullptr, false);
     if (!record.is_object() ||
         JsonValue(record, "schema", "") != "uagent.session.event.v1" ||
         !record.contains("type") || !record["type"].is_string() ||
         !record.contains("data") || !record["data"].is_object()) {
-      // An append that was cut short leaves only the last line torn.
-      if (input.peek() == std::char_traits<char>::eof()) break;
       error = "session journal contains an invalid record";
-      ClearLocked();
-      break;
+      continue;
     }
     sequence_ = std::max(sequence_, JsonValue(record, "seq", int64_t{0}));
-    PushLocked(std::move(line));
   }
-  for (const std::string& kept : early) {
-    json record = json::parse(kept);
+  // An append that was cut short leaves an unterminated last line; the next
+  // one would join it.
+  if (start < text.size()) {
+    std::error_code ignored;
+    std::filesystem::resize_file(path, start, ignored);
+  }
+  // A runtime records its start before it knows which file it continues.
+  for (std::string& line : pending_) {
+    json record = json::parse(line);
     record["seq"] = ++sequence_;
-    PushLocked(JsonDump(record));
+    line = JsonDump(record);
   }
-  rewrite_ = true;  // the first flush also drops a torn tail
   return error.empty();
 }
 
-bool SessionJournal::Flush(const std::string& path, std::string& error) const {
+bool SessionJournal::Flush(const std::string& path, std::string& error) {
   std::string content;
-  uint64_t changes = 0;
-  bool append = false;
-  size_t appended = 0;
+  size_t count = 0;
   {
     std::lock_guard lock(mutex_);
-    if (!enabled_ || path.empty()) return true;
-    if (flushed_path_ == path && flushed_changes_ == changes_) return true;
-    changes = changes_;
-    append = flushed_path_ == path && !rewrite_ && unflushed_ > 0 &&
-             unflushed_ <= lines_.size();
-    appended = append ? unflushed_ : lines_.size();
-    content.reserve(bytes_);
-    for (auto line = lines_.end() - static_cast<std::ptrdiff_t>(appended);
-         line != lines_.end(); ++line) {
-      content += *line + '\n';
-    }
+    if (!enabled_ || path.empty() || pending_.empty()) return true;
+    count = pending_.size();
+    for (const std::string& line : pending_) content += line + '\n';
   }
-  // Events the file lacks are appended; it is rewritten only after lines
-  // have left the bounded ring or the journal was just read.
-  if (append) {
-    content.pop_back();
-    if (!AppendPrivateLine(path, content, error)) return false;
-  } else if (!WritePrivateFile(path, content, error)) {
+  content.pop_back();
+  if (!AppendPrivateLine(path, content, error, kSessionJournalBytes)) {
     return false;
   }
+  // Events recorded while this was written wait for the next flush.
   std::lock_guard lock(mutex_);
-  flushed_path_ = path;
-  flushed_changes_ = changes;
-  unflushed_ = 0;
-  rewrite_ = false;
+  pending_.erase(pending_.begin(),
+                 pending_.begin() + static_cast<std::ptrdiff_t>(count));
   return true;
 }
 
 void SessionJournal::SetEnabled(bool enabled) {
   std::lock_guard lock(mutex_);
   enabled_ = enabled;
-  if (!enabled_) ClearLocked();
-}
-
-size_t SessionJournal::Size() const {
-  std::lock_guard lock(mutex_);
-  return lines_.size();
-}
-
-void SessionJournal::ClearLocked() {
-  rewrite_ = true;
-  lines_.clear();
-  bytes_ = 0;
-  sequence_ = 0;
-  ++changes_;
+  if (!enabled_) pending_.clear();
 }
 
 Observability::Observability() : activity_(std::make_unique<TurnStatus>()) {}

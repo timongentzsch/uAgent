@@ -24,8 +24,8 @@ for, or fails against, a running runtime. Attached clients never take it.
 
 The runtime saves when a user message enters the transcript, after each
 input it handles (a turn, a rename, a control request), and at shutdown
-(`Application::SaveSession`). Each save also flushes the journal; one whose
-bytes match the last write is skipped (`SavedFile`).
+(`Application::SaveSession`); one whose bytes match the last write is
+skipped (`SavedFile`). Each save also appends the journal's new events.
 
 ## Data and formats
 
@@ -70,9 +70,9 @@ a projection (`JournalProjection`) of turn, model request, tool, activity,
 capability, configuration and prompt metadata: names, outcomes, digests,
 sizes, usage. A `request.completed` line holds what one model request's
 context came to (`context_tokens`, bytes per part) and what it used.
-It never holds prompts, answers, reasoning or tool output. At most 512
-records and 256 KiB (`SessionJournal::kMaxEvents`, `kMaxBytes`); a flush
-appends, and rewrites only after lines left the ring or a load.
+It never holds prompts, answers, reasoning or tool output. The file covers
+the whole conversation; memory holds only events not yet appended. Past
+4 MiB (`kSessionJournalBytes`) an append first keeps the newest half.
 
 **Archive.** At turn end the tool trace, and on compaction the replaced
 messages, become archive segments (`{turn, reason, messages,
@@ -142,9 +142,9 @@ to find the workspace where it was recorded. [File lookup API](../interfaces/htt
 
 - Crash mid-save: the temporary file is left beside the target and the
   last complete file loads.
-- Torn journal: only a last line that fails to parse is dropped. A corrupt
-  line elsewhere fails the load with a notice; the conversation still loads,
-  since the journal is not replay authority.
+- Torn journal: an unterminated last line is cut off when the journal is
+  read. A corrupt line elsewhere gives a notice at load; the conversation
+  still loads and the journal goes on, since it is not replay authority.
 - Crash after mail was taken but before a save: `RecoverMail` moves `cur/`
   back to `new/` at the next start, and the mail is delivered again.
 - Activities, PTYs and output buffers do not survive the runtime, and a

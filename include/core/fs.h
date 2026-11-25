@@ -215,8 +215,10 @@ class FolderLock {
 std::string ReadFileTail(const std::string& path, int64_t bytes,
                          int64_t* start = nullptr);
 
+// Past `max_bytes` (0: unbounded) the file first keeps its newest whole
+// lines that fit in half of it.
 bool AppendPrivateLine(const std::string& path, const std::string& line,
-                       std::string& error);
+                       std::string& error, size_t max_bytes = 0);
 
 // Atomically drains a small private append-only file. The locked inode is
 // truncated, not unlinked, so earlier openers never append to a lost file.

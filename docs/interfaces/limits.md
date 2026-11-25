@@ -77,6 +77,7 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kAgentNameChars` | `16` |  |
 | `kSystemPromptBytes` | `64 KiB` | The assembled system message, and what an external editor may return. |
 | `kMemoryEventJournalBytes` | `256 KiB` | The journal's size before compaction, and the longest event line taken. |
+| `kSessionJournalBytes` | `4 MiB` | A conversation's event journal; past it, the newest half is kept. |
 | `kMemoryEventLineBytes` | `4096` |  |
 | `kPrivateFileMode` | `0600` | Owner-only: a shared machine cannot read transcripts or credentials. |
 | `kPrivateDirMode` | `0700` |  |

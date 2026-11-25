@@ -45,10 +45,7 @@ Application::Application(AppContext& context)
       saved_revision_(agent_.Revision()),
       config_problem_(context.config_manager.Problem()),
       channel_(context.channel) {
-  agent_.RetainExchanges(Logs(LogKind::kCapture));
-  // Only here: turned on mid-conversation, the journal would rewrite its file
-  // with what it holds from then on.
-  context_.observability.EnableJournal(Logs(LogKind::kJournal));
+  ApplyLogLevel();
   message_subscription_ =
       context_.observability.Subscribe([this](const AppEvent& event) {
         // A suggested place reaches clients with the first event after it was
@@ -116,6 +113,11 @@ int Application::LoadInitialAttachments() {
   return 0;
 }
 
+void Application::ApplyLogLevel() {
+  agent_.RetainExchanges(Logs(LogKind::kCapture));
+  context_.observability.EnableJournal(Logs(LogKind::kJournal));
+}
+
 void Application::ReloadConfigAtTurnBoundary() {
   std::optional<ConfigReload> reload =
       context_.config_manager.Reload(runtime_.config);
@@ -131,7 +133,7 @@ void Application::ReloadConfigAtTurnBoundary() {
   if (!reload) return;
   runtime_.config = reload->active;
   api_.config = reload->active;
-  agent_.RetainExchanges(Logs(LogKind::kCapture));
+  ApplyLogLevel();
   Emit(Event{EventId::kConfigChanged,
              {{"changed", reload->applied},
               {"deferred", reload->deferred},

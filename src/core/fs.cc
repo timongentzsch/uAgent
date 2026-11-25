@@ -621,8 +621,9 @@ bool LockFileExclusive(int fd) {
   return result == 0;
 }
 bool AppendPrivateLine(const std::string& path, const std::string& line,
-                       std::string& error) {
-  Fd fd(open(path.c_str(), O_CREAT | O_WRONLY | O_APPEND, kPrivateFileMode));
+                       std::string& error, size_t max_bytes) {
+  Fd fd(open(path.c_str(), O_CREAT | O_RDWR | O_APPEND | O_CLOEXEC,
+             kPrivateFileMode));
   if (!fd) {
     error = strerror(errno);
     return false;
@@ -632,7 +633,26 @@ bool AppendPrivateLine(const std::string& path, const std::string& line,
     error = strerror(errno);
     return false;
   }
-  const bool written = WriteAll(fd.Get(), line + "\n");
+  const std::string content = line + "\n";
+  struct stat status{};
+  bool written = fstat(fd.Get(), &status) == 0;
+  if (written && max_bytes > 0 &&
+      static_cast<size_t>(status.st_size) + content.size() > max_bytes) {
+    const off_t start =
+        std::max<off_t>(0, status.st_size - static_cast<off_t>(max_bytes / 2));
+    std::string tail(static_cast<size_t>(status.st_size - start), '\0');
+    const ssize_t count = pread(fd.Get(), tail.data(), tail.size(), start);
+    tail.resize(count < 0 ? 0 : static_cast<size_t>(count));
+    // The first line read may be the end of one that does not fit.
+    const size_t first_line = tail.find('\n');
+    if (start > 0) {
+      tail.erase(
+          0, first_line == std::string::npos ? tail.size() : first_line + 1);
+    }
+    written =
+        count >= 0 && ftruncate(fd.Get(), 0) == 0 && WriteAll(fd.Get(), tail);
+  }
+  written = written && WriteAll(fd.Get(), content);
   if (!written) error = strerror(errno);
   flock(fd.Get(), LOCK_UN);
   return written;

@@ -138,9 +138,6 @@ TEST_CASE(TestObservabilityEvents) {
   REQUIRE(notice.presentation.has_value());
   CHECK(notice.presentation->status == PresentationStatus::kWarned);
   CHECK(notice.data["text"] == "interrupted");
-  SessionJournal notices;
-  notices.Append(notice, PolicyFor(notice.id));
-  CHECK(notices.Size() == 1);
 
   // App events carry streaming text themselves, whatever a terminal renders.
   Observability observable;
@@ -298,6 +295,7 @@ TEST_CASE(TestObservabilityEvents) {
                  {"usage", {{"input", 17}}},
                  {"content", "answer-must-not-leak"}}};
   projections.Append(request, PolicyFor(request.id));
+  projections.Append(notice, PolicyFor(notice.id));
   std::string projection_path = (workspace.root / "projections.jsonl").string();
   std::string projection_error;
   CHECK(projections.Flush(projection_path, projection_error));
@@ -314,105 +312,112 @@ TEST_CASE(TestObservabilityEvents) {
   CHECK(projection_text.find("no_change") != std::string::npos);
   CHECK(projection_text.find("response-1:opaque") != std::string::npos);
   CHECK(projection_text.find("provider-private") == std::string::npos);
+  CHECK(projection_text.find("\"type\":\"notice\"") != std::string::npos);
 
+  // The file is the journal: every event is kept, and only events go in.
+  const auto lines_of = [](const std::string& path) {
+    std::ifstream input(path);
+    std::vector<json> records;
+    for (std::string line; std::getline(input, line);) {
+      records.push_back(json::parse(line, nullptr, false));
+    }
+    return records;
+  };
+  const auto turn = [](int64_t number) {
+    return Event{EventId::kTurnCompleted,
+                 {{"turn", number},
+                  {"outcome", "ok"},
+                  {"steps", 1},
+                  {"usage", json::object()}}};
+  };
   SessionJournal journal;
   for (int64_t sequence = 1; sequence <= 600; ++sequence) {
-    Event event{EventId::kTurnCompleted,
-                {{"turn", sequence},
-                 {"outcome", "ok"},
-                 {"steps", 1},
-                 {"usage", json::object()}}};
-    journal.Append(event, PolicyFor(event.id));
+    journal.Append(turn(sequence), PolicyFor(EventId::kTurnCompleted));
   }
-  CHECK(journal.Size() == 512);
   Event transient{EventId::kReasoningDelta};
   transient.text = "private reasoning";
   journal.Append(transient, PolicyFor(transient.id));
-  CHECK(journal.Size() == 512);
-
   std::string path = (workspace.root / "events.jsonl").string();
   std::string error;
   CHECK(journal.Flush(path, error));
   struct stat state{};
   CHECK(stat(path.c_str(), &state) == 0);
   CHECK((state.st_mode & 0777) == 0600);
-  std::ifstream input(path);
-  std::string line;
-  size_t lines = 0;
-  while (std::getline(input, line)) {
-    json record = json::parse(line, nullptr, false);
-    CHECK(record.is_object());
+  std::vector<json> records = lines_of(path);
+  CHECK(records.size() == 600);
+  for (const json& record : records) {
     CHECK(JsonValue(record, "schema", "") == "uagent.session.event.v1");
     CHECK(JsonValue(record, "type", "") == "turn.completed");
     CHECK(JsonDump(record).find("private reasoning") == std::string::npos);
-    ++lines;
   }
-  CHECK(lines == 512);
-  // A save that follows no event leaves the file alone.
+  // A save that follows no event leaves the file alone; a new event is
+  // appended to it.
   CHECK(journal.Flush(path, error));
   struct stat again{};
-  CHECK(stat(path.c_str(), &again) == 0 && again.st_ino == state.st_ino);
-  Event next{EventId::kTurnCompleted,
-             {{"turn", 601},
-              {"outcome", "ok"},
-              {"steps", 1},
-              {"usage", json::object()}}};
-  journal.Append(next, PolicyFor(next.id));
+  CHECK(stat(path.c_str(), &again) == 0 && again.st_size == state.st_size);
+  journal.Append(turn(601), PolicyFor(EventId::kTurnCompleted));
   CHECK(journal.Flush(path, error));
-  CHECK(stat(path.c_str(), &again) == 0 && again.st_ino != state.st_ino);
+  CHECK(stat(path.c_str(), &again) == 0 && again.st_ino == state.st_ino &&
+        again.st_size > state.st_size);
 
+  // A runtime continuing the file numbers its events after the file's, also
+  // those it recorded before it knew the file.
   SessionJournal restored;
+  restored.Append(turn(0), PolicyFor(EventId::kTurnCompleted));
   CHECK(restored.Load(path, error));
-  CHECK(restored.Size() == 512);
-  Event resumed{EventId::kConfigChanged,
-                {{"changed", json::array({"max_steps"})}}};
-  restored.Append(resumed, PolicyFor(resumed.id));
-  std::string resumed_path = (workspace.root / "resumed.jsonl").string();
-  CHECK(restored.Flush(resumed_path, error));
-  std::ifstream resumed_input(resumed_path);
-  json last;
-  while (std::getline(resumed_input, line)) {
-    last = json::parse(line, nullptr, false);
-  }
-  CHECK(JsonValue(last, "seq", int64_t{0}) == 602);
+  restored.Append(turn(0), PolicyFor(EventId::kTurnCompleted));
+  CHECK(restored.Flush(path, error));
+  records = lines_of(path);
+  CHECK(records.size() == 603);
+  CHECK(JsonValue(records[601], "seq", int64_t{0}) == 602);
+  CHECK(JsonValue(records[602], "seq", int64_t{0}) == 603);
 
-  // Below the ring's bound a new event is appended to the same file, and a
-  // line cut short by a crash is dropped when the file is read.
-  SessionJournal growing;
-  const std::string growing_path = (workspace.root / "growing.jsonl").string();
-  growing.Append(next, PolicyFor(next.id));
-  CHECK(growing.Flush(growing_path, error));
-  struct stat first_state{};
-  CHECK(stat(growing_path.c_str(), &first_state) == 0);
-  growing.Append(next, PolicyFor(next.id));
-  CHECK(growing.Flush(growing_path, error));
-  struct stat second_state{};
-  CHECK(stat(growing_path.c_str(), &second_state) == 0);
-  CHECK(second_state.st_ino == first_state.st_ino);
-  CHECK(second_state.st_size > first_state.st_size);
+  // A line cut short by a crash is dropped when the file is read; a corrupt
+  // one elsewhere is reported, and the journal goes on.
   {
-    std::ofstream torn(growing_path, std::ios::app);
+    std::ofstream torn(path, std::ios::app);
     torn << "{\"schema\":\"uagent.session.ev";
   }
   SessionJournal reread;
-  CHECK(reread.Load(growing_path, error));
-  CHECK(reread.Size() == 2);
-  CHECK(reread.Flush(growing_path, error));
-  SessionJournal clean;
-  CHECK(clean.Load(growing_path, error));
-  CHECK(clean.Size() == 2);
-  // What a runtime recorded before it read the file it continues follows
-  // that file's events.
-  SessionJournal continued;
-  continued.Append(next, PolicyFor(next.id));
-  CHECK(continued.Load(growing_path, error));
-  CHECK(continued.Size() == 3);
-  CHECK(continued.Flush(growing_path, error));
-  std::ifstream continued_input(growing_path);
-  while (std::getline(continued_input, line)) {
-    last = json::parse(line, nullptr, false);
+  CHECK(reread.Load(path, error));
+  reread.Append(turn(0), PolicyFor(EventId::kTurnCompleted));
+  CHECK(reread.Flush(path, error));
+  records = lines_of(path);
+  CHECK(records.size() == 604);
+  CHECK(JsonValue(records.back(), "seq", int64_t{0}) == 604);
+  {
+    std::ofstream corrupt(path, std::ios::app);
+    corrupt << "not json\n";
   }
-  CHECK(JsonValue(last, "seq", int64_t{0}) == 3);
+  SessionJournal damaged;
+  CHECK(!damaged.Load(path, error));
+  error.clear();
+  damaged.Append(turn(0), PolicyFor(EventId::kTurnCompleted));
+  CHECK(damaged.Flush(path, error));
+  CHECK(JsonValue(lines_of(path).back(), "seq", int64_t{0}) == 605);
+
+  // Past its cap the file keeps its newest half.
+  SessionJournal large;
+  const std::string large_path = (workspace.root / "large.jsonl").string();
+  int64_t written = 0;
+  while (static_cast<size_t>(written) * 100 <= kSessionJournalBytes) {
+    large.Append(turn(++written), PolicyFor(EventId::kTurnCompleted));
+  }
+  CHECK(large.Flush(large_path, error));
+  large.Append(turn(++written), PolicyFor(EventId::kTurnCompleted));
+  CHECK(large.Flush(large_path, error));
+  CHECK(std::filesystem::file_size(large_path) <=
+        kSessionJournalBytes / 2 + 200);
+  records = lines_of(large_path);
+  CHECK(records.front().is_object());
+  CHECK(JsonValue(records.back(), "seq", int64_t{0}) == written);
+  // Turned off, nothing is recorded or written.
+  large.SetEnabled(false);
+  large.Append(turn(0), PolicyFor(EventId::kTurnCompleted));
+  large.SetEnabled(true);
+  const uintmax_t before = std::filesystem::file_size(large_path);
+  CHECK(large.Flush(large_path, error));
+  CHECK(std::filesystem::file_size(large_path) == before);
 
   DebugSink debug;
   std::string debug_path = (workspace.root / "debug.jsonl").string();
@@ -421,6 +426,7 @@ TEST_CASE(TestObservabilityEvents) {
   debug.Flush();
   debug.Stop();
   std::ifstream debug_input(debug_path);
+  std::string line;
   CHECK(static_cast<bool>(std::getline(debug_input, line)));
   json debug_record = json::parse(line, nullptr, false);
   CHECK(JsonValue(debug_record, "event", "") == "first");

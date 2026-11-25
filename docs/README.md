@@ -52,4 +52,4 @@ Start with the [process diagram and source map](architecture/overview.md). The s
 
 ## Development
 
-[Build and contribute](../CONTRIBUTING.md) · [Tests and CI](testing.md) · [Benchmarks and raw results](../benchmarks/README.md) · [Security](../SECURITY.md)
+[Build and contribute](../CONTRIBUTING.md) · [Tests and CI](testing.md) · [Benchmarks](../benchmarks/README.md) · [Security](../SECURITY.md)

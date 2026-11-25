@@ -78,8 +78,6 @@ Median results from five trials per CLI on Linux ARM64, using a scripted provide
 | µAgent 1.12.0 | 27.4 MiB | 19 ms |
 | Claude Code 2.1.331 | 217.9 MiB | 374 ms |
 
-[Five-agent comparison and raw samples](benchmarks/README.md#footprint-comparison) · [Package sizes and method](benchmarks/README.md#current-measurements)
-
 ## Documentation
 
 [Documentation index](docs/README.md) · [Process architecture](docs/architecture/overview.md) · [Security model](SECURITY.md) · [Build, test and contribute](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)

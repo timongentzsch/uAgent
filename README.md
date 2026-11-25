@@ -1,168 +1,85 @@
 # µAgent
 
-[![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
+[![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-µAgent is a self-hosted coding agent written in C++20. Start a conversation in
-a terminal, follow the same turn from a browser or phone, and inspect the
-files it produces beside the chat. The host can also run tools in a remote
-workspace over SSH.
+µAgent is a coding agent built as one native C++20 executable. A long-lived host process on a machine you control runs every turn. It calls the model endpoint you configure, executes tools on any machine you reach over SSH and in a Chrome that carries your profile, and streams the same session to a terminal, a browser and a phone.
 
-The host stores your transcript, settings and provider credentials. Each turn
-sends conversation context to the model endpoint you configure. µAgent operates
-without its own account or relay service. Network-capable tools and optional
-services can contact other destinations.
-[What leaves the machine](SECURITY.md#what-leaves-the-machine)
+![The µAgent web client with a conversation that ran on a remote host, the agent's Chrome with a saved login filled into GitHub's sign-in page, and a terminal and a phone asked to approve the same command](docs/images/cover.png)
 
-## Install
+The v1.12 clients against a scripted provider. The Chrome frame is the container's browser with one placeholder login saved in its profile. [How the figures are produced](docs/testing.md#web-tests)
+
+## Native remote
+
+A conversation's execution host is fixed when it starts: Local, or a machine added by its SSH name. The agent loop stays on your host and its tools run on the remote.
+
+- **One worker per conversation.** The host keeps one `ssh -M` master per machine and starts a `uagent --execution-worker` for each conversation, agent and terminal, in the remote folder and under that conversation's sandbox preset.
+- **The same tools.** The built-in read, search, edit, patch, exec and terminal tools keep their schemas. The worker classifies each call for approval and executes it in the remote folder. Nothing is mounted or synced, and the Files pane and terminals of the web client work on the remote folder too.
+- **Secrets stay on the host.** Provider requests, API keys, settings, history, memory and approval decisions never cross. The remote holds its changed files and the installed build.
+- **No setup on the remote.** The host sends the payload of its own build over SSH and the remote verifies its SHA-256. It needs Linux with glibc 2.38 on x86-64 or ARM64, or macOS 15 on ARM64, and no compiler, root or download.
+- **A dropped link is recoverable.** Commands and terminals keep running. After a reconnect the host reads each result by its receipt, and an uncertain mutation is never sent twice.
+
+![Your host keeps the agent loop, keys and approvals and sends checked tool calls over a forwarded Unix socket to a worker in the remote folder](docs/images/remote-execution.png)
+
+A remote conversation has no browser tool and no project MCP servers. [Connect a host](docs/operations/remote-access.md#connect-an-ssh-execution-host) · [Execution gateway: protocol, limits and failure modes](docs/architecture/execution-gateway.md) · [What a remote account may do](SECURITY.md)
+
+## Chrome with your profile
+
+On a Linux host the agent drives a real Chrome whose profile persists and can be signed in as you, so it works in your accounts without holding their passwords.
+
+- **A real, persistent profile.** `uagent --browser-service` owns Chrome and its virtual display. The profile keeps cookies and saved logins across restarts. **Sign in to profile** restarts Chrome without the agent's control channel, so you can sign Chrome in to your Google account and turn on sync.
+- **Logins are used, not read.** `fill_saved` has Chrome fill the focused field and returns only its length. `type` refuses password fields. Page text shows `(filled)` or `(empty)` for password, one-time-code and card fields, and a screenshot is taken only once password fields are drawn as dots.
+- **No debugging port.** Chrome is driven over CDP on a pipe and the display is a Unix socket. No CDP or VNC TCP port exists. A managed policy blocks Chrome's password and autofill pages, `view-source:` and DevTools.
+- **You can take over.** Every paired device can watch the live screen. **Take over** gives that device the input and pauses the agent until **Done**. For a sign-in, MFA, captcha or payment the agent asks, and only the device that opened the request can finish it.
+- **Disposable browsers for research.** Browser scheduling can give conversations 1, 2 or 4 research browsers whose profiles are reset between conversations.
+
+[Browser controls](docs/manual.md#the-agents-browser) · [Browser service: processes, protocol and limits](docs/architecture/browser.md) · [What the profile exposes](SECURITY.md#browser-automation)
+
+## One host, every client
+
+![Terminal, browser and phone attach to one host, which reaches model endpoints over HTTPS, remote machines over SSH and Chrome over pipes](docs/images/how-it-works.png)
+
+- **Sessions outlive clients.** Each conversation is a session runtime that calls `setsid()` and keeps running after the client that started it exits, until `runtime.idleMinutes` pass with no turn, queued message, command or attached terminal.
+- **Every client sees the same turn.** The terminal client attaches over a Unix socket; browsers and phones attach through the web host over HTTP, SSE and WebSocket. Replies, tool calls and approval requests stream to all of them, and any of them can answer an approval.
+- **Pairing is explicit.** `uagent --web` prints a link whose code works once, for five minutes. [Pair a device](docs/operations/remote-access.md#pair-a-device) · [Process model](docs/architecture/overview.md)
+
+## Any model
+
+A provider is a base URL with a key. The runtime speaks OpenAI Responses, Chat Completions and Anthropic Messages, so OpenAI, Anthropic, OpenRouter and compatible local endpoints are reached directly. A model is selected per conversation as `[provider/]model[:effort]`; titles, memory extraction, image reading, web search and approval review have their own optional routes. [Models and providers](docs/manual.md#models-and-providers) · [Provider adapters](docs/architecture/providers.md) · [What leaves the machine](SECURITY.md#what-leaves-the-machine)
+
+## Also on board
+
+| Feature | Reference |
+| --- | --- |
+| Workspaces and folders, filed per host | [Conversations](docs/manual.md#conversations) |
+| Approvals, rules, Auto review and the sandbox | [Approvals and plan mode](docs/manual.md#approvals-and-plan-mode) · [Sandbox](docs/architecture/sandbox.md) |
+| Memory, skills and scheduled tasks | [Memory, skills and schedules](docs/manual.md#memory-skills-and-schedules) |
+| Artifacts: documents, decks, sheets, designs and whiteboards, edited beside the conversation | [Artifacts](docs/manual.md#artifacts) |
+| Sub-agents and the to-do list | [Agents and the to-do list](docs/manual.md#agents-and-the-to-do-list) |
+| MCP servers over stdio | [Tools and approvals](docs/architecture/tools.md) |
+| Headless runs with JSON output | [Headless JSON and streaming](docs/interfaces/headless.md) |
+
+## Get started
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | sh
 ```
 
-The installer offers provider setup and, when Docker is available, a container
-installation. Run `uagent` in a project folder to start a terminal session.
-Run `uagent --web` for a local browser pairing link. For a phone, configure
-a reachable origin using the remote-access guide.
-[Release downloads](https://github.com/timongentzsch/uAgent/releases/latest) ·
-[Verify a download](docs/operations/install.md#verify-a-release) ·
-[Install and update](docs/operations/install.md) ·
-[Container](docs/operations/container.md) ·
-[Remote access](docs/operations/remote-access.md)
+Run `uagent` in a project folder to open the terminal client, or `uagent --web` to pair a browser. Release packages support Linux (x86-64 and ARM64) and macOS on Apple silicon. The Chrome service is included in the Linux container. [Install and verify](docs/operations/install.md) · [Container setup](docs/operations/container.md) · [Release downloads](https://github.com/timongentzsch/uAgent/releases/latest)
 
-## In use
+## Footprint
 
-![Files open beside the conversation that produced them](docs/images/files.gif)
+The v1.12 executable includes the agent, terminal client and web UI in **6.8–11.0 MB**. The installation with resources and all SSH workers occupies **19.8–24.0 MB**, depending on platform.
 
-Both demos were recorded on v1.12 using a scripted model and a sample project.
-The second shows a terminal and phone sharing one conversation. [Terminal and phone recording](docs/images/terminal.gif) ·
-[User manual](docs/manual.md)
+Median results from five trials per CLI on Linux ARM64, using a scripted provider that returned a one-word reply.
 
-## Process model
+| CLI | Idle memory | Local CPU per reply |
+| --- | ---: | ---: |
+| µAgent 1.12.0 | 27.4 MiB | 19 ms |
+| Claude Code 2.1.331 | 217.9 MiB | 374 ms |
 
-```mermaid
-flowchart LR
-  term[terminal: uagent] -->|Unix socket| run
-  dev[browser or phone] -->|HTTP, SSE, WebSocket| web[web host: uagent --web]
-  web -->|Unix socket| run[session runtime, one per conversation]
-  head[headless: uagent -p] -->|text, JSON or JSONL| script[calling script]
-  run -->|model request| model[model endpoint]
-  head -->|model request| model
-  run -->|OS sandbox| cmd[commands and MCP servers]
-  run -->|service socket| chrome[browser service: Chrome]
-  run -->|RPC over SSH| gw[execution gateway on another host]
-```
-
-An active interactive conversation has a runtime process that terminal and
-paired browser clients can attach to. A turn continues after a client disconnects. The
-web host serves HTTP directly and can sit behind an HTTPS reverse proxy. The
-gateway executes file, Git, command and terminal operations and holds no
-settings, history or provider keys.
-[Architecture](docs/architecture/overview.md) has each process and channel.
-
-## Properties
-
-| Property | Details |
-| --- | --- |
-| Release size | 6.6–10.9 MB executable, 19.4–23.7 MB unpacked installation across the three 1.11.0 release targets. [Archive measurements](benchmarks/results/packages-2026-11-24.json) |
-| Footprint | µAgent 1.11.0 used 27.3 MiB idle and 20.6 ms local CPU per one-word headless turn in the Linux ARM64 comparison. [Measurement, 2026-11-24](benchmarks/README.md#footprint-comparison) |
-| First request | 13 tools in the fresh 1.11.0 release profile. Compact schemas plus system instructions count to 3,023 tokens with o200k_base. The historical benchmark serialization gives 3,479. [Measurement, 2026-11-24](benchmarks/README.md#current-measurements) |
-| Outside contacts | The v1.11.0 default headless DNS probe observed only the configured endpoint hostname. Tools, SSH and optional services have their own network behavior. [Recorded scenarios](benchmarks/README.md#outside-contacts-and-first-request) |
-| Model APIs | OpenAI Chat Completions, OpenAI Responses, Anthropic Messages |
-| Command sandbox | Seatbelt on macOS and Landlock on Linux. Enabled by default independently of approval mode. [Platform limits and exceptions](SECURITY.md#sandboxing) |
-| Runtime dependencies | libcurl, zlib, the C++ runtime and, on Linux, OpenSSL 3; no language runtime, no plugin loader |
-| Platforms | Linux x86_64 and ARM64 (glibc 2.38 or newer), macOS 15 or newer on Apple silicon |
-| Tests | native unit and integration suites against mock providers, Chromium and WebKit, sanitizers, fuzzers, clang-tidy |
-
-## Compared with other coding agents
-
-![Idle memory and local CPU per scripted CLI turn on Linux ARM64](docs/images/comparison-scripted.svg)
-
-On 2026-11-24, five CLI releases ran against a loopback provider returning
-the same one-word reply, with external networking disabled. All 25 headless
-turns returned that reply. Claude Code 2.1.331 exited each interactive start
-before the idle sample, so its idle memory is unavailable. The chart measures
-local process work. Model inference and response quality require a different
-workload. [Versions, raw samples and method](benchmarks/README.md#footprint-comparison)
-
-| Documented behavior, reviewed 2026-11-24 | µAgent | Claude Code | OpenCode |
-| --- | --- | --- | --- |
-| A phone or second device connects to | a paired, self-hosted web server | Anthropic Remote Control, which stores the transcript while connected | a self-hosted server |
-| OS sandbox for agent commands | enabled by default where supported | off by default | no built-in agent sandbox |
-
-Claude Code also provides cloud sessions, IDE and desktop clients, and
-plugins. OpenCode provides built-in LSP integration and desktop and IDE
-clients. The benchmark report also includes DNS and tool-schema captures for
-the specific versions measured.
-[Method and raw results](benchmarks/README.md#outside-contacts-and-first-request) ·
-[Claude Remote Control](https://code.claude.com/docs/en/remote-control#connection-and-security) ·
-[Claude sandbox defaults](https://code.claude.com/docs/en/sandboxing#what-the-sandbox-restricts) ·
-[OpenCode server](https://opencode.ai/docs/api) ·
-[OpenCode security model](https://github.com/anomalyco/opencode/security/policy)
-
-## Design decisions
-
-- **Provider access stays on the host.** Provider requests, keys, settings, history and
-  the agent loop run on one machine. An SSH target receives a matching gateway
-  bundle, its authentication token and sandbox preset, then the data required
-  for its execution requests.
-  [Execution gateway](docs/architecture/execution-gateway.md)
-- **The web client ships inside the executable.** The terminal, session runtime
-  and web host share the native code. Optional tools run in separate processes.
-  [Overview](docs/architecture/overview.md)
-- **Approvals and sandboxing are separate.** The approval mode determines
-  when a person is asked. The sandbox limits filesystem and network access.
-  Explicit unsandboxed and root commands require approval.
-  [Sandbox](docs/architecture/sandbox.md) · [Security](SECURITY.md)
-- **Settings share one registry.** The same definitions power `/config`,
-  the web settings and the
-  [generated reference](docs/interfaces/settings.md).
-- **Artifact previews run in isolated frames.** Decks, documents, sheets and designs the
-  agent writes render in opaque-origin frames from a capability address; a
-  sheet calculates in a worker of its own page.
-  [Artifacts](docs/architecture/artifacts.md)
-- **A turn survives its client.** A conversation's runtime is a process of
-  its own: a closed tab, a detached terminal or a restarted web host does not
-  end the turn. [Sessions](docs/architecture/sessions.md)
-
-## Interfaces
-
-| Contract | Specification |
-| --- | --- |
-| Flags and slash commands | [interfaces/cli.md](docs/interfaces/cli.md) |
-| Settings, defaults, scopes | [interfaces/settings.md](docs/interfaces/settings.md) |
-| Headless runs: `-p`, `--json`, `--json-stream`, `--control` | [interfaces/headless.md](docs/interfaces/headless.md) |
-| HTTP API, event stream, terminal and viewer sockets | [interfaces/http-api.md](docs/interfaces/http-api.md) |
-| Tool schemas as a model is sent them | [interfaces/tool-schemas.md](docs/interfaces/tool-schemas.md) |
-| Files under `~/.uagent` | [interfaces/on-disk.md](docs/interfaces/on-disk.md) |
-| Artifact formats | [interfaces/artifact-formats.md](docs/interfaces/artifact-formats.md) |
-| Fixed limits | [interfaces/limits.md](docs/interfaces/limits.md) |
-
-## Build and verify
-
-A source build needs a C++20 compiler, CMake 3.21+, libcurl, zlib and OpenSSL 3.
-CI builds the web client with Node.js 24 and npm. Install Python 3 to run the
-native test suite. [Build prerequisites](docs/operations/install.md#platforms-and-the-loader-check)
-
-```sh
-(cd web && npm ci && npm run build)
-cmake --preset debug
-cmake --build --preset debug --parallel
-ctest --preset debug --output-on-failure
-```
-
-With build dependencies installed, the default native suite uses local fixtures
-and loopback connections. It needs no provider API key. [Testing](docs/testing.md) covers the
-browser tests, sanitizers and the behavioural evaluation;
-[Contributing](CONTRIBUTING.md) the conventions and the release.
+[Five-agent comparison and raw samples](benchmarks/README.md#footprint-comparison) · [Package sizes and method](benchmarks/README.md#current-measurements)
 
 ## Documentation
 
-| Section | Holds |
-| --- | --- |
-| [Architecture](docs/architecture/overview.md) | one page per subsystem: turn loop, providers, tools, sandbox, sessions, web host, web client, execution gateway, browser, artifacts, memory and schedules |
-| [Interfaces](docs/README.md#interfaces) | the contracts above |
-| [Operations](docs/README.md#operations) | install, container, remote access, budgets and recovery |
-| [Manual](docs/manual.md) | the terminal and web clients |
-| [Security](SECURITY.md) | threat model and boundaries |
-| [Changelog](CHANGELOG.md) | what changed, by release |
+[Documentation index](docs/README.md) · [Process architecture](docs/architecture/overview.md) · [Security model](SECURITY.md) · [Build, test and contribute](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)

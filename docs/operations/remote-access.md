@@ -113,6 +113,10 @@ port 443, tried twice, and dropped after 60 s; delivery is best effort.
 
 ## Connect an SSH execution host
 
+An execution host runs a conversation's tools in one of its own folders
+while the agent loop, keys and history stay on the main
+([Execution gateway](../architecture/execution-gateway.md)).
+
 The main needs OpenSSH and non-interactive access: the host key already in
 `known_hosts` (`StrictHostKeyChecking=yes`) and a key that works with
 `BatchMode=yes`. Check with `ssh ALIAS true`; install a key with

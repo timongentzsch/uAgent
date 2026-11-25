@@ -18,7 +18,9 @@
 namespace uagent {
 
 json McpRequestMeta(const McpServer& s) {
-  json capabilities = {{"roots", json::object()}};
+  json capabilities = {
+      {"roots", json::object()},
+      {"extensions", {{"io.modelcontextprotocol/tasks", json::object()}}}};
   if (s.elicit) {
     capabilities["elicitation"] = {{"form", json::object()},
                                    {"url", json::object()}};

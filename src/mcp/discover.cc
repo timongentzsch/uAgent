@@ -126,13 +126,6 @@ void McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
       continue;
     }
 
-    std::string task_support = JsonValue(
-        JsonValue(definition, "execution", json::object()), "taskSupport", "");
-    if (task_support == "required") {
-      McpNote(s.name, remote_name + " skipped (requires MCP tasks)");
-      continue;
-    }
-
     json input_schema =
         JsonValue(definition, "inputSchema", json{{"type", "object"}});
     if (!input_schema.is_object()) {

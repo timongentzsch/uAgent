@@ -291,6 +291,9 @@ answer, such as `uagent -p`, does not offer servers this. `mcp.timeout`
 bounds each request to the server, so time spent answering is not counted;
 after you continue from a link, the server may wait for you until the turn
 ends or you stop it.
+A server may also run a tool as a task: the call stays open while the
+server works, the status line shows the server's progress message, and
+stopping the turn asks the server to cancel it.
 
 **Plan mode** only reads: commands run in the `readonly` sandbox and the
 only file it writes is a plan kept beside the conversation's history, never

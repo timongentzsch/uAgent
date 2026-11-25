@@ -80,6 +80,11 @@ inline void WriteFile(const std::filesystem::path& path,
   std::ofstream(path, std::ios::binary) << text;
 }
 
+// An approval answer that refuses every call.
+inline std::string Denied(const Tool&, const json&, int64_t) {
+  return "denied";
+}
+
 // Saves a conversation: `fields` over the least header one has, and an empty
 // state. Returns its path.
 inline std::string WriteSessionFile(const std::filesystem::path& path,

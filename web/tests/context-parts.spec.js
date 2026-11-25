@@ -3,6 +3,7 @@ import {
   expect,
   DEV_SERVER_URL,
   fakeStream,
+  mockHost,
 } from "./fixtures.js";
 
 // The Statistics sheet's Context section on a mocked host. The parts come
@@ -83,44 +84,30 @@ async function open(page, live = PARTS.tokens, parts = PARTS) {
   await page.route("**/sw.js", (route) =>
     route.fulfill({ contentType: "text/javascript", body: "" }),
   );
-  await page.route("**/api/**", async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    const json = (body) => route.fulfill({ json: { v: 2, ...body } });
-    if (path === "/api/sessions")
-      return json({
-        epoch: "context",
-        cursor: 1,
-        sessions: [SESSION],
-        capabilities: {},
-        devices: [],
-        commands: [],
-      });
-    if (path === `/api/sessions/${ID}`)
-      return json({
-        epoch: "context",
-        cursor: 1,
-        metadata: SESSION,
-        state: {
-          phase: "idle",
-          context_tokens: live,
-          context_window: 200000,
-          context_parts: parts,
-          turns: 14,
-          view: { nodes: [] },
-        },
-        pending: null,
-      });
-    if (path === "/api/command") {
+  await mockHost(page, {
+    epoch: "context",
+    cursor: 1,
+    sessions: [SESSION],
+    state: {
+      phase: "idle",
+      context_tokens: live,
+      context_window: 200000,
+      context_parts: parts,
+      turns: 14,
+      view: { nodes: [] },
+    },
+    more: async (route, path, json) => {
+      if (path !== "/api/command") return false;
       const body = route.request().postDataJSON();
       sent.push(body);
       if (body.kind === "tools") await answered;
-      return json({
+      await json({
         request_id: body.request_id,
         accepted: true,
         result: body.kind === "tools" ? CATALOGUE : {},
       });
-    }
-    return route.fulfill({ status: 404, json: { error: "Not in this mock" } });
+      return true;
+    },
   });
   await page.addInitScript(fakeStream, { epoch: "context", cursor: 1 });
   await page.goto(new URL(`/#session=${ID}`, DEV_SERVER_URL).href);

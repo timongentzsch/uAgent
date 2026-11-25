@@ -253,7 +253,6 @@ void Application::Teardown(const char* reason) {
 }
 
 std::string Application::ResumeAtStartup() {
-  std::string previous_path = session_file_;
   std::string source = session_file_;
   if (source.empty() && context_.options.resume_latest) {
     std::vector<SessionInfo> sessions = ListSessions();
@@ -265,7 +264,8 @@ std::string Application::ResumeAtStartup() {
             stderr);
     }
   }
-  if (!source.empty() && PathExists(source)) {
+  const bool resumed = !source.empty() && PathExists(source);
+  if (resumed) {
     // An agent's sandbox, budget and approval default come from its runtime:
     // continued without one it would have none, and lose its role on saving.
     if (!channel_ && !AgentOf(SessionHeader(source)).empty()) {
@@ -276,7 +276,7 @@ std::string Application::ResumeAtStartup() {
     if (!ResumeInto(agent_, source, session_file_, error)) return error;
   }
   AppSession session = Session();
-  LoadSessionJournal(session, previous_path);
+  LoadSessionJournal(session, resumed);
   saved_revision_ = agent_.Revision();
   return {};
 }

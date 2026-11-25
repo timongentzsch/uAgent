@@ -76,6 +76,10 @@ constexpr EventPolicy kPolicies[] = {
      "response.hosted_tool", nullptr, EventRedaction::kPublicProjection},
     {EventId::kResponseFinished, "response.finished", nullptr, nullptr, nullptr,
      EventRedaction::kNone},
+    // One model request as it was sent and answered: what the context held
+    // and what it cost, between a turn's start and its end.
+    {EventId::kRequestCompleted, "request.completed", nullptr, nullptr,
+     "request.completed", EventRedaction::kNone},
     {EventId::kApprovalRequested, "approval.requested", "approval_requested",
      nullptr, nullptr, EventRedaction::kNone},
     {EventId::kApprovalResolved, "approval.resolved", "approval_resolved",
@@ -219,6 +223,11 @@ json JournalProjection(const Event& event) {
             "tokens_per_second", "generation_ms", "generated_tokens", "usage",
             "messages", "context_tokens"});
       break;
+    case EventId::kRequestCompleted:
+      copy({"turn", "step", "request", "purpose", "response_id", "status",
+            "http_status", "duration_ms", "ttft_ms", "messages",
+            "request_bytes", "context_tokens", "context_parts", "usage"});
+      break;
     case EventId::kTurnUsageAmended:
       copy({"turn", "usage", "statistics"});
       break;
@@ -273,7 +282,12 @@ void SessionJournal::Append(const Event& event,
                  {"time", UtcStamp()},
                  {"type", policy.journal_type},
                  {"data", JournalProjection(event)}};
-  std::string line = JsonDump(record);
+  PushLocked(JsonDump(record));
+  ++unflushed_;
+  ++changes_;
+}
+
+void SessionJournal::PushLocked(std::string line) {
   size_t line_bytes = line.size() + 1;
   if (line_bytes > kMaxBytes) return;
   while (!lines_.empty() &&
@@ -284,26 +298,22 @@ void SessionJournal::Append(const Event& event,
   }
   bytes_ += line_bytes;
   lines_.push_back(std::move(line));
-  ++unflushed_;
-  ++changes_;
 }
 
 bool SessionJournal::Load(const std::string& path, std::string& error) {
   std::lock_guard lock(mutex_);
+  // A runtime records its start before it knows which file it continues.
+  const std::deque<std::string> early = std::move(lines_);
   ClearLocked();
   if (!enabled_) return true;
   std::ifstream input(path);
   if (!input) {
     std::error_code ec;
-    if (!std::filesystem::exists(path, ec) && !ec) {
-      return true;
+    if (std::filesystem::exists(path, ec) || ec) {
+      error = "cannot open session journal";
+      return false;
     }
-    error = "cannot open session journal";
-    return false;
   }
-  std::deque<std::string> loaded;
-  size_t bytes = 0;
-  int64_t sequence = 0;
   std::string line;
   while (std::getline(input, line)) {
     json record = json::parse(line, nullptr, false);
@@ -314,24 +324,19 @@ bool SessionJournal::Load(const std::string& path, std::string& error) {
       // An append that was cut short leaves only the last line torn.
       if (input.peek() == std::char_traits<char>::eof()) break;
       error = "session journal contains an invalid record";
-      return false;
+      ClearLocked();
+      break;
     }
-    sequence = std::max(sequence, JsonValue(record, "seq", int64_t{0}));
-    size_t line_bytes = line.size() + 1;
-    if (line_bytes > kMaxBytes) continue;
-    while (!loaded.empty() &&
-           (loaded.size() >= kMaxEvents || bytes + line_bytes > kMaxBytes)) {
-      bytes -= loaded.front().size() + 1;
-      loaded.pop_front();
-    }
-    bytes += line_bytes;
-    loaded.push_back(std::move(line));
+    sequence_ = std::max(sequence_, JsonValue(record, "seq", int64_t{0}));
+    PushLocked(std::move(line));
   }
-  lines_ = std::move(loaded);
-  bytes_ = bytes;
-  sequence_ = sequence;
+  for (const std::string& kept : early) {
+    json record = json::parse(kept);
+    record["seq"] = ++sequence_;
+    PushLocked(JsonDump(record));
+  }
   rewrite_ = true;  // the first flush also drops a torn tail
-  return true;
+  return error.empty();
 }
 
 bool SessionJournal::Flush(const std::string& path, std::string& error) const {

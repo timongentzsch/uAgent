@@ -78,7 +78,7 @@ RuntimeConfig::Values RestoreChoices(const json& settings,
   return taken;
 }
 
-void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
+void LoadSessionJournal(AppSession& session, bool resumed) {
   const json settings = session.ActiveAgent().SessionSettings();
   RuntimeConfig::Values taken =
       RestoreChoices(settings, session.context.config_manager);
@@ -99,9 +99,7 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
   if (!saved_tools.empty()) {
     session.ActiveAgent().RestoreToolSelection(saved_tools);
   }
-  if (session.session_file.empty() || session.session_file == previous_path) {
-    return;
-  }
+  if (!resumed) return;
   session.context.session_rules.Clear();
   std::string error;
   if (!session.context.observability.Journal().Load(

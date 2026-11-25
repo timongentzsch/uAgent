@@ -392,6 +392,23 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     metrics["served_by"] = {{result.served_by, {{"model_calls", 1}}}};
   }
   conversation_.AddStatistics(metrics);
+  Emit(Event{EventId::kRequestCompleted,
+             {{"turn", turn_id_},
+              {"step", step},
+              {"request", request},
+              {"purpose", purpose},
+              {"response_id", result.response_id},
+              {"status", result.interrupted     ? "interrupted"
+                         : result.error.empty() ? "ok"
+                                                : "failed"},
+              {"http_status", result.http_status},
+              {"duration_ms", result.duration_ms},
+              {"ttft_ms", result.first_token_ms},
+              {"messages", messages.size()},
+              {"request_bytes", estimated_bytes},
+              {"context_tokens", ContextTokens(estimated_bytes)},
+              {"context_parts", JsonValue(parts, "parts", json::object())},
+              {"usage", UsageJson(usage)}}});
   if (Debug().Enabled()) DebugModelResponse(request, step, purpose, result);
   return result;
 }

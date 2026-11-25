@@ -290,6 +290,13 @@ TEST_CASE(TestObservabilityEvents) {
                 {"no_change", true},
                 {"activity_terminal", false}}};
   projections.Append(result, PolicyFor(result.id));
+  Event request{EventId::kRequestCompleted,
+                {{"turn", 1},
+                 {"step", 1},
+                 {"context_tokens", 4321},
+                 {"usage", {{"input", 17}}},
+                 {"content", "answer-must-not-leak"}}};
+  projections.Append(request, PolicyFor(request.id));
   std::string projection_path = (workspace.root / "projections.jsonl").string();
   std::string projection_error;
   CHECK(projections.Flush(projection_path, projection_error));
@@ -297,6 +304,9 @@ TEST_CASE(TestObservabilityEvents) {
   std::string projection_text{std::istreambuf_iterator<char>(projection_input),
                               std::istreambuf_iterator<char>()};
   CHECK(projection_text.find("fixture-build") != std::string::npos);
+  CHECK(projection_text.find("request.completed") != std::string::npos);
+  CHECK(projection_text.find("4321") != std::string::npos);
+  CHECK(projection_text.find("answer-must-not-leak") == std::string::npos);
   CHECK(projection_text.find("secret-must-not-leak") == std::string::npos);
   CHECK(projection_text.find("schema.type") != std::string::npos);
   CHECK(projection_text.find("activity_operation") != std::string::npos);
@@ -390,6 +400,18 @@ TEST_CASE(TestObservabilityEvents) {
   SessionJournal clean;
   CHECK(clean.Load(growing_path, error));
   CHECK(clean.Size() == 2);
+  // What a runtime recorded before it read the file it continues follows
+  // that file's events.
+  SessionJournal continued;
+  continued.Append(next, PolicyFor(next.id));
+  CHECK(continued.Load(growing_path, error));
+  CHECK(continued.Size() == 3);
+  CHECK(continued.Flush(growing_path, error));
+  std::ifstream continued_input(growing_path);
+  while (std::getline(continued_input, line)) {
+    last = json::parse(line, nullptr, false);
+  }
+  CHECK(JsonValue(last, "seq", int64_t{0}) == 3);
 
   DebugSink debug;
   std::string debug_path = (workspace.root / "debug.jsonl").string();

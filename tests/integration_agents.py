@@ -517,6 +517,22 @@ def test_agent_inherits_yolo_and_keeps_its_chosen_mode_after_restart(root, home,
             state["release"].set()
             process.kill()
         assert_true(state["modes"] == ["yolo", "ask"], state["modes"])
+        # Its second runtime continued the journal its first one wrote.
+        (agent,) = agent_files(home)
+        journal = agent.with_name(agent.name + ".events.jsonl")
+
+        def events():
+            return [json.loads(line) for line in journal.read_text().splitlines()]
+
+        wait_until(
+            lambda: [e["type"] for e in events()].count("turn.completed") == 2,
+            "the journal lost a turn",
+        )
+        kinds = [e["type"] for e in events()]
+        assert_true(kinds.count("session.ready") == 2, kinds)
+        assert_true([e["seq"] for e in events()] == list(range(1, len(kinds) + 1)), events())
+        request = next(e["data"] for e in events() if e["type"] == "request.completed")
+        assert_true(request["context_tokens"] > 0 and "usage" in request, request)
 
 
 def test_readonly_yolo_children_can_research_without_parent_decisions(root, home, *, binary):

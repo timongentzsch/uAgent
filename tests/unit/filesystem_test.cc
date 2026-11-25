@@ -212,6 +212,33 @@ TEST_CASE(TestFileTools) {
   CHECK(tail.hint == "[" + ten.string() + " lines 8-10 of 10]");
   CHECK(ToolReadFile(ten.string(), -3, 1).output == "8\n");
   CHECK(ToolReadFile(ten.string(), -30, 2).output == "1\n2\n");
+  // A notebook reads as its cells, with text outputs and rich ones named.
+  fs::path notebook = root / "analysis.ipynb";
+  CHECK(ToolWriteFile(notebook.string(), R"json({"cells":[
+    {"cell_type":"markdown","source":["# Title\n","notes"]},
+    {"cell_type":"code","source":"print(1)",
+     "outputs":[{"output_type":"stream","name":"stdout","text":["1\n"]}]},
+    {"cell_type":"code","source":"1/0","outputs":[{"output_type":"error",
+     "ename":"ZeroDivisionError","evalue":"division by zero",
+     "traceback":["..."]}]},
+    {"cell_type":"code","source":"plot()","outputs":[
+     {"output_type":"display_data","data":{"image/png":"iVBOR",
+      "text/plain":["<Figure>"]}}]}],
+    "metadata":{},"nbformat":4,"nbformat_minor":5})json")
+            .Ok());
+  const ToolResult cells = ToolReadFile(notebook.string(), 1, 0);
+  CHECK(cells.output ==
+        "[cell 1 markdown]\n# Title\nnotes\n"
+        "[cell 2 code]\nprint(1)\n[output]\n1\n"
+        "[cell 3 code]\n1/0\n[error] ZeroDivisionError: division by zero\n"
+        "[cell 4 code]\nplot()\n[image/png output]\n[output]\n<Figure>\n");
+  CHECK(cells.hint == "[" + notebook.string() + " cells 1-4 of 4]");
+  const ToolResult last_cell = ToolReadFile(notebook.string(), -1, 0);
+  CHECK(last_cell.output.starts_with("[cell 4 code]"));
+  CHECK(ToolReadFile(notebook.string(), 2, 1).hint ==
+        "[" + notebook.string() + " cells 2-2; more available]");
+  CHECK(ToolWriteFile(notebook.string(), "{not json\n").Ok());
+  CHECK(ToolReadFile(notebook.string(), 1, 0).output == "{not json\n");
   // UTF-16 with a byte-order mark and Latin-1 are decoded; a UTF-8 mark is
   // skipped.
   fs::path encoded = root / "encoded.txt";

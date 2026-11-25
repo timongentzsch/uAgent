@@ -258,12 +258,103 @@ class FileLines {
   size_t end_ = 0;
 };
 
+// A notebook field that is a string or a list of them, as one string.
+std::string NotebookText(const json& owner, const char* key) {
+  const json value = JsonValue(owner, key, json());
+  if (value.is_string()) return value.get<std::string>();
+  std::string text;
+  for (const json& part : value.is_array() ? value : json::array()) {
+    if (part.is_string()) text += part.get<std::string>();
+  }
+  return text;
+}
+
+// A cell's source and its text outputs; rich outputs are only named.
+std::string NotebookCell(const json& cell, int64_t number) {
+  std::string text = "[cell " + std::to_string(number) + " " +
+                     JsonValue(cell, "cell_type", "") + "]\n";
+  const auto add = [&text](const std::string& part) {
+    if (part.empty()) return;
+    text += part;
+    if (text.back() != '\n') text += '\n';
+  };
+  add(NotebookText(cell, "source"));
+  for (const json& output : JsonValue(cell, "outputs", json::array())) {
+    const std::string type = JsonValue(output, "output_type", "");
+    if (type == "stream") add("[output]\n" + NotebookText(output, "text"));
+    if (type == "error") {
+      add("[error] " + JsonValue(output, "ename", "") + ": " +
+          JsonValue(output, "evalue", ""));
+    }
+    const json* data = JsonObject(output, "data");
+    if (!data) continue;
+    for (const auto& item : data->items()) {
+      add(item.key() == "text/plain"
+              ? "[output]\n" + NotebookText(*data, "text/plain")
+              : "[" + item.key() + " output]");
+    }
+  }
+  return text;
+}
+
+// A notebook's cells from `offset` (negative: the last cells); nullopt for a
+// file that is not one.
+std::optional<ToolResult> ReadNotebook(const std::string& path, int64_t offset,
+                                       int64_t limit) {
+  const json notebook =
+      json::parse(ReadFile(path, EditFileBytes()).value_or(""), nullptr, false);
+  const json* cells = JsonArray(notebook, "cells");
+  if (!cells) return std::nullopt;
+  const auto total = static_cast<int64_t>(cells->size());
+  if (total == 0) return ListResult("(empty notebook)", 0, "cell");
+  if (offset < 0) offset = std::max<int64_t>(1, total + offset + 1);
+  if (offset < 1) offset = 1;
+  if (offset > total) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "offset " + std::to_string(offset) +
+                           " is beyond the last cell (" +
+                           std::to_string(total) + ")");
+  }
+  if (limit <= 0) limit = total;
+  const size_t budget = ReadFileBytes();
+  std::string out;
+  int64_t last = offset - 1;
+  bool cut = false;
+  while (last < total && last - offset + 1 < limit) {
+    std::string cell =
+        NotebookCell((*cells)[static_cast<size_t>(last)], last + 1);
+    if (cell.size() > budget - out.size()) {
+      if (out.empty()) {
+        out = Utf8Prefix(std::move(cell), budget);
+        ++last;
+        cut = true;
+      }
+      break;
+    }
+    out += cell;
+    ++last;
+  }
+  ToolResult result = ListResult(std::move(out), last - offset + 1, "cell");
+  result.hint = "[" + path + " cells " + std::to_string(offset) + "-" +
+                std::to_string(last) +
+                (cut            ? "; cell cut at the output byte limit"
+                 : last < total ? "; more available"
+                                : " of " + std::to_string(total)) +
+                "]";
+  return result;
+}
+
 }  // namespace
 
 ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
                         const std::string& call_id) {
   if (auto invalid = ValidatePathTarget(path, PathTarget::kReadableFile)) {
     return std::move(*invalid);
+  }
+  if (path.ends_with(".ipynb")) {
+    if (auto notebook = ReadNotebook(path, offset, limit)) {
+      return std::move(*notebook);
+    }
   }
   errno = 0;
   std::ifstream f(path);

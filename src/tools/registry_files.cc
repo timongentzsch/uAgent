@@ -79,11 +79,11 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
   Tool& read = path_tool(MakeTool(
       "read_path",
       "Read text/ranges, list directories, or add images/documents to model "
-      "context. Omit ranges for media. Use grep for unknown "
-      "paths or symbols. Reread only after changes when current text matters.",
+      "context. Use grep for unknown paths or symbols. Reread only after "
+      "changes when current text matters.",
       json::parse(R"json({"type":"object","properties":{
                     "path":{"type":"string"},
-                    "offset":{"type":"integer","description":"first line or entry (default 1)"},
+                    "offset":{"type":"integer","description":"first line or entry (default 1); -N: last N lines"},
                     "limit":{"type":"integer","description":"lines or entries"}},
                     "required":["path"]})json"),
       [workspace](const json& a, const ToolContext& context) {
@@ -95,8 +95,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
           return ToolListDir(path, offset, limit,
                              !PathApprovalRequired(path, workspace));
         }
-        return ToolReadFile(path, offset > 0 ? offset : 1, limit,
-                            context.call_id);
+        return ToolReadFile(path, offset, limit, context.call_id);
       }));
   reads_only(read);
   read.parallel_safe = true;

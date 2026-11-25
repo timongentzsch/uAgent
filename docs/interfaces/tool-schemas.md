@@ -8,12 +8,12 @@ Each built-in tool as a model is sent it: when it is offered, whether calls of i
 
 Offered: always. Parallel: yes.
 
-Read text/ranges, list directories, or add images/documents to model context. Omit ranges for media. Use grep for unknown paths or symbols. Reread only after changes when current text matters.
+Read text/ranges, list directories, or add images/documents to model context. Use grep for unknown paths or symbols. Reread only after changes when current text matters.
 
 | Parameter | Type | Required | What |
 | --- | --- | --- | --- |
 | `limit` | integer |  | lines or entries |
-| `offset` | integer |  | first line or entry (default 1) |
+| `offset` | integer |  | first line or entry (default 1); -N: last N lines |
 | `path` | string | yes |  |
 
 ## write_file

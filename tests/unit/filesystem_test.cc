@@ -22,6 +22,7 @@
 #include "include/core/settings_store.h"
 #include "include/core/signals.h"
 #include "include/core/term.h"
+#include "include/media/attachments.h"
 #include "include/tools/files.h"
 #include "include/tools/patch.h"
 #include "include/tools/registry.h"
@@ -183,13 +184,57 @@ TEST_CASE(TestFileTools) {
         second.parts[0]["label"] == "Line 2 of 2");
   CHECK(!second.parts[0].contains("text"));
   CHECK(second.output == "two\n" && second.body_kind == "fields");
-  // A media read rejects line ranges instead of silently ignoring them.
+  // Models send a range on every call; on media it is ignored.
+  fs::path image = root / "tiny.png";
+  std::string png;
+  CHECK(
+      Base64Decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP"
+                   "8/x8AAwMCAO+a5WQAAAAASUVORK5CYII=",
+                   png, 1024));
+  CHECK(ToolWriteFile(image.string(), png).Ok());
+  CHECK(ToolReadFile(image.string(), 1, 1).output.starts_with("attached "));
+  CHECK(Attachments().Take().size() == 1);
   fs::path binary_file = root / "payload.bin";
   CHECK(ToolWriteFile(binary_file.string(), std::string("PNG\x89\0\x1f", 6))
             .output.starts_with("wrote "));
   ToolResult binary_read = ToolReadFile(binary_file.string(), 1, 1);
-  CHECK(!binary_read.Ok());
-  CHECK(binary_read.output.find("omit offset and limit") != std::string::npos);
+  CHECK(!binary_read.read_range && binary_read.output.find("PNG") != 0);
+  Attachments().Take();
+  // A negative offset reads the last lines.
+  fs::path ten = root / "ten.txt";
+  std::string ten_text;
+  for (int line = 1; line <= 10; ++line) {
+    ten_text += std::to_string(line) + "\n";
+  }
+  CHECK(ToolWriteFile(ten.string(), ten_text).Ok());
+  const ToolResult tail = ToolReadFile(ten.string(), -3, 0);
+  CHECK(tail.output == "8\n9\n10\n");
+  CHECK(tail.hint == "[" + ten.string() + " lines 8-10 of 10]");
+  CHECK(ToolReadFile(ten.string(), -3, 1).output == "8\n");
+  CHECK(ToolReadFile(ten.string(), -30, 2).output == "1\n2\n");
+  // UTF-16 with a byte-order mark and Latin-1 are decoded; a UTF-8 mark is
+  // skipped.
+  fs::path encoded = root / "encoded.txt";
+  CHECK(ToolWriteFile(encoded.string(),
+                      std::string("\xFF\xFEh\0\xE9\0\n\0=\xD8\0\xDE\n\0", 14))
+            .Ok());
+  ToolResult utf16 = ToolReadFile(encoded.string(), 1, 0);
+  CHECK(utf16.output == "h\xC3\xA9\n\xF0\x9F\x98\x80\n");
+  CHECK(utf16.hint.ends_with("of 2; decoded from UTF-16]"));
+  CHECK(ToolWriteFile(encoded.string(), std::string("\xFE\xFF\0h\0\xE9\0\n", 8))
+            .Ok());
+  CHECK(ToolReadFile(encoded.string(), -1, 0).output == "h\xC3\xA9\n");
+  CHECK(ToolWriteFile(encoded.string(),
+                      "\xEF\xBB\xBF"
+                      "caf\xC3\xA9\n")
+            .Ok());
+  ToolResult utf8 = ToolReadFile(encoded.string(), 1, 0);
+  CHECK(utf8.output == "caf\xC3\xA9\n" &&
+        utf8.hint.find("decoded") == std::string::npos);
+  CHECK(ToolWriteFile(encoded.string(), "caf\xE9\n").Ok());
+  ToolResult latin1 = ToolReadFile(encoded.string(), 1, 0);
+  CHECK(latin1.output == "caf\xC3\xA9\n");
+  CHECK(latin1.hint.ends_with("; decoded from Latin-1]"));
   fs::path long_line = root / "long-line.txt";
   CHECK(ToolWriteFile(long_line.string(), std::string(size_t{40} * 1024, 'x'))
             .output.starts_with("wrote "));

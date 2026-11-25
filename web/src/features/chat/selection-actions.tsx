@@ -25,6 +25,34 @@ type Picked = {
   right: number;
 };
 
+// A formula as it was written: drawn, its own text is the formula twice,
+// once for the eye and once for a screen reader, a line per symbol.
+const tex = (math: Element) => {
+  const fence = math.closest(".katex-display") ? "$$" : "$";
+  const source = math.querySelector("annotation")?.textContent?.trim() ?? "";
+  return `${fence}${source}${fence}`;
+};
+
+// What a selection says, its formulas as TeX.
+function said(selection: Selection, range: Range, within: HTMLElement) {
+  const maths = [...within.querySelectorAll(".katex")].filter((math) =>
+    range.intersectsNode(math),
+  );
+  if (!maths.length) return selection.toString();
+  // Laid out, though not shown, so that its blocks keep their line breaks.
+  const copy = document.createElement("div");
+  copy.className = "sr-only";
+  copy.append(range.cloneContents());
+  const copies = [...copy.querySelectorAll(".katex")];
+  // A selection inside one formula copies none of its frame.
+  if (!copies.length) return tex(maths[0]);
+  copies.forEach((math, at) => math.replaceWith(tex(maths[at])));
+  within.append(copy);
+  const text = copy.innerText;
+  copy.remove();
+  return text;
+}
+
 // What is selected inside one transcript: the conversation's or a side
 // chat's, which is then named.
 function read(): Picked | undefined {
@@ -35,7 +63,7 @@ function read(): Picked | undefined {
   const within = (
     node instanceof Element ? node : node.parentElement
   )?.closest<HTMLElement>(".transcript, .side-transcript");
-  const text = selection.toString().trim();
+  const text = within ? said(selection, range, within).trim() : "";
   // A selection that ends at the start of the next block reports an empty
   // box there, which is not where its text ends.
   const boxes = [...range.getClientRects()].filter((box) => box.width);

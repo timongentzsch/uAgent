@@ -52,3 +52,38 @@ export const shownSessions = (
       item.id === selected ||
       statusOf(item, online) !== "idle",
   );
+
+// The word for where a session is, wherever it is shown: an agent's row, the
+// Agents panel.
+export function statusWord(item: Session) {
+  if (item.needs_you) return "Needs you";
+  if (item.status === "waiting") return "Waiting";
+  if (item.status === "starting") return "Starting";
+  if (item.turn_active || item.status === "running") return "Working";
+  if (item.status === "interrupted") return "Interrupted";
+  if (item.error || item.status === "failed") return "Failed";
+  return "Finished";
+}
+export const atWork = (item: Session) =>
+  !["Interrupted", "Failed", "Finished"].includes(statusWord(item));
+
+// Agents started by one call, newest group first. A group starts when its
+// first agent's turn did, or, with none known, when it last changed.
+export function agentGroups(agents: Session[]) {
+  const groups = new Map<string, Session[]>();
+  for (const agent of agents) {
+    const call = agent.agent_call || agent.id;
+    groups.set(call, [...(groups.get(call) || []), agent]);
+  }
+  return [...groups.values()]
+    .map((group) => {
+      const turns = group.map((a) => a.turn_started_ms).filter(Boolean);
+      return {
+        agents: group,
+        at: turns.length
+          ? Math.min(...(turns as number[]))
+          : Math.max(...group.map((a) => a.updated || 0)),
+      };
+    })
+    .sort((a, b) => b.at - a.at);
+}

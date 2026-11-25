@@ -14,12 +14,12 @@ import type { ComponentChildren } from "preact";
 import { useRef } from "preact/hooks";
 import {
   ArrowDownToLine,
+  Bot,
   ChevronDown,
   CircleAlert,
   MessagesSquare,
   Square,
   Terminal,
-  Users,
 } from "lucide-preact";
 import {
   cleanText,
@@ -31,9 +31,14 @@ import {
 } from "./ui.tsx";
 import { SheetButton } from "./sheet.tsx";
 import { useApi } from "../state/api.ts";
-import { AgentAssignment } from "./agent-assignment.tsx";
-import { shortAgentName } from "./display.ts";
-import { isRunning, statusOf } from "../state/attention.ts";
+import { agentScope } from "./display.ts";
+import {
+  agentGroups,
+  atWork,
+  isRunning,
+  statusOf,
+  statusWord,
+} from "../state/attention.ts";
 import { useAction } from "./use-action.ts";
 import { useElapsed } from "./time.ts";
 import { focusDecision, revealLiveRow } from "./navigation.ts";
@@ -300,142 +305,136 @@ function ActivityRow({
   );
 }
 
-type AgentEntry = {
-  agent: Session;
-  title: string;
-  name: string;
-  status: string;
-};
-type AgentListProps = {
-  entries: AgentEntry[];
+const STACK = 4;
+
+// The agents at work, a line each above the input; the rest in the panel.
+export const AgentStack = updateChecked(function AgentStack(
+  props: AgentsProps,
+) {
+  const working = props.agents.filter(atWork);
+  if (!working.length) return null;
+  return (
+    <nav class="agent-stack" aria-label="Agents at work">
+      <ul class="agent-rows activity-list">
+        {working.slice(0, STACK).map((agent) => (
+          <AgentRow
+            key={agent.id}
+            agent={agent}
+            view="stack"
+            online={props.online}
+            report={props.report}
+            open={() => props.choose(agent.id)}
+          />
+        ))}
+      </ul>
+      {working.length > STACK && (
+        <AgentsPanel
+          {...props}
+          label={`+${working.length - STACK} more`}
+          buttonClass="agent-more small"
+        >
+          +{working.length - STACK} more
+        </AgentsPanel>
+      )}
+    </nav>
+  );
+});
+
+type AgentsProps = {
+  agents: Session[];
   online: boolean;
   report: Report;
   choose: (id: string) => void;
 };
 
-// The host distinguishes a request routed to the parent from one that
-// actually needs the person. Both conversations are still active.
-function agentRosterStatus(agent: Session) {
-  if (agent.needs_you) return "Needs you";
-  if (agent.status === "waiting") return "Waiting";
-  if (agent.status === "starting") return "Starting";
-  if (agent.turn_active || agent.status === "running") return "Working";
-  if (agent.status === "interrupted") return "Interrupted";
-  if (agent.error || agent.status === "failed") return "Failed";
-  return "Finished";
-}
-
-export function groupAgents(
-  agents: Session[],
-  names: ReadonlyMap<string, string>,
-  sides: Session[],
-) {
-  const current: AgentEntry[] = [];
-  const past: AgentEntry[] = [];
-  const sideIds = new Set(sides.map((side) => side.id));
-  const byName = new Map<string, AgentEntry[]>();
-  for (const agent of agents) {
-    if (sideIds.has(agent.id)) continue;
-    const title = names.get(agent.id) || agent.title || "Agent";
-    const name = shortAgentName(title);
-    const status = agentRosterStatus(agent);
-    const entry = { agent, title, name, status };
-    (["Needs you", "Waiting", "Starting", "Working"].includes(status)
-      ? current
-      : past
-    ).push(entry);
-    const matches = byName.get(name);
-    if (matches) matches.push(entry);
-    else byName.set(name, [entry]);
-  }
-  // A shared opening sentence is common in older assignments. Give each
-  // conversation a stable, readable number even when catalogue order changes.
-  for (const matches of byName.values()) {
-    if (matches.length < 2) continue;
-    matches.sort((a, b) => a.agent.id.localeCompare(b.agent.id));
-    matches.forEach((entry, i) => {
-      entry.name =
-        (entry.name.endsWith("…") ? "Agent" : entry.name) + " " + (i + 1);
-    });
-  }
-  return { current, past };
-}
-
-export const AgentRoster = updateChecked(function AgentRoster({
-  entries,
+// Every agent of the conversation, running or finished, by the call that
+// started it. `children` is what the button shows.
+function AgentsPanel({
+  agents,
   online,
   report,
   choose,
-  past = false,
-}: AgentListProps & { past?: boolean }) {
-  if (!entries.length) return null;
-  const working =
-    !past &&
-    online &&
-    entries.some(({ status }) => status === "Starting" || status === "Working");
-  const label = past
-    ? `Past agents (${entries.length})`
-    : plural(entries.length, "active agent");
+  label,
+  buttonClass,
+  children,
+}: AgentsProps & {
+  label: string;
+  buttonClass: string;
+  children: ComponentChildren;
+}) {
   return (
     <SheetButton
       label={label}
-      heading={past ? "Past agents" : "Active agents"}
+      heading="Agents"
       size="compact"
-      buttonClass="agent-roster small"
-      trigger={
-        <>
-          {working ? <WorkBand /> : <Users aria-hidden="true" />}
-          {past ? label : entries.length}
-        </>
-      }
+      buttonClass={buttonClass}
+      trigger={children}
     >
-      {(close) => (
-        <ul class="activity-list divided">
-          {entries.map(({ agent, title, name, status }) => (
-            <AgentRow
-              key={agent.id}
-              agent={agent}
-              title={title}
-              name={name}
-              status={status}
-              report={report}
-              online={online}
-              open={() => {
-                close();
-                choose(agent.id);
-              }}
-            />
-          ))}
-        </ul>
-      )}
+      {(close) =>
+        agentGroups(agents).map(({ agents: members, at }) => {
+          const task = cleanText(members[0].title || "");
+          const shown =
+            members.every((a) => cleanText(a.title || "") === task) &&
+            (members.length > 1 || task !== agentName(members[0]));
+          return (
+            <section key={members[0].id} class="agent-group">
+              <h3 class="section-title caption">
+                <DataText>
+                  <Time value={at} /> · {plural(members.length, "agent")} ·{" "}
+                  {plural(sum(members, "tokens"), "token")}
+                </DataText>
+              </h3>
+              {shown && task && (
+                <p class="agent-task small muted truncate">{task}</p>
+              )}
+              <ul class="activity-list">
+                {members.map((agent) => (
+                  <AgentRow
+                    key={agent.id}
+                    agent={agent}
+                    view="entry"
+                    online={online}
+                    report={report}
+                    open={() => {
+                      close();
+                      choose(agent.id);
+                    }}
+                  />
+                ))}
+              </ul>
+            </section>
+          );
+        })
+      }
     </SheetButton>
+  );
+}
+
+const sum = (list: Session[], key: "tokens") =>
+  list.reduce((total, item) => total + (item[key] || 0), 0);
+
+// The one button in the status line: how many agents, and that some work.
+export const AgentsButton = updateChecked(function AgentsButton(
+  props: AgentsProps,
+) {
+  if (!props.agents.length) return null;
+  const working =
+    props.online &&
+    props.agents.some((a) => ["Starting", "Working"].includes(statusWord(a)));
+  return (
+    <AgentsPanel
+      {...props}
+      label={`Agents ${props.agents.length}`}
+      buttonClass="agents-button small"
+    >
+      {working ? <WorkBand /> : <Bot aria-hidden="true" />}
+      Agents {props.agents.length}
+    </AgentsPanel>
   );
 });
 
-export const AgentBar = updateChecked(function AgentBar(props: AgentListProps) {
-  if (!props.entries.length) return null;
-  return (
-    <nav class="agent-bar" aria-label="Active agents">
-      <AgentRoster {...props} />
-      <div class="agent-tabs">
-        {props.entries.map(({ agent, title, name, status }) => (
-          <Button
-            key={agent.id}
-            variant="quiet"
-            class="agent-tab small"
-            title={title}
-            aria-label={name + " · " + status}
-            onClick={() => props.choose(agent.id)}
-          >
-            {agent.needs_you && <CircleAlert aria-hidden="true" />}
-            <span class="truncate">{name}</span>
-            <span class="muted">{status}</span>
-          </Button>
-        ))}
-      </div>
-    </nav>
-  );
-});
+const agentName = (agent: Session) =>
+  cleanText(agent.agent_name || agent.title || "Agent");
 
 // Side chats at work or waiting for you first, then the newest asked.
 const sideOrder = (list: Session[], online: boolean) =>
@@ -451,12 +450,11 @@ const stepOf = (item: Session) =>
     ? cleanText(item.turn_status)
     : "";
 
-// Agent rosters and the side chat activity list share a row.
+// An agent's row (in the stack or the panel) and a side chat's in the
+// Activity list share one component.
 function AgentRow({
   agent,
-  title,
-  name: label,
-  status,
+  view,
   starting = false,
   menu,
   online,
@@ -464,9 +462,7 @@ function AgentRow({
   open,
 }: {
   agent: Session;
-  title?: string;
-  name?: string;
-  status?: string;
+  view?: "stack" | "entry";
   starting?: boolean;
   menu?: ComponentChildren;
   online: boolean;
@@ -476,28 +472,87 @@ function AgentRow({
   const { command } = useApi();
   const { run, busy } = useAction();
   const side = agent.side;
-  const name = cleanText(
-    label || agent.title || (side ? "Side chat" : "Agent"),
-  );
+  const name = side ? cleanText(agent.title || "Side chat") : agentName(agent);
   const running = isRunning(agent, online);
+  const word = statusWord(agent);
+  const elapsed = useElapsed(!side && atWork(agent), agent.turn_started_ms);
+  const calls = agent.tool_calls ? plural(agent.tool_calls, "call") : "";
+  const tokens = agent.tokens ? plural(agent.tokens, "token") : "";
+  const step = word === "Working" ? stepOf(agent) : "";
+  const scope = agent.agent_edits !== "none" && agentScope(agent.agent_edits);
+  const stop = running && (
+    <IconButton
+      label={`Stop ${name}`}
+      disabled={!online || busy}
+      onClick={() => run(() => command("interrupt", agent).catch(report))}
+    >
+      <Square />
+    </IconButton>
+  );
+  if (view === "stack")
+    return (
+      <li class="activity-row">
+        <Button
+          variant="quiet"
+          class="activity-open"
+          disabled={!online}
+          onClick={open}
+        >
+          <Bot />
+          <strong class="truncate">{name}</strong>
+          <span class="muted truncate">
+            {agent.needs_you && <CircleAlert aria-hidden="true" />}
+            {step || word}
+          </span>
+          <span class="agent-facts small muted">
+            {calls && <span>{calls}</span>}
+            {tokens && <span class="agent-tokens">{tokens}</span>}
+            {elapsed && <span class="agent-time">{elapsed}</span>}
+          </span>
+        </Button>
+        {stop}
+      </li>
+    );
+  if (view === "entry")
+    return (
+      <li class="activity-row">
+        <Button
+          variant="quiet"
+          class="activity-open"
+          disabled={!online}
+          onClick={open}
+        >
+          <Bot />
+          <span class="activity-text">
+            <strong>{name}</strong>
+            <small>
+              {[step, calls, tokens, elapsed, scope]
+                .filter(Boolean)
+                .join(" · ")}
+            </small>
+          </span>
+          <span class="agent-status small muted">{word}</span>
+        </Button>
+        {stop}
+      </li>
+    );
   return (
-    <li class={side ? "activity-row" : "activity-row agent-entry"}>
+    <li class="activity-row">
       <Button
         variant="quiet"
         class="activity-open"
         disabled={!online}
         onClick={open}
       >
-        {side && <MessagesSquare />}
+        <MessagesSquare />
         <span class="activity-text">
           <strong>{name}</strong>
           <small>
-            {status ||
-              (online && agent.needs_you
-                ? "Needs you"
-                : running || starting
-                  ? ["Working", stepOf(agent)].filter(Boolean).join(" · ")
-                  : "Ready")}
+            {online && agent.needs_you
+              ? "Needs you"
+              : running || starting
+                ? ["Working", stepOf(agent)].filter(Boolean).join(" · ")
+                : "Ready"}
             {side?.merged && (
               <>
                 {" · merged "}
@@ -507,23 +562,8 @@ function AgentRow({
           </small>
         </span>
       </Button>
-      {running && (
-        <IconButton
-          label={`Stop ${name}`}
-          disabled={!online || busy}
-          onClick={() => run(() => command("interrupt", agent).catch(report))}
-        >
-          <Square />
-        </IconButton>
-      )}
+      {stop}
       {menu}
-      {!side && (
-        <AgentAssignment
-          title={title || name}
-          name={name}
-          edits={agent.agent_edits}
-        />
-      )}
     </li>
   );
 }

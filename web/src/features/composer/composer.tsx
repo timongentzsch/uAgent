@@ -18,7 +18,7 @@ import type {
   Outgoing,
 } from "../../shared/types.ts";
 import type { ComponentChildren, TargetedKeyboardEvent } from "preact";
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Paperclip, Square, X } from "lucide-preact";
 import { emptyDraft } from "../../state/store.ts";
 import { useStoreValue } from "../../state/value-store.ts";
@@ -29,9 +29,8 @@ import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import { dedupeName } from "./mention.ts";
 import ApprovalControl from "./approval-control.tsx";
 import {
-  AgentBar,
-  AgentRoster,
-  groupAgents,
+  AgentStack,
+  AgentsButton,
   ActivityButton,
   type SideRows,
 } from "../../shared/turn-status.tsx";
@@ -74,7 +73,6 @@ function Composer({
   stopped,
   resume,
   agents,
-  agentNames,
   sides,
   above,
   choose,
@@ -97,7 +95,6 @@ function Composer({
   stopped?: string;
   resume?: () => void;
   agents: Session[];
-  agentNames: ReadonlyMap<string, string>;
   // The conversation's side chats, for the Activity list.
   sides: SideRows;
   // What sits on the input: Jump to latest stays clear of it.
@@ -110,10 +107,6 @@ function Composer({
   const { drafts, setDraft, upload, busy, act, following } = useConversation();
   const draft = useStoreValue(drafts, (all) => all[session.id] ?? EMPTY_DRAFT);
   const uploading = draft.files.some((file) => file.pending);
-  const { current, past } = useMemo(
-    () => groupAgents(agents, agentNames, sides.list),
-    [agents, agentNames, sides.list],
-  );
   const input = useRef<HTMLTextAreaElement>(null);
   const recalled = useRef(-1);
   // A send empties the draft and turns Send into Stop under the same
@@ -266,8 +259,8 @@ function Composer({
         recall={recall}
         insert={insert}
       />
-      <AgentBar
-        entries={current}
+      <AgentStack
+        agents={agents}
         online={online}
         report={report}
         choose={choose}
@@ -514,9 +507,8 @@ function Composer({
             stopped={continuing ? stopLabel : undefined}
             resume={resume}
           />
-          <AgentRoster
-            entries={past}
-            past
+          <AgentsButton
+            agents={agents}
             online={online}
             report={report}
             choose={choose}

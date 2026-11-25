@@ -396,7 +396,6 @@ export default function ChatPage({
       stopped={stopped}
       resume={actions.resume}
       agents={agents}
-      agentNames={participants.names}
       choose={open}
     />
   );

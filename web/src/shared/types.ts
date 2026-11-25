@@ -487,6 +487,10 @@ export interface Session {
   // this is its side chat.
   parent?: string;
   agent_edits?: "none" | "worktree" | "folder";
+  // An agent's name, and the call that started it (agents started together
+  // share it).
+  agent_name?: string;
+  agent_call?: string;
   // Where a side chat branched from, also once it was opened as a
   // conversation of its own (detached). `request` is its first question's
   // request id; `asked` when, in ms; `merged` when its summary last reached
@@ -518,6 +522,10 @@ export interface Session {
   // progress).
   cost?: number;
   turns?: number;
+  tokens?: number;
+  // Tool calls of the running turn, live; when it started, 0 before a turn.
+  tool_calls?: number;
+  turn_started_ms?: number;
   todo?: { done: number; total: number; current: string } | null;
 }
 // A folder at a glance, from the host: what its conversations spent today

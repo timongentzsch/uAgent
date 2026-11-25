@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.13.0 - 2026-11-25
 
 ### Upgrade notes
 
@@ -9,8 +9,11 @@
 ### Changes
 
 - MCP servers can ask for input while a tool runs (elicitation, form and URL modes). The card names the server; a form is checked before it is sent, and a link is shown whole for you to open in your own browser. `mcp.timeout` now bounds each request to the server rather than the whole call, so time spent answering is not counted, and the request that follows an opened link may wait until the turn ends.
-- MCP servers can answer a tool call with a task (Tasks extension): µAgent polls it at the server's interval until it ends, shows its status message, answers its requests for input on the same card, and cancels it when the call is stopped or the turn's deadline passes.
+- MCP servers can answer a tool call with a task (Tasks extension): µAgent polls it at the server's interval, shows its status message and answers its requests for input on a card. A task that outlives a command's yield time, or that you send to the background with Ctrl+B or the background button, becomes an activity: the agent keeps working, and the result arrives when the task ends, starting a turn if the conversation is idle. Stopping it asks the server to cancel. A task does not survive a restart of its conversation's runtime or of its server.
+- MCP servers can serve skills (Skills extension): they join the skill catalogue as `server:path`, each load asks you first in every approval mode, and their files are used only when their size and SHA-256 match the server's listing. They are listed under their server in Settings and in `/skills`.
+- Side chats: a header button shows or hides the whole column, the column's ⋯ closes a tab, opens it as its own conversation or deletes it, and a side chat is deleted only when you confirm it.
 - `GET files?changes=` always returns each row's `working` and `staged` Git status letters; the `split` value is gone.
+- The web host runs cpp-httplib 0.67.0, unpatched, instead of a patched 0.54.1. Building from source downloads it and nlohmann/json 3.12.0 when configuring, each pinned by its SHA-256; an offline build points `FETCHCONTENT_SOURCE_DIR_JSON` and `FETCHCONTENT_SOURCE_DIR_HTTPLIB` at unpacked copies. Installs now also carry nlohmann/json's licence.
 - The footprint comparison scripts, their raw results and the approval reviewer's labelled cases moved out of the repository. `benchmarks/` keeps what the tests run.
 
 ### Fixes
@@ -22,6 +25,8 @@
 - Up to eight open pages keep their live connection. With a fifth page open, the oldest connection was ended, reconnected and ended the next, so the pages took turns going offline.
 - Signing out, or a host that no longer knows the device, now also removes the saved hosts, read and unread marks, side-chat tabs, scroll bookmarks, Files' last folder, folded places and unsent Library and scheduled-task drafts from the browser. Appearance and layout settings stay.
 - The app reads your stylesheet again only when a conversation's turn starts or ends, not on every status update. A conversation deleted while this device is connected no longer leaves its read count in browser storage.
+- Chrome's popups in the agent's browser, such as the saved-login suggestion, no longer have a black frame: the browser's display is composited when `xcompmgr` is installed, which the container image now includes.
+- A selection that holds a formula is quoted as it was written, in a side chat and in the quote bars. Its text used to come out doubled, and a formula with an equals sign turned the quote into a heading.
 
 ## v1.12.0 - 2026-11-24
 

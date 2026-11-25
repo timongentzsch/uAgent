@@ -683,7 +683,9 @@ def test_optional_mcp_notification_before_discovery_is_not_fatal(root, home, *, 
             return event({"content": "notification-ok"})
         if "notice_echo" in function_names(body):
             return tool_call("notice_echo", {})
-        if len(results) >= 2:
+        # Discovery answers 2.3 s in, past the 2 s window; a slow interpreter
+        # start on a loaded runner can push it past a second short step.
+        if len(results) >= 3:
             return event({"content": "notification-missing"})
         return tool_call("run", {"command": "sleep 0.5"})
 

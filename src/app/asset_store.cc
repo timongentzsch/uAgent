@@ -207,20 +207,21 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
   // only when sent, and an evictable copy always get their own.
   const std::string hash = HashHex(bytes);
   std::error_code ec;
-  for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
-    if (!committed || tool_copy) break;
-    auto data = entry.path();
-    if (data.extension() != ".json") continue;
-    const json record = ReadJsonFile(data.string(), kAssetRecordBytes);
-    data.replace_extension(".data");
-    // The hash is not collision-proof, so the bytes are compared too.
-    if (JsonValue(record, "hash", "") == hash &&
-        JsonValue(record, "name", "") == name &&
-        JsonValue(record, "committed", false) &&
-        !JsonValue(record, "tool_copy", false) &&
-        JsonValue(record, "shared", false) == shared &&
-        ReadFile(data.string(), bytes.size() + 1) == bytes) {
-      return result(data.stem().string());
+  if (committed && !tool_copy) {
+    for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
+      auto data = entry.path();
+      if (data.extension() != ".json") continue;
+      const json record = ReadJsonFile(data.string(), kAssetRecordBytes);
+      data.replace_extension(".data");
+      // The hash is not collision-proof, so the bytes are compared too.
+      if (JsonValue(record, "hash", "") == hash &&
+          JsonValue(record, "name", "") == name &&
+          JsonValue(record, "committed", false) &&
+          !JsonValue(record, "tool_copy", false) &&
+          JsonValue(record, "shared", false) == shared &&
+          ReadFile(data.string(), bytes.size() + 1) == bytes) {
+        return result(data.stem().string());
+      }
     }
   }
   if (tool_copy) EvictToolCopies(folder, bytes.size());

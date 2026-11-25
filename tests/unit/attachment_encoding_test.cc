@@ -192,8 +192,6 @@ TEST_CASE(TestAttachmentEncoding) {
   fs::remove_all(root, ec);
 }
 
-// HEIC stills and SVG diagrams enter the image pipeline; MP4 video, HTML and
-// mislabeled files do not. Sniffing and inspection need no converter.
 // A region of an image is cut at full detail; a plain read names the size
 // the region is given in.
 TEST_CASE(TestImageRegion) {
@@ -298,6 +296,8 @@ TEST_CASE(TestPdfPages) {
         "[scan.pdf pages 1-2 of 2; no text layer, likely scanned]");
 }
 
+// HEIC stills and SVG diagrams enter the image pipeline; MP4 video, HTML and
+// mislabeled files do not. Sniffing and inspection need no converter.
 TEST_CASE(TestVectorAndHeicAttachments) {
   // HEIC shares the ISO BMFF ftyp box with MP4: the brand decides.
   const std::string box = std::string("\x00\x00\x00\x18", 4) + "ftyp";

@@ -1017,6 +1017,11 @@
   .menu-panel button:is([role="menuitemradio"], [role="menuitemcheckbox"]) {
     justify-content: space-between;
   }
+  .menu-panel hr {
+    margin: var(--space-2) 0;
+    border: 0;
+    border-top: var(--border);
+  }
   .menu-value {
     margin-left: auto;
     color: var(--muted);

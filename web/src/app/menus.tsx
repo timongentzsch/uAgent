@@ -8,9 +8,11 @@ import type {
 } from "../shared/types.ts";
 import { useApi, type ApiClient } from "../state/api.ts";
 import { useHostContext } from "../state/host-context.ts";
-import { Menu, MenuItem, MenuSub } from "../shared/menu.tsx";
+import { Menu, MenuItem, MenuSeparator, MenuSub } from "../shared/menu.tsx";
 import { capitalize } from "../shared/display.ts";
 import { PinItem } from "../features/sidebar/pins.tsx";
+import { DeleteSideChat } from "../features/chat/side-answer.tsx";
+import { isSideChat } from "../state/attention.ts";
 
 export async function shareTranscript(
   item: Session,
@@ -237,15 +239,23 @@ export function ConversationMenu({
             Close conversation
           </MenuItem>
         )}
-        <MenuItem
-          disabled={!online}
-          onClick={() => {
-            open({ type: "delete", session: item });
-          }}
-        >
-          Delete
-        </MenuItem>
+        {!isSideChat(item) && (
+          <MenuItem
+            disabled={!online}
+            onClick={() => {
+              open({ type: "delete", session: item });
+            }}
+          >
+            Delete
+          </MenuItem>
+        )}
       </MenuSub>
+      {isSideChat(item) && (
+        <>
+          <MenuSeparator />
+          <DeleteSideChat session={item} />
+        </>
+      )}
     </Menu>
   );
 }

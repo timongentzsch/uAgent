@@ -153,12 +153,21 @@ test("a selection in an answer is asked about in side chats beside it", async ({
   await page.reload();
   await online(page);
   await expect(tabs).toHaveText(["Which table?", "Streamed how?"]);
-  // X hides a tab; the side chat stays, counted and listed.
-  const hide = side.getByRole("button", { name: "Hide side chat" });
-  await hide.click();
+  // Close tab closes the one in front, the next comes to the front, and the
+  // last one takes the column with it; the side chat stays, counted and
+  // listed.
+  const closeTab = async () => {
+    await side.getByRole("button", { name: "This side chat" }).click();
+    await page.getByRole("menuitem", { name: "Close tab" }).click();
+  };
+  await closeTab();
   await expect(tabs).toHaveText(["Which table?"]);
-  await hide.click();
+  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+  await closeTab();
   await expect(side).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Side chats, 2" }),
+  ).toHaveAttribute("aria-pressed", "false");
   const activity = page.locator(".composer .activity-button");
   await expect(activity).toContainText("2 side chats");
   // A row shows its tab again, in the order asked.

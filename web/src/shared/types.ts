@@ -522,7 +522,8 @@ export interface Session {
   cost?: number;
   turns?: number;
   tokens?: number;
-  // Tool calls of the running turn, live; when it started, 0 before a turn.
+  // Its tool calls, finished turns' and the running turn's, live; when the
+  // running turn started, 0 before a turn.
   tool_calls?: number;
   turn_started_ms?: number;
   todo?: { done: number; total: number; current: string } | null;

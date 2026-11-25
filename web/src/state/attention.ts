@@ -53,16 +53,16 @@ export const shownSessions = (
       statusOf(item, online) !== "idle",
   );
 
-// The word for where a session is, wherever it is shown: an agent's row, the
-// Agents panel.
-export function statusWord(item: Session) {
-  if (item.needs_you) return "Needs you";
+// The word for where a session is, wherever it is shown. A conversation at
+// rest is Finished as an agent, Ready as a side chat.
+export function statusWord(item: Session, online = true) {
+  if (online && item.needs_you) return "Needs you";
   if (item.status === "waiting") return "Waiting";
   if (item.status === "starting") return "Starting";
-  if (item.turn_active || item.status === "running") return "Working";
+  if (isRunning(item, online) || item.status === "running") return "Working";
   if (item.status === "interrupted") return "Interrupted";
   if (item.error || item.status === "failed") return "Failed";
-  return "Finished";
+  return item.side ? "Ready" : "Finished";
 }
 // Why an agent's turn ended, as the word a note's row says.
 export const outcomeWord = (outcome: string) =>

@@ -1,5 +1,5 @@
 import { AgentSessions } from "./agent-sessions.tsx";
-import { AgentRow } from "../../shared/turn-status.tsx";
+import { AgentEntry } from "../../shared/turn-status.tsx";
 import { MessageText } from "./message-text.tsx";
 import {
   agentLink,
@@ -413,14 +413,13 @@ export function NodeBody({
         </details>
       )}
       {replies.map(({ link, assignment, state, report: reply }, index) => {
-        const child = link && agents.get(String(link.id));
+        const child = link && agents.sessions.get(String(link.id));
         return (
           <div class="node-agent" key={link?.id || index}>
             {child && open && report ? (
               <ul class="activity-list">
-                <AgentRow
+                <AgentEntry
                   agent={child}
-                  view="entry"
                   online={online}
                   report={report}
                   open={() => open(child.id)}

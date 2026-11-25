@@ -1,7 +1,7 @@
 import "./activity.css";
 import { ConnectionStatus, StatusLed } from "./connection-status.tsx";
 import { WorkBand } from "./work-band.tsx";
-import { count, plural } from "./quantities.ts";
+import { figures, plural } from "./quantities.ts";
 import type {
   Activity,
   ConnectionPhase,
@@ -32,6 +32,7 @@ import {
 import { SheetButton } from "./sheet.tsx";
 import { useApi } from "../state/api.ts";
 import { agentScope } from "./display.ts";
+import type { AgentReports } from "./message-view.ts";
 import {
   agentGroups,
   atWork,
@@ -210,7 +211,7 @@ function ActivityButtonView({
               />
             ))}
             {sideOrder(sides.list, online).map((side) => (
-              <AgentRow
+              <SideRow
                 key={side.id}
                 agent={side}
                 starting={sides.starting.includes(side.side!.request)}
@@ -336,10 +337,9 @@ export const AgentStack = updateChecked(function AgentStack(
     <nav class="agent-stack" aria-label="Agents at work">
       <ul class="agent-rows activity-list">
         {working.slice(0, STACK).map((agent) => (
-          <AgentRow
+          <AgentStackRow
             key={agent.id}
             agent={agent}
-            view="stack"
             online={props.online}
             report={props.report}
             open={() => props.choose(agent.id)}
@@ -362,7 +362,7 @@ export const AgentStack = updateChecked(function AgentStack(
 type AgentsProps = {
   agents: Session[];
   // What each finished agent last reported, by session: its first line.
-  reports?: Record<string, string>;
+  reports?: AgentReports;
   online: boolean;
   report: Report;
   choose: (id: string) => void;
@@ -402,8 +402,21 @@ function AgentsPanel({
             <section key={members[0].id} class="agent-group">
               <h3 class="section-title caption">
                 <DataText>
-                  <Time value={at} /> · {plural(members.length, "agent")} ·{" "}
-                  {plural(sum(members, "tokens"), "token")}
+                  <Time value={at} /> ·{" "}
+                  {[
+                    plural(members.length, "agent"),
+                    figures(
+                      {
+                        tokens: members.reduce(
+                          (n, a) => n + (a.tokens || 0),
+                          0,
+                        ),
+                      },
+                      true,
+                    ).tokens,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </DataText>
               </h3>
               {shown && task && (
@@ -411,11 +424,10 @@ function AgentsPanel({
               )}
               <ul class="activity-list">
                 {members.map((agent) => (
-                  <AgentRow
+                  <AgentEntry
                     key={agent.id}
                     agent={agent}
-                    view="entry"
-                    line={reports?.[agent.id]}
+                    line={reports?.[agent.id]?.line}
                     online={online}
                     report={report}
                     open={() => {
@@ -432,9 +444,6 @@ function AgentsPanel({
     </SheetButton>
   );
 }
-
-const sum = (list: Session[], key: "tokens") =>
-  list.reduce((total, item) => total + (item[key] || 0), 0);
 
 // The one button in the status line: how many agents, and that some work.
 export const AgentsButton = updateChecked(function AgentsButton(
@@ -456,7 +465,7 @@ export const AgentsButton = updateChecked(function AgentsButton(
   );
 });
 
-export const agentName = (agent: Session) =>
+export const agentName = (agent: { agent_name?: string; title?: string }) =>
   cleanText(agent.agent_name || agent.title || "Agent");
 
 // Side chats at work or waiting for you first, then the newest asked.
@@ -473,98 +482,30 @@ const stepOf = (item: Session) =>
     ? cleanText(item.turn_status).replace(/^(?:Running|Preparing) · /, "")
     : "";
 
-// An agent's row (in the stack or the panel) and a side chat's in the
-// Activity list share one component.
-export function AgentRow({
-  agent,
-  view,
-  line,
-  starting = false,
-  menu,
-  online,
-  report,
-  open,
-}: {
+type RowProps = {
   agent: Session;
-  view?: "stack" | "entry";
-  // The first line of what a finished agent reported.
-  line?: string;
-  starting?: boolean;
-  menu?: ComponentChildren;
   online: boolean;
   report: Report;
   open: () => void;
+};
+
+// What every row of an agent or side chat shares: the button that opens it,
+// Stop while it works, and its menu.
+function RowShell({
+  agent,
+  name,
+  online,
+  report,
+  open,
+  menu,
+  children,
+}: RowProps & {
+  name: string;
+  menu?: ComponentChildren;
+  children: ComponentChildren;
 }) {
   const { command } = useApi();
   const { run, busy } = useAction();
-  const side = agent.side;
-  const name = side ? cleanText(agent.title || "Side chat") : agentName(agent);
-  const running = isRunning(agent, online);
-  const word = statusWord(agent);
-  const elapsed = useElapsed(!side && atWork(agent), agent.turn_started_ms);
-  const calls = agent.tool_calls ? plural(agent.tool_calls, "call") : "";
-  const tokens = agent.tokens ? plural(agent.tokens, "token") : "";
-  const step = word === "Working" ? stepOf(agent) : "";
-  const scope = agent.agent_edits !== "none" && agentScope(agent.agent_edits);
-  const stop = running && (
-    <IconButton
-      label={`Stop ${name}`}
-      disabled={!online || busy}
-      onClick={() => run(() => command("interrupt", agent).catch(report))}
-    >
-      <Square />
-    </IconButton>
-  );
-  if (view === "stack")
-    return (
-      <li class="activity-row">
-        <Button
-          variant="quiet"
-          class="activity-open"
-          disabled={!online}
-          onClick={open}
-        >
-          <Bot />
-          <strong class="truncate">{name}</strong>
-          <span class="agent-step muted">
-            {agent.needs_you && <CircleAlert aria-hidden="true" />}
-            <span class="truncate">{step || word}</span>
-          </span>
-          <span class="agent-facts small muted">
-            {calls && <span>{calls}</span>}
-            {agent.tokens ? (
-              <span class="agent-tokens">{count(agent.tokens)}</span>
-            ) : null}
-            {elapsed && <span class="agent-time">{elapsed}</span>}
-          </span>
-        </Button>
-        {stop}
-      </li>
-    );
-  if (view === "entry")
-    return (
-      <li class="activity-row">
-        <Button
-          variant="quiet"
-          class="activity-open"
-          disabled={!online}
-          onClick={open}
-        >
-          <Bot />
-          <span class="activity-text">
-            <strong>{name}</strong>
-            <small class="agent-figures">
-              {[calls, tokens, elapsed, scope].filter(Boolean).join(" · ")}
-            </small>
-            {(step || !atWork(agent)) && (step || line) && (
-              <small>{step || line}</small>
-            )}
-          </span>
-          <span class="agent-status small muted">{word}</span>
-        </Button>
-        {stop}
-      </li>
-    );
   return (
     <li class="activity-row">
       <Button
@@ -573,26 +514,109 @@ export function AgentRow({
         disabled={!online}
         onClick={open}
       >
-        <MessagesSquare />
-        <span class="activity-text">
-          <strong>{name}</strong>
-          <small>
-            {online && agent.needs_you
-              ? "Needs you"
-              : running || starting
-                ? ["Working", stepOf(agent)].filter(Boolean).join(" · ")
-                : "Ready"}
-            {side?.merged && (
-              <>
-                {" · merged "}
-                <Time value={side.merged.at} />
-              </>
-            )}
-          </small>
-        </span>
+        {children}
       </Button>
-      {stop}
+      {isRunning(agent, online) && (
+        <IconButton
+          label={`Stop ${name}`}
+          disabled={!online || busy}
+          onClick={() => run(() => command("interrupt", agent).catch(report))}
+        >
+          <Square />
+        </IconButton>
+      )}
       {menu}
     </li>
+  );
+}
+
+// Where an agent is, and the figures of its work.
+function useWork(agent: Session, online: boolean, unit = false) {
+  const word = statusWord(agent, online);
+  return {
+    word,
+    step: word === "Working" ? stepOf(agent) : "",
+    elapsed: useElapsed(atWork(agent), agent.turn_started_ms),
+    ...figures(agent, unit),
+  };
+}
+
+// An agent at work, a line in the stack above the input.
+function AgentStackRow(props: RowProps) {
+  const { agent } = props;
+  const name = agentName(agent);
+  const { word, step, elapsed, calls, tokens } = useWork(agent, props.online);
+  return (
+    <RowShell {...props} name={name}>
+      <Bot />
+      <strong class="truncate">{name}</strong>
+      <span class="agent-step muted">
+        {agent.needs_you && <CircleAlert aria-hidden="true" />}
+        <span class="truncate">{step || word}</span>
+      </span>
+      <span class="agent-facts small muted">
+        {calls && <span>{calls}</span>}
+        {tokens && <span class="agent-tokens">{tokens}</span>}
+        {elapsed && <span class="agent-time">{elapsed}</span>}
+      </span>
+    </RowShell>
+  );
+}
+
+// An agent in the Agents panel or a delegation: `line` is the first line of
+// what it reported.
+export function AgentEntry({ line, ...props }: RowProps & { line?: string }) {
+  const { agent } = props;
+  const name = agentName(agent);
+  const { word, step, elapsed, calls, tokens } = useWork(
+    agent,
+    props.online,
+    true,
+  );
+  const scope = agent.agent_edits !== "none" && agentScope(agent.agent_edits);
+  const last = step || (!atWork(agent) && line);
+  return (
+    <RowShell {...props} name={name}>
+      <Bot />
+      <span class="activity-text">
+        <strong>{name}</strong>
+        <small class="agent-figures">
+          {[calls, tokens, elapsed, scope].filter(Boolean).join(" · ")}
+        </small>
+        {last && <small>{last}</small>}
+      </span>
+      <span class="agent-status small muted">{word}</span>
+    </RowShell>
+  );
+}
+
+// A side chat in the Activity list; `starting` while its first question is
+// on its way.
+function SideRow({
+  starting,
+  ...props
+}: RowProps & { starting: boolean; menu: ComponentChildren }) {
+  const { agent } = props;
+  const name = cleanText(agent.title || "Side chat");
+  const word = starting ? "Working" : statusWord(agent, props.online);
+  const merged = agent.side?.merged;
+  return (
+    <RowShell {...props} name={name}>
+      <MessagesSquare />
+      <span class="activity-text">
+        <strong>{name}</strong>
+        <small>
+          {[word, word === "Working" && stepOf(agent)]
+            .filter(Boolean)
+            .join(" · ")}
+          {merged && (
+            <>
+              {" · merged "}
+              <Time value={merged.at} />
+            </>
+          )}
+        </small>
+      </span>
+    </RowShell>
   );
 }

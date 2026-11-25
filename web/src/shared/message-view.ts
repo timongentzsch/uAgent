@@ -149,16 +149,9 @@ export function agentBatch(node: Node, full?: string) {
   return batch;
 }
 
-// What a message shows: a decision request without the line that tells the
-// parent how to answer it, background results not at all.
-export function shownText(node: Node, text: string) {
-  if (node.agent?.outcome === "needs decision")
-    return text.replace(
-      /\n+Decide with the decide tool; yield when the person should\.$/,
-      "",
-    );
-  return node.origin === "activity" ? "" : text;
-}
+// What a message shows: background results not at all.
+export const shownText = (node: Node, text: string) =>
+  node.origin === "activity" ? "" : text;
 
 const tableRule = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
 
@@ -188,18 +181,19 @@ export function firstLine(markdown: string) {
   return "";
 }
 
-// What each agent last reported, by its session, from the loaded nodes.
+// What each agent last reported, by its session: the node and its first line.
+export type AgentReports = Record<string, { id: string; line: string }>;
 export function agentReports(nodes: Node[]) {
-  const lines: Record<string, string> = {};
-  for (const { origin, agent, body } of nodes)
+  const last: AgentReports = {};
+  for (const { id, origin, agent, body } of nodes)
     if (
       origin === "agent" &&
       agent &&
       !["needs decision", "merged"].includes(agent.outcome) &&
       body?.text
     )
-      lines[agent.session] = firstLine(body.text);
-  return lines;
+      last[agent.session] = { id, line: firstLine(body.text) };
+  return last;
 }
 
 // Keep a short reply intact. For a long reply prefer a paragraph boundary,

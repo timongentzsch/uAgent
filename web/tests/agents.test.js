@@ -33,6 +33,7 @@ test("agents group by the call that started them, newest group first", () => {
 
 test("the latest report of each agent is its first line", () => {
   const node = (session, outcome, text) => ({
+    id: text,
     origin: "agent",
     agent: { session, title: "x", outcome },
     body: { text },
@@ -45,7 +46,7 @@ test("the latest report of each agent is its first line", () => {
       node("c", "merged", "Side"),
       { origin: "message", agent: { session: "d", outcome: "note" } },
     ]),
-    { a: "New." },
+    { a: { id: "New.\nMore", line: "New." } },
   );
 });
 

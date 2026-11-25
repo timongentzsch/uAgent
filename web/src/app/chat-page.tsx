@@ -33,11 +33,7 @@ import Composer from "../features/composer/composer.tsx";
 import { SideLayout } from "../shared/side-pane.tsx";
 import Chat, { prepareHistoryNodes } from "../features/chat/chat.tsx";
 import { FindBar, type FindRequest } from "../features/chat/find-bar.tsx";
-import {
-  AgentSessions,
-  sessionsById,
-  useAgentReports,
-} from "../features/chat/agent-sessions.tsx";
+import { AgentSessions, useAgents } from "../features/chat/agent-sessions.tsx";
 import { MessageActions } from "../features/chat/message-actions.ts";
 import { LiveActivities } from "../state/live-activities.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
@@ -286,8 +282,7 @@ export default function ChatPage({
       ),
     [sessions, selected],
   );
-  const agentSessions = useMemo(() => sessionsById(children), [children]);
-  const reports = useAgentReports(nodes);
+  const agentSessions = useAgents(children, session?.parent, nodes);
   const latest = useLatest({ side, sideColumn, quote });
   const { list: sideList, starting } = side;
   const showSide = useCallback(
@@ -398,7 +393,7 @@ export default function ChatPage({
       stopped={stopped}
       resume={actions.resume}
       agents={agents}
-      reports={reports}
+      reports={agentSessions.reports}
       choose={open}
     />
   );

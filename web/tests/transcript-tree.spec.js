@@ -25,7 +25,13 @@ const SESSION = {
   updated: 1_700_000_000_000,
 };
 
-async function open(page, level, nodes = conversation, children = []) {
+async function open(
+  page,
+  level,
+  nodes = conversation,
+  children = [],
+  shown = SESSION,
+) {
   await page.addInitScript(fakeStream, { epoch: "e", cursor: 1 });
   await page.addInitScript((detail) => {
     localStorage.setItem("uagent-detail", detail);
@@ -34,7 +40,7 @@ async function open(page, level, nodes = conversation, children = []) {
   await mockHost(page, {
     epoch: "e",
     cursor: 1,
-    sessions: [SESSION, ...children],
+    sessions: [shown, ...children],
     state: { phase: "idle", view: { nodes } },
   });
   await page.goto(new URL(`/#session=${ID}`, DEV_SERVER_URL).href);
@@ -510,6 +516,45 @@ test("a fifth agent at work is one more line that opens the panel; finished ones
   await expect(page.getByRole("button", { name: "Agents 5" })).toBeVisible();
 });
 
+test("figures are on an agent's latest report only, and its parent's note is no agent's", async ({
+  page,
+}) => {
+  const report = (id, sequence) => ({
+    ...arrivals[0],
+    id,
+    sequence,
+    agent: { session: "child", title: "Find flights", outcome: "completed" },
+    body: { kind: "text", text: `Report ${id}` },
+  });
+  const guidance = {
+    ...arrivals[0],
+    id: "m-90",
+    sequence: 90,
+    origin: "message",
+    agent: { session: hex(5), title: "Trip planning", outcome: "note" },
+    body: { kind: "text", text: "Also check trains." },
+  };
+  await open(
+    page,
+    "default",
+    [report("m-81", 81), report("m-82", 82), guidance],
+    [agentOf(8, { id: "child", tool_calls: 68, tokens: 648_000 })],
+    { ...SESSION, parent: hex(5) },
+  );
+  await expect(page.locator('[data-message-id="m-81"]')).not.toContainText(
+    "68 calls",
+  );
+  await expect(page.locator('[data-message-id="m-82"]')).toContainText(
+    "68 calls",
+  );
+  const note = page.locator('[data-message-id="m-90"]');
+  await expect(note).toContainText("Trip planning");
+  await expect(note.locator("svg.lucide-bot")).toHaveCount(0);
+  await expect(
+    page.locator('[data-message-id="m-82"] svg.lucide-bot'),
+  ).toHaveCount(1);
+});
+
 test("an idle conversation says which agents it waits for", async ({
   page,
 }) => {
@@ -608,7 +653,7 @@ test("an agent's report is a row that opens to its text and a note is one line, 
       table,
       ...arrivals.slice(3),
     ],
-    [finished, agentOf(7, { tool_calls: 5, tokens: 100 })],
+    [finished, agentOf(7, { agent_name: "fstab", tool_calls: 5, tokens: 100 })],
   );
   const report = page.locator('article[data-message-id="m-82"]');
   const row = report.getByRole("button", { name: /^Find flights finished/ });
@@ -820,8 +865,7 @@ test("a merged side chat stays inline and opens its side conversation", async ({
 test("a decision is a child message while identical human text remains intact", async ({
   page,
 }) => {
-  const text =
-    "Find flights\n\nDecide with the decide tool; yield when the person should.";
+  const text = "Find flights";
   const mail = {
     ...arrivals[0],
     origin: "message",
@@ -848,7 +892,15 @@ test("a decision is a child message while identical human text remains intact", 
     page,
     "default",
     [mail, human],
-    [{ ...SESSION, id: "1234567890abcdef", parent: ID, turn_active: true }],
+    [
+      {
+        ...SESSION,
+        id: "1234567890abcdef",
+        parent: ID,
+        agent_name: "Flights",
+        turn_active: true,
+      },
+    ],
   );
   const request = page.getByRole("article", { name: /^Flights(?:,|$)/ });
   const details = request.getByRole("button", { name: "Requested web_search" });

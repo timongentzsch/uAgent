@@ -1,4 +1,5 @@
 import { MessageText } from "./message-text.tsx";
+import { agentName } from "../../shared/turn-status.tsx";
 import { AgentSessions } from "./agent-sessions.tsx";
 import { FoldRow } from "./fold-row.tsx";
 import type { ComponentChildren } from "preact";
@@ -6,7 +7,7 @@ import { ArtifactCard } from "./artifact-card.tsx";
 import "../../shared/attachments.css";
 import "./message.css";
 import { isPrepared, prepareMarkdown } from "../../shared/markdown-view.tsx";
-import { count, plural } from "../../shared/quantities.ts";
+import { count, figures } from "../../shared/quantities.ts";
 import {
   firstLine,
   messageExcerpt,
@@ -50,7 +51,7 @@ function MergedRow({
   children: ComponentChildren;
 }) {
   const [open, setOpen] = useState(true);
-  const exists = useContext(AgentSessions).has(session);
+  const exists = useContext(AgentSessions).sessions.has(session);
   return (
     <article
       class="node merged-row"
@@ -163,7 +164,11 @@ function Message({
   const sender = node.agent?.outcome === "merged" ? undefined : node.agent;
   const decision = sender?.outcome === "needs decision";
   const fold = !!sender && !decision;
-  const known = useContext(AgentSessions).get(sender?.session || "");
+  const { sessions, parent, reports } = useContext(AgentSessions);
+  // The conversation that started this agent is not an agent: no icon.
+  const known = sessions.get(sender?.session || "");
+  const fromParent = !!sender && sender.session === parent;
+  const senderName = sender && agentName(known ?? sender);
   const reply = node.role === "assistant" || !!sender;
   const chrome = reply ? "response" : node.origin ? "mail" : "user inverse";
   const load = useNodeReader(session);
@@ -188,7 +193,7 @@ function Message({
   const assets = routes.assets(session.id);
   const nameId = useId();
   const name = useRowName(
-    sender?.title ||
+    senderName ||
       (reply ? "Assistant" : (node.origin && AUTHORS[node.origin]) || "You"),
     node.time,
   );
@@ -258,10 +263,8 @@ function Message({
           onToggle={() => setWantFull(!wantFull)}
           lead={
             <span class="node-lead" id={nameId}>
-              <Bot aria-hidden="true" />
-              <strong class="truncate">
-                {known?.agent_name || sender.title}
-              </strong>
+              {!fromParent && <Bot aria-hidden="true" />}
+              <strong class="truncate">{senderName}</strong>
               {node.origin === "agent" && (
                 <span>{outcomeWord(sender.outcome)}</span>
               )}
@@ -270,14 +273,11 @@ function Message({
           headline={firstLine(text)}
           factsClass="agent-figures"
           facts={
+            // The totals are the agent's now: its latest report carries them.
             node.origin === "agent" &&
             known &&
-            [
-              known.tool_calls ? plural(known.tool_calls, "call") : "",
-              known.tokens ? count(known.tokens) : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")
+            reports[sender.session]?.id === node.id &&
+            Object.values(figures(known)).filter(Boolean).join(" · ")
           }
         />
       )}
@@ -288,13 +288,13 @@ function Message({
               <Button
                 variant="quiet"
                 class="sender-name"
-                aria-label={`Open agent · ${sender.title}`}
+                aria-label={`Open agent · ${senderName}`}
                 onClick={() => open(sender.session)}
               >
-                <span id={nameId}>{sender.title}</span>
+                <span id={nameId}>{senderName}</span>
               </Button>
             ) : (
-              <strong id={nameId}>{sender.title}</strong>
+              <strong id={nameId}>{senderName}</strong>
             )}
           </h3>
           <span class="muted small">Decision requested</span>
@@ -334,7 +334,7 @@ function Message({
               size="compact"
               onClick={() => open(sender.session)}
             >
-              Open agent
+              {fromParent ? "Open conversation" : "Open agent"}
             </Button>
           )}
           {meta}

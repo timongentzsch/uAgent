@@ -7,7 +7,7 @@ import { plainKey } from "../../shared/listbox-nav.ts";
 import { parseSlash } from "./slash.ts";
 import { Button, IconButton, Input, updateChecked } from "../../shared/ui.tsx";
 import { bytes, plural } from "../../shared/quantities.ts";
-import { holdable } from "../../shared/message-view.ts";
+import { type AgentReports, holdable } from "../../shared/message-view.ts";
 import type {
   InspectorTarget,
   SlashCommand,
@@ -96,7 +96,7 @@ function Composer({
   stopped?: string;
   resume?: () => void;
   agents: Session[];
-  reports: Record<string, string>;
+  reports: AgentReports;
   // The conversation's side chats, for the Activity list.
   sides: SideRows;
   // What sits on the input: Jump to latest stays clear of it.

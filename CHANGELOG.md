@@ -2,10 +2,6 @@
 
 ## Unreleased
 
-### Changes
-
-- The web host runs cpp-httplib 0.67.0, unpatched, instead of a patched 0.54.1. Building from source downloads it and nlohmann/json 3.12.0 when configuring, each pinned by its SHA-256; an offline build points `FETCHCONTENT_SOURCE_DIR_JSON` and `FETCHCONTENT_SOURCE_DIR_HTTPLIB` at unpacked copies. Installs now also carry nlohmann/json's licence.
-
 ### Fixes
 
 - A `web_fetch` rule for a site no longer matches an address whose query or fragment holds `@` and that site's name; the rule is keyed by the host the fetch goes to. A preview's sheet engine route no longer serves a file outside the engine's folder.

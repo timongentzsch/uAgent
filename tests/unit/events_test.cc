@@ -23,6 +23,7 @@
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"
+#include "include/core/logs.h"
 #include "include/core/turn_status.h"
 #include "tests/unit/test_support.h"
 
@@ -507,6 +508,34 @@ TEST_CASE(TestObservabilityEvents) {
   struct stat tightened{};
   CHECK(stat(loose.c_str(), &tightened) == 0 &&
         (tightened.st_mode & 0777) == 0600);
+}
+
+TEST_CASE(TestLogLevelsWriteTheirRecords) {
+  struct Expected {
+    LogKind kind;
+    bool off, events, full, debug;
+  };
+  constexpr Expected kExpected[] = {
+      {LogKind::kJournal, false, true, true, true},
+      {LogKind::kMcpStderr, false, true, true, true},
+      {LogKind::kCapture, false, false, true, true},
+      {LogKind::kExchange, false, false, true, true},
+      {LogKind::kTrace, false, false, false, true},
+      {LogKind::kToolOutput, true, true, true, true},
+      {LogKind::kCommandLog, true, true, true, true},
+  };
+  CHECK(std::size(kExpected) == std::size(kLogRecords));
+  for (const Expected& expected : kExpected) {
+    for (const auto& [level, written] :
+         {std::pair{"off", expected.off}, std::pair{"events", expected.events},
+          std::pair{"full", expected.full},
+          std::pair{"debug", expected.debug}}) {
+      ScopedEnv setting("UAGENT_LOG_LEVEL", level);
+      CHECK(Logs(expected.kind) == written);
+    }
+    ScopedEnv unknown("UAGENT_LOG_LEVEL", "loud");
+    CHECK(Logs(expected.kind) == expected.full);
+  }
 }
 
 }  // namespace uagent

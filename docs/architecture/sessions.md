@@ -58,7 +58,7 @@ Files beside `<name>.json`, all private:
 | Suffix | Content |
 | --- | --- |
 | `.lock` | the writer lease |
-| `.events.jsonl` | the event journal |
+| `.events.jsonl` | the event journal (`logs.level` events and above) |
 | `.edits/` | undo blobs, `index.json`, stored diffs |
 | `.assets/` | uploads, each `<id>.data` with its record `<id>.json` |
 | `.plan.md` | plan mode's plan |

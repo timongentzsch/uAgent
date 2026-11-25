@@ -23,10 +23,10 @@ With no home directory (`HOME`, then the password entry) it is
 | `~/.uagent/library/changed`, `write.lock`; `staging/<name>.XXXXXX/` | change stamp and lease for memories and skills; a skill being imported (pruned after a day) | Library writers, import | watchers, import |
 | `~/.uagent/worktrees/<id>/` | git worktrees of agents and scheduled runs | agent and schedule launch | those runs |
 | `~/.uagent/spaces/<name>/`, `spaces/<name>/.uagent/name` | named workspaces (`Scratch` for a conversation of no folder) and the display name | the web host | the web host |
-| `~/.uagent/artifacts/{output,exchange,http}-XXXXXX` | large tool output, tool exchanges, HTTP captures | runtimes | `read`, `/http`, the web host |
+| `~/.uagent/artifacts/{output,exchange,http}-XXXXXX` | large tool output; tool exchanges and HTTP captures (`logs.level` full and above) | runtimes | `read`, `/http`, the web host |
 | `~/.uagent/activity/<pid>-<activity>.log`, `pending-*`, `usage-<session id>.jsonl` | command logs; a child agent's spend, one JSON object per line | the shell tool, child agents | the activity tool, the parent |
 | `~/.uagent/terminals/<pid>.json`, `terminals/logs/` | detached terminal records and logs | the shell tool | the activity tool |
-| `~/.uagent/sessions/<UTC stamp>-<pid>.jsonl`, `mcp/<server>-<pid>.log` | `--debug` trace (sensitive); MCP server stderr | `--debug`; runtimes | people |
+| `~/.uagent/sessions/<UTC stamp>-<pid>.jsonl`, `mcp/<server>-<pid>.log` | trace (sensitive, `logs.level` debug or `--debug`); MCP server stderr (`logs.level` events and above) | runtimes | people |
 | `~/.uagent/models/<hash>.json` | a provider's model catalogue, no credentials | runtimes | runtimes |
 | `~/.uagent/openrouter-signin.json`, `.maintained` | a pending sign-in's verifier; the daily retention stamp | `setup`, `openrouter` control; runtimes | the same |
 

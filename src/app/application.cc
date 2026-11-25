@@ -20,6 +20,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/logs.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -44,8 +45,10 @@ Application::Application(AppContext& context)
       saved_revision_(agent_.Revision()),
       config_problem_(context.config_manager.Problem()),
       channel_(context.channel) {
-  agent_.RetainExchanges(channel_ || context_.options.prompt.empty() ||
-                         !session_file_.empty());
+  agent_.RetainExchanges(Logs(LogKind::kCapture));
+  // Only here: turned on mid-conversation, the journal would rewrite its file
+  // with what it holds from then on.
+  context_.observability.EnableJournal(Logs(LogKind::kJournal));
   message_subscription_ =
       context_.observability.Subscribe([this](const AppEvent& event) {
         // A suggested place reaches clients with the first event after it was
@@ -128,6 +131,7 @@ void Application::ReloadConfigAtTurnBoundary() {
   if (!reload) return;
   runtime_.config = reload->active;
   api_.config = reload->active;
+  agent_.RetainExchanges(Logs(LogKind::kCapture));
   Emit(Event{EventId::kConfigChanged,
              {{"changed", reload->applied},
               {"deferred", reload->deferred},

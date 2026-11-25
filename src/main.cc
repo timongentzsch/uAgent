@@ -212,7 +212,6 @@ int HeadlessMain(Options options, char* executable,
                  Observability& observability) {
   const bool json_stream = options.json_stream;
   const bool json_envelope = options.json;
-  observability.EnableJournal(false);  // headless runs keep no journal
   if (json_stream && !observability.StartJsonStream()) {
     fprintf(stderr, "cannot initialize JSON event stream\n");
     return 1;

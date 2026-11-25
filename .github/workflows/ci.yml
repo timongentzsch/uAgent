@@ -283,7 +283,6 @@ jobs:
         run: >-
           gcovr --root .
           --filter include --filter src
-          --exclude third_party
           --branches
           --fail-under-line 67
           --gcov-ignore-parse-errors negative_hits.warn_once_per_file

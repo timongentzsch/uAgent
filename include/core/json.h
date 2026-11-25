@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "include/core/checked.h"
-#include "third_party/json.hpp"
+#include "nlohmann/json.hpp"
 
 namespace uagent {
 

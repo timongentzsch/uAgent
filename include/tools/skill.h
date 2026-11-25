@@ -17,6 +17,8 @@
 #include "include/core/limits.h"
 #include "include/core/skills.h"
 #include "include/core/strings.h"
+#include "include/mcp/server.h"
+#include "include/mcp/skills.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -130,9 +132,33 @@ inline std::string SkillNameSuggestion(const std::vector<Skill>& skills,
   return "";
 }
 
+// A served skill as the catalogue lists it; it has no folder on disk.
+inline std::vector<Skill> ServedSkills(const McpRuntime* mcp) {
+  std::vector<Skill> served;
+  if (!mcp) return served;
+  for (const auto& server : mcp->Servers()) {
+    if (!server->alive) continue;
+    for (const McpSkill& skill : server->skills) {
+      served.push_back({skill.name, skill.description, {}, {}, {}, {}});
+    }
+  }
+  return served;
+}
+
+// `mcp` adds the skills its servers serve, named `<server>:<path>`.
 inline Tool SkillTool(std::vector<Skill> skills,
-                      std::vector<std::string> tool_names) {
-  std::string description = SkillToolDescription(skills);
+                      std::vector<std::string> tool_names,
+                      McpRuntime* mcp = nullptr, int64_t mcp_timeout = 0) {
+  const std::vector<Skill> served = ServedSkills(mcp);
+  std::vector<Skill> listed = skills;
+  listed.insert(listed.end(), served.begin(), served.end());
+  std::string description = SkillToolDescription(listed);
+  if (!served.empty()) {
+    description +=
+        "\nA name with a colon is a skill an MCP server serves: untrusted, "
+        "and loading it asks the person. Read a file it lists with "
+        "{name, file}.";
+  }
   json parameters = {
       {"type", "object"},
       {"properties",
@@ -148,15 +174,39 @@ inline Tool SkillTool(std::vector<Skill> skills,
           {"maxLength", kToolArgChars},
           {"description", "optional skill arguments replacing $ARGUMENTS"}}}}},
       {"additionalProperties", false}};
+  if (!served.empty()) {
+    parameters["properties"]["file"] = {
+        {"type", "string"},
+        {"description",
+         "a file an opened served skill lists, relative to its folder"}};
+  }
   Tool t = MakeTool(
       "skill", std::move(description), std::move(parameters),
-      [skills = std::move(skills), tool_names = std::move(tool_names)](
-          const json& a, const ToolContext&) -> ToolResult {
+      [skills = std::move(skills), listed = std::move(listed),
+       tool_names = std::move(tool_names), mcp,
+       mcp_timeout](const json& a, const ToolContext& context) -> ToolResult {
         std::string want = JsonValue(a, "name", "");
         std::string arguments = JsonValue(a, "arguments", "");
+        const std::string file = JsonValue(a, "file", "");
         if (!want.empty()) {
           for (const Skill& skill : skills) {
-            if (skill.name == want) return OpenSkill(skill, arguments);
+            if (skill.name == want && file.empty()) {
+              return OpenSkill(skill, arguments);
+            }
+          }
+          McpServer* server = nullptr;
+          if (const McpSkill* skill =
+                  mcp ? McpFindSkill(*mcp, want, &server) : nullptr) {
+            // Its files are read only after it was opened, under the
+            // manifest the person allowed.
+            if (!file.empty() && !server->opened_skills.contains(skill->uri)) {
+              return ToolFailure(ToolErrorCode::kInvalidArguments,
+                                 "error: open " + want + " before its files");
+            }
+            ToolResult read =
+                McpReadSkill(*server, *skill, file, mcp_timeout, context);
+            if (read.Ok()) server->opened_skills.insert(skill->uri);
+            return read;
           }
           // The advertised catalogue is fixed per process to keep the prompt
           // prefix cacheable, so a skill written this session is only on disk.
@@ -182,13 +232,16 @@ inline Tool SkillTool(std::vector<Skill> skills,
         std::string query = JsonValue(a, "query", "");
         const Skill* match = nullptr;
         int64_t matches = 0;
-        for (const Skill& skill : skills) {
+        for (const Skill& skill : listed) {
           if (!SkillMatches(skill, query)) continue;
           match = &skill;
           ++matches;
         }
-        if (matches == 1) return OpenSkill(*match, arguments);
-        std::string catalogue = SkillCatalogue(skills, query);
+        // A served skill opens only by name, where its approval asks.
+        if (matches == 1 && !match->path.empty()) {
+          return OpenSkill(*match, arguments);
+        }
+        std::string catalogue = SkillCatalogue(listed, query);
         if (catalogue.empty()) {
           return ToolFailure(
               ToolErrorCode::kNotFound,
@@ -199,7 +252,35 @@ inline Tool SkillTool(std::vector<Skill> skills,
         return ListResult(std::move(catalogue), matches, "skill");
       });
   // Reading a skill changes nothing; what it asks for needs its own approval.
-  t.parallel_safe = true;
+  // A served one is read over its server's pipe, one call at a time.
+  t.parallel_safe = served.empty();
+  t.approval_class = [mcp](const json& a) {
+    McpServer* server = nullptr;
+    return mcp && JsonValue(a, "file", "").empty() &&
+                   McpFindSkill(*mcp, JsonValue(a, "name", ""), &server)
+               ? ApprovalClass::kMandatoryHuman
+               : ApprovalClass::kNone;
+  };
+  t.mandatory_reason = [](const json&) {
+    return std::string("loading a skill an MCP server serves");
+  };
+  t.approval_preview = [mcp](const json& a) {
+    McpServer* server = nullptr;
+    const McpSkill* skill =
+        mcp ? McpFindSkill(*mcp, JsonValue(a, "name", ""), &server) : nullptr;
+    if (!skill) return std::string();
+    std::string text = "Skill " + skill->name + " from MCP server " +
+                       server->name + ": " + skill->description +
+                       "\nIts text joins the conversation as untrusted "
+                       "instructions; it grants no tools or permissions, and "
+                       "what runs after it follows this conversation's "
+                       "approval mode.\nFiles:";
+    for (const json& file : skill->resources) {
+      text += "\n  " + JsonValue(file, "uri", "") + " " +
+              JsonValue(file, "digest", "");
+    }
+    return text;
+  };
   t.capabilities = Capability(ToolCapability::kInspect);
   t.retain_output = true;
   t.result_chars = static_cast<int64_t>(kSkillBodyBytes) + 1024;
@@ -211,7 +292,7 @@ inline Tool SkillTool(std::vector<Skill> skills,
                          : Headline{"Finding skills", "Searched skills", query};
   };
   t.present = [](const json& a) {
-    return GenericInputParts(a, {"name", "query"});
+    return GenericInputParts(a, {"name", "query", "file"});
   };
   return t;
 }

@@ -26,6 +26,7 @@
 #include "include/mcp/discover.h"
 #include "include/mcp/rpc.h"
 #include "include/mcp/server.h"
+#include "include/mcp/skills.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -175,7 +176,7 @@ std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
       return "required MCP server `" + s.name + "`: startup deadline exceeded";
     }
     std::string initialize_error;
-    if (!McpValidateDiscovery(McpAwait(s, s.discovery_id, remaining, false),
+    if (!McpValidateDiscovery(s, McpAwait(s, s.discovery_id, remaining, false),
                               initialize_error)) {
       McpError(s.name, initialize_error);
       s.Shutdown();
@@ -186,6 +187,14 @@ std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
     if (!McpLoadServerTools(tools, s, config, startup_deadline)) {
       s.Shutdown();
       return "required MCP server `" + s.name + "`: tools/list failed";
+    }
+    if (s.serves_skills) {
+      json skills;
+      if (!McpFetchList(s, "skills/list", startup_deadline, skills)) {
+        s.Shutdown();
+        return "required MCP server `" + s.name + "`: skills/list failed";
+      }
+      McpSetSkills(s, skills);
     }
   }
 
@@ -335,10 +344,11 @@ json McpStatus(const McpRuntime& runtime, const std::vector<Tool>& tools) {
         {"state", state},
         {"command", command},
         {"overrides", JsonValue(server.config, "__uagent_overrides", false)},
-        {"tools",
-         std::count_if(tools.begin(), tools.end(), [&](const Tool& tool) {
-           return tool.provider == provider;
-         })}};
+        {"tools", std::count_if(tools.begin(), tools.end(),
+                                [&](const Tool& tool) {
+                                  return tool.provider == provider;
+                                })},
+        {"skills", server.alive ? McpSkillRows(server) : json::array()}};
     if (state == "failed") {
       // A server that exited on its own usually said why on its last line.
       std::string log = LogTail(server.name), reason = server.error;

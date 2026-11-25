@@ -2,8 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_MCP_DISCOVER_H_
 #define UAGENT_INCLUDE_MCP_DISCOVER_H_
-// Tool discovery: fetch a server's definitions and fold them into the
-// registry, replacing a previous generation in place.
+// Tool and skill discovery: fetch a server's lists and fold its tools into
+// the registry, replacing a previous generation in place.
 
 #include <chrono>
 #include <cstdint>
@@ -19,16 +19,15 @@ namespace uagent {
 
 struct RuntimeConfig;
 
-bool McpToolPageAllowed(const std::string& name, int64_t& pages,
-                        std::set<std::string>& cursors,
-                        const std::string& cursor);
+bool McpPageAllowed(const std::string& name, const char* method, int64_t& pages,
+                    std::set<std::string>& cursors, const std::string& cursor);
 
-bool McpConsumeToolPage(McpServer& server, const json& response, json& listed,
-                        std::string& cursor);
+// One page of `method` (tools/list or skills/list) appended to `listed`.
+bool McpConsumePage(McpServer& server, const char* method, const json& response,
+                    json& listed, std::string& cursor);
 
-bool McpFetchToolDefinitions(McpServer& s,
-                             std::chrono::steady_clock::time_point deadline,
-                             json& listed);
+bool McpFetchList(McpServer& s, const char* method,
+                  std::chrono::steady_clock::time_point deadline, json& listed);
 
 // Builds the whole replacement first, so a failed refresh keeps the old tools.
 void McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
@@ -38,10 +37,9 @@ bool McpLoadServerTools(std::vector<Tool>& tools, McpServer& server,
                         const RuntimeConfig& config,
                         std::chrono::steady_clock::time_point deadline);
 
-bool McpSendStartupToolPage(McpServer& server);
-
-// Keeps one tools/list request outstanding across short startup windows.
-bool McpAdvanceStartupTools(std::vector<Tool>& tools, McpServer& server,
+// Keeps one tools/list, then skills/list, request outstanding across short
+// startup windows.
+bool McpAdvanceStartupLists(std::vector<Tool>& tools, McpServer& server,
                             const RuntimeConfig& config);
 
 // Advances one optional server's startup; a missed deadline leaves it pending.

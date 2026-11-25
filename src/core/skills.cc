@@ -24,7 +24,7 @@ constexpr int kSkillDiscoveryDepth = 6;
 
 void ParseSkillFrontMatter(std::istream& input, std::string* description,
                            std::vector<std::string>* required_tools,
-                           std::string* argument_hint) {
+                           std::string* argument_hint, std::string* name) {
   std::string line;
   if (!std::getline(input, line) || Trim(line) != "---") return;
   while (std::getline(input, line)) {
@@ -42,6 +42,8 @@ void ParseSkillFrontMatter(std::istream& input, std::string* description,
       }
     } else if (key == "argument-hint" && argument_hint) {
       *argument_hint = std::move(value);
+    } else if (key == "name" && name) {
+      *name = std::move(value);
     }
   }
 }

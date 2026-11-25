@@ -31,7 +31,8 @@ struct SkillReadResult {
 void ParseSkillFrontMatter(std::istream& input,
                            std::string* description = nullptr,
                            std::vector<std::string>* required_tools = nullptr,
-                           std::string* argument_hint = nullptr);
+                           std::string* argument_hint = nullptr,
+                           std::string* name = nullptr);
 
 // Where µAgent's own data named `name` is installed: share/uagent/<name>
 // beside the binary (a build tree) or beside its bin folder (an install).

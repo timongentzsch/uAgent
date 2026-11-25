@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -19,36 +20,46 @@
 #include "include/mcp/result.h"
 #include "include/mcp/rpc.h"
 #include "include/mcp/server.h"
+#include "include/mcp/skills.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
 
-bool McpToolPageAllowed(const std::string& name, int64_t& pages,
-                        std::set<std::string>& cursors,
-                        const std::string& cursor) {
+namespace {
+// "tools" for tools/list: the key its pages carry.
+std::string ListKey(const char* method) {
+  const std::string_view name = method;
+  return std::string(name.substr(0, name.find('/')));
+}
+}  // namespace
+
+bool McpPageAllowed(const std::string& name, const char* method, int64_t& pages,
+                    std::set<std::string>& cursors, const std::string& cursor) {
   if (++pages <= kMcpPages &&
       (cursor.empty() || cursors.insert(cursor).second)) {
     return true;
   }
-  McpError(name, "tools/list exceeded pagination limits");
+  McpError(name, std::string(method) + " exceeded pagination limits");
   return false;
 }
 
-bool McpConsumeToolPage(McpServer& server, const json& response, json& listed,
-                        std::string& cursor) {
+bool McpConsumePage(McpServer& server, const char* method, const json& response,
+                    json& listed, std::string& cursor) {
   if (!response.contains("result") || !response["result"].is_object()) {
     McpError(server.name,
-             "tools/list: " + JsonErrorMessage(response, "failed"));
+             std::string(method) + ": " + JsonErrorMessage(response, "failed"));
     return false;
   }
-  json page = JsonValue(response["result"], "tools", json::array());
+  const std::string key = ListKey(method);
+  json page = JsonValue(response["result"], key.c_str(), json::array());
   if (!page.is_array()) {
-    McpError(server.name, "tools/list returned a non-array `tools` value");
+    McpError(server.name,
+             std::string(method) + " returned a non-array `" + key + "` value");
     return false;
   }
   for (const json& definition : page) {
     if (listed.size() >= MaxMcpTools()) {
-      McpError(server.name, "tool count limit exceeded");
+      McpError(server.name, key + " count limit exceeded");
       return false;
     }
     listed.push_back(definition);
@@ -56,32 +67,32 @@ bool McpConsumeToolPage(McpServer& server, const json& response, json& listed,
   const json& result = response["result"];
   if (result.contains("nextCursor") && !result["nextCursor"].is_string()) {
     McpError(server.name,
-             "tools/list returned a non-string `nextCursor` value");
+             std::string(method) + " returned a non-string `nextCursor` value");
     return false;
   }
   cursor = JsonValue(result, "nextCursor", "");
   return true;
 }
 
-bool McpFetchToolDefinitions(McpServer& s,
-                             std::chrono::steady_clock::time_point deadline,
-                             json& listed) {
+bool McpFetchList(McpServer& s, const char* method,
+                  std::chrono::steady_clock::time_point deadline,
+                  json& listed) {
   listed = json::array();
   std::string cursor;
   std::set<std::string> cursors;
   int64_t pages = 0;
   do {
-    if (!McpToolPageAllowed(s.name, pages, cursors, cursor)) {
+    if (!McpPageAllowed(s.name, method, pages, cursors, cursor)) {
       return false;
     }
     int64_t remaining = SecondsUntil(deadline);
     if (remaining <= 0) {
-      McpError(s.name, "tools/list deadline exceeded");
+      McpError(s.name, std::string(method) + " deadline exceeded");
       return false;
     }
     json params = cursor.empty() ? json::object() : json{{"cursor", cursor}};
-    json resp = McpRpc(s, "tools/list", params, remaining, false, deadline);
-    if (!McpConsumeToolPage(s, resp, listed, cursor)) return false;
+    json resp = McpRpc(s, method, params, remaining, false, deadline);
+    if (!McpConsumePage(s, method, resp, listed, cursor)) return false;
   } while (!cursor.empty());
   return true;
 }
@@ -201,54 +212,70 @@ bool McpLoadServerTools(std::vector<Tool>& tools, McpServer& server,
                         const RuntimeConfig& config,
                         std::chrono::steady_clock::time_point deadline) {
   json listed;
-  if (!McpFetchToolDefinitions(server, deadline, listed)) return false;
+  if (!McpFetchList(server, "tools/list", deadline, listed)) return false;
   McpReplaceServerTools(tools, server, config, listed);
   return true;
 }
 
-bool McpSendStartupToolPage(McpServer& server) {
-  if (!McpToolPageAllowed(server.name, server.startup_pages,
-                          server.startup_cursors, server.startup_cursor)) {
+namespace {
+bool SendStartupPage(McpServer& server, const char* method) {
+  if (!McpPageAllowed(server.name, method, server.startup_pages,
+                      server.startup_cursors, server.startup_cursor)) {
     server.Shutdown();
     return false;
   }
   json params = server.startup_cursor.empty()
                     ? json::object()
                     : json{{"cursor", server.startup_cursor}};
-  server.tools_list_id = server.next_id++;
-  if (McpSend(server, server.tools_list_id, "tools/list", params)) return true;
+  server.list_id = server.next_id++;
+  if (McpSend(server, server.list_id, method, params)) return true;
   server.Shutdown();
   return false;
 }
 
-bool McpAdvanceStartupTools(std::vector<Tool>& tools, McpServer& server,
+// Tools first, then skills when the server serves them.
+void FinishStartupList(std::vector<Tool>& tools, McpServer& server,
+                       const RuntimeConfig& config) {
+  json listed = std::exchange(server.startup_listed, json::array());
+  server.startup_pages = 0;
+  server.startup_cursors.clear();
+  if (server.startup == McpStartupState::kDiscoveringSkills) {
+    McpSetSkills(server, listed);
+    server.startup = McpStartupState::kReady;
+    return;
+  }
+  McpReplaceServerTools(tools, server, config, listed);
+  server.startup = server.serves_skills ? McpStartupState::kDiscoveringSkills
+                                        : McpStartupState::kReady;
+}
+}  // namespace
+
+bool McpAdvanceStartupLists(std::vector<Tool>& tools, McpServer& server,
                             const RuntimeConfig& config) {
-  for (;;) {
-    if (server.tools_list_id < 0 && !McpSendStartupToolPage(server)) {
-      return false;
-    }
+  while (server.startup == McpStartupState::kDiscoveringTools ||
+         server.startup == McpStartupState::kDiscoveringSkills) {
+    const char* method = server.startup == McpStartupState::kDiscoveringTools
+                             ? "tools/list"
+                             : "skills/list";
+    if (server.list_id < 0 && !SendStartupPage(server, method)) return false;
     json response;
-    McpResponseState state =
-        McpTryResponse(server, server.tools_list_id, response);
+    McpResponseState state = McpTryResponse(server, server.list_id, response);
     if (state == McpResponseState::kPending) return false;
     if (state == McpResponseState::kClosed) {
-      server.error = "tools/list: server exited";
+      server.error = std::string(method) + ": server exited";
       McpError(server.name, server.error + McpStderrHint(server.name));
       server.Shutdown();
       return false;
     }
-    server.tools_list_id = -1;
-    if (!McpConsumeToolPage(server, response, server.startup_tools,
-                            server.startup_cursor)) {
+    server.list_id = -1;
+    if (!McpConsumePage(server, method, response, server.startup_listed,
+                        server.startup_cursor)) {
       server.Shutdown();
       return false;
     }
-    if (!server.startup_cursor.empty()) continue;
-    McpReplaceServerTools(tools, server, config, server.startup_tools);
-    server.startup_tools = json::array();
-    server.startup = McpStartupState::kReady;
-    return true;
+    if (server.startup_cursor.empty()) FinishStartupList(tools, server, config);
   }
+  return true;
 }
 
 bool McpAdvanceStartup(std::vector<Tool>& tools, McpServer& server,
@@ -261,7 +288,7 @@ bool McpAdvanceStartup(std::vector<Tool>& tools, McpServer& server,
     std::string error;
     if (state == McpResponseState::kClosed) {
       error = "server exited";
-    } else if (McpValidateDiscovery(discovery, error)) {
+    } else if (McpValidateDiscovery(server, discovery, error)) {
       server.discovery_id = -1;
       server.startup = McpStartupState::kDiscoveringTools;
     }
@@ -274,10 +301,8 @@ bool McpAdvanceStartup(std::vector<Tool>& tools, McpServer& server,
       return false;
     }
   }
-  if (server.startup != McpStartupState::kDiscoveringTools) {
-    return false;
-  }
-  return McpAdvanceStartupTools(tools, server, config);
+  if (server.startup == McpStartupState::kDiscovering) return false;
+  return McpAdvanceStartupLists(tools, server, config);
 }
 
 bool McpRefreshTools(std::vector<Tool>& tools, McpRuntime& runtime,

@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import sys
 import time
@@ -12,6 +13,7 @@ from integration_support import (
     event,
     function_names,
     run,
+    run_dialog,
     run_pty,
     tool_call,
     tool_results,
@@ -669,3 +671,177 @@ def test_optional_mcp_slow_tool_list_resumes_one_request(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "delayed-ready", result.stdout)
         assert_true(requests.read_text() == "1", requests.read_text())
+
+
+SKILL_FILES = {
+    "skill://acme/review/SKILL.md": "---\nname: review\ndescription: Review a change\n"
+    "metadata:\n  owner: team\n---\n\nREVIEW STEPS: read references/guide.md.\n",
+    "skill://acme/review/references/guide.md": "GUIDE BODY\n",
+    "skill://broken/SKILL.md": "---\nname: broken\ndescription: Listed wrongly\n---\n\nX\n",
+}
+
+
+def write_skill_server(home, workspace, required=True):
+    """An MCP server serving `acme/review` with a supporting file, `broken`
+    whose listed digest is wrong, and a generated `daily`; requests are logged."""
+
+    def manifest(*uris, wrong=False):
+        return [
+            {
+                "uri": uri,
+                "digest": "sha256:"
+                + hashlib.sha256((SKILL_FILES[uri] + ("!" if wrong else "")).encode()).hexdigest(),
+                "size": len(SKILL_FILES[uri].encode()),
+            }
+            for uri in uris
+        ]
+
+    listed = [
+        {
+            "uri": "skill://acme/review/SKILL.md",
+            "frontmatter": {
+                "name": "review",
+                "description": "Review a change",
+                "metadata": {"owner": "team"},
+            },
+            "resources": manifest(
+                "skill://acme/review/SKILL.md", "skill://acme/review/references/guide.md"
+            ),
+        },
+        {
+            "uri": "skill://broken/SKILL.md",
+            "frontmatter": {"name": "broken", "description": "Listed wrongly"},
+            "resources": manifest("skill://broken/SKILL.md", wrong=True),
+        },
+        {
+            "uri": "skill://daily/SKILL.md",
+            "frontmatter": {"name": "daily", "description": "Generated daily"},
+            "resources": "dynamic",
+        },
+    ]
+    fake = workspace / "server.py"
+    log = workspace / "requests"
+    write_mcp_server(
+        fake,
+        "    params = message.get('params', {})\n"
+        "    with open(LOG, 'a') as out:\n"
+        "        out.write(json.dumps([method, params.get('uri')]) + '\\n')\n"
+        "    if method == 'server/discover':\n"
+        "        result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}, "
+        "'resources': {}, 'extensions': {'io.modelcontextprotocol/skills': {}}}}\n"
+        "    elif method == 'tools/list':\n"
+        "        result = {'tools': []}\n"
+        "    elif method == 'skills/list':\n"
+        "        result = {'skills': LISTED, 'ttlMs': 0, 'cacheScope': 'private'}\n"
+        "    elif method == 'resources/read':\n"
+        "        result = {'contents': [{'uri': params['uri'], 'text': FILES[params['uri']]}]}\n"
+        "    else:\n"
+        "        result = {}\n"
+        "    result.setdefault('resultType', 'complete')\n",
+        setup=f"LOG = {str(log)!r}\nLISTED = {listed!r}\nFILES = {SKILL_FILES!r}\n",
+    )
+    entry = {"command": sys.executable, "args": [str(fake)], "required": required}
+    (home / ".mcp.json").write_text(json.dumps({"mcpServers": {"probe": entry}}))
+    local = home / ".agents" / "skills" / "review"
+    local.mkdir(parents=True)
+    (local / "SKILL.md").write_text("---\ndescription: The local review\n---\n\nLOCAL REVIEW\n")
+
+    def requests():
+        return [tuple(json.loads(line)) for line in log.read_text().splitlines()]
+
+    return requests
+
+
+def test_mcp_served_skills_load_after_the_person_allows_them(root, home, *, binary):
+    """Served skills join the catalogue as `<server>:<path>` beside a local
+    skill of the same name; a load asks the person even in yolo, is checked
+    against the manifest, and nothing is read before it is needed."""
+    workspace = root / "mcp-skills"
+    workspace.mkdir()
+    requests = write_skill_server(home, workspace)
+    guide = {"name": "probe:acme/review", "file": "references/guide.md"}
+    calls = [
+        guide,
+        {"name": "review"},
+        {"name": "probe:acme/review"},
+        guide,
+        {"name": "probe:broken"},
+    ]
+    seen = {}
+
+    def route(_, body):
+        results = tool_results(body["messages"])
+        if not results:
+            skill = next(t for t in body["tools"] if t["function"]["name"] == "skill")
+            seen["catalogue"] = skill["function"]["description"]
+            seen["read_before"] = [r for r in requests() if r[0] == "resources/read"]
+        if len(results) < len(calls):
+            return tool_call("skill", calls[len(results)], call_id=f"c{len(results)}")
+        seen["results"] = results
+        return event({"content": "done"})
+
+    with Server([route]) as server, web_host(binary, root, home, server.url) as (web, code, _, _):
+        web.pair(code)
+        session = web.create(workspace)
+        web.command("permissions", session, mode="yolo")
+        web.command("submit", session, text="go")
+        for name in ("probe:acme/review", "probe:broken"):
+            asked = web.until(session, lambda value: bool(value.get("pending")))
+            shown = json.dumps(asked["pending"])
+            assert_true(name in shown and "MCP server probe" in shown, shown)
+            web.command("reply", session, interaction_id=asked["pending"]["id"], text="y")
+            web.until(
+                session,
+                lambda value, held=asked: (
+                    (value.get("pending") or {}).get("id") != held["pending"]["id"]
+                ),
+            )
+        web.until(session, lambda value: value["metadata"]["status"] == "idle")
+    catalogue = seen["catalogue"]
+    assert_true("- review: The local review" in catalogue, catalogue)
+    assert_true("- probe:acme/review: Review a change" in catalogue, catalogue)
+    assert_true("probe:broken" in catalogue and "daily" not in catalogue, catalogue)
+    assert_true(seen["read_before"] == [], seen)
+    results = seen["results"]
+    assert_true("open probe:acme/review before its files" in results[0], results)
+    assert_true("LOCAL REVIEW" in results[1], results)
+    assert_true("served by MCP server probe" in results[2], results)
+    assert_true("REVIEW STEPS" in results[2] and "owner" not in results[2], results)
+    assert_true("GUIDE BODY" in results[3], results)
+    assert_true("does not match its listed size and digest" in results[4], results)
+    reads = [r[1] for r in requests() if r[0] == "resources/read"]
+    assert_true(
+        reads
+        == [
+            "skill://acme/review/SKILL.md",
+            "skill://acme/review/references/guide.md",
+            "skill://broken/SKILL.md",
+        ],
+        reads,
+    )
+
+
+def test_mcp_served_skill_is_refused_with_nobody_to_ask(root, home, *, binary):
+    workspace = root / "mcp-skills-headless"
+    workspace.mkdir()
+    # Optional: its skills arrive through the non-blocking startup.
+    requests = write_skill_server(home, workspace, required=False)
+
+    seen = []
+
+    def route(_, body):
+        if results := tool_results(body["messages"]):
+            seen.extend(results)
+            return event({"content": "after"})
+        return tool_call("skill", {"name": "probe:acme/review"})
+
+    with Server([route]) as server:
+        result = run(workspace, base_env(home, server.url), "--yolo", "-p", "go", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    assert_true("loading a skill an MCP server serves" in "".join(seen), seen)
+    assert_true("nobody is here" in "".join(seen), seen)
+    assert_true(all(r[0] != "resources/read" for r in requests()), requests())
+    # The terminal's skill list names this conversation's served skills.
+    listed = run_dialog(workspace, base_env(home, server.url), "/skills\n/q\n", binary=binary)
+    assert_true('"name": "probe:acme/review"' in listed.stdout, listed.stdout)
+    assert_true('"server": "probe"' in listed.stdout, listed.stdout)

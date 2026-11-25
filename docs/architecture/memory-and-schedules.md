@@ -134,6 +134,22 @@ with `name`, or `$name` in a message, returns the body (≤ 512 KiB) with
 from `.claude` or `.codex`. A tool may name a skill that unlocks it
 (`Tool::skill`): `uagent` is offered once `uagent-config` is open.
 
+**Served skills.** An MCP server that declares the
+`io.modelcontextprotocol/skills` extension and `resources` is asked
+`skills/list` after `tools/list` (`src/mcp/skills.cc`). Its skills join the
+same catalogue as `<server>:<path>`, so a local skill of the same name stays
+what its own name opens. A listing whose files are `"dynamic"`, exceed 512
+files or 16 MiB, or whose name is not its path's last segment is left out
+with a note. Opening one asks a person in every approval mode, rules
+included, with the server, skill and file digests on the card; nobody to ask
+refuses it. Its `SKILL.md`, and later a file it lists (`skill {name, file}`,
+only after it was opened), is read with `resources/read` and used only when
+its size and SHA-256 match the listing. Of the front matter only `name` and
+`description` are compared with the listing, not every field: no other field
+grants anything here. The text enters the conversation marked with its
+server. A late server's skills rebuild the `skill` tool in place, so a
+conversation without one keeps its prompt prefix.
+
 **Import.** `/skills import`, `/memory import` and the Library's Import
 list Claude Code and Codex skills (up to 4 levels deep) and this folder's
 Claude Code memories, whether or not `skills.otherAgents` names them. A

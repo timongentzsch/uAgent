@@ -172,9 +172,15 @@ ToolResult EndedResult(const McpServer& server, const json& ended,
       call_id);
 }
 
+// A server still listing at start-up has a request outstanding that another
+// read would swallow; it can only be one restarted since, which knows none of
+// the old process's tasks.
 McpServer* LiveServer(McpRuntime& runtime, const std::string& name) {
   for (const auto& server : runtime.Servers()) {
-    if (server->alive && server->name == name) return server.get();
+    if (server->alive && server->startup == McpStartupState::kReady &&
+        server->name == name) {
+      return server.get();
+    }
   }
   return nullptr;
 }

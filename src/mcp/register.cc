@@ -184,16 +184,15 @@ std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
     }
     s.discovery_id = -1;
 
-    if (!McpLoadServerTools(tools, s, config, startup_deadline)) {
+    if (s.serves_tools &&
+        !McpLoadServerTools(tools, s, config, startup_deadline)) {
       s.Shutdown();
       return "required MCP server `" + s.name + "`: tools/list failed";
     }
-    if (s.serves_skills) {
-      json skills;
-      if (!McpFetchList(s, "skills/list", startup_deadline, skills)) {
-        s.Shutdown();
-        return "required MCP server `" + s.name + "`: skills/list failed";
-      }
+    // Skills that cannot be listed leave the server with its tools alone.
+    json skills;
+    if (s.serves_skills &&
+        McpFetchList(s, "skills/list", startup_deadline, skills)) {
       McpSetSkills(s, skills);
     }
   }

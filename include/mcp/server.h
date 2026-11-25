@@ -70,9 +70,11 @@ struct McpServer {
   int64_t list_id = -1;
   int64_t startup_pages = 0;
   json startup_listed = json::array();
+  json startup_tools = json::array();
   std::string startup_cursor;
   std::set<std::string> startup_cursors;
-  // It declared the skills extension and resources at discovery.
+  // What it declared at discovery: tools, and skills with resources.
+  bool serves_tools = false;
   bool serves_skills = false;
   std::vector<McpSkill> skills;
   // SKILL.md URIs opened in this conversation, whose files may be read.

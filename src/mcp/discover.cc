@@ -218,35 +218,27 @@ bool McpLoadServerTools(std::vector<Tool>& tools, McpServer& server,
 }
 
 namespace {
-bool SendStartupPage(McpServer& server, const char* method) {
-  if (!McpPageAllowed(server.name, method, server.startup_pages,
-                      server.startup_cursors, server.startup_cursor)) {
-    server.Shutdown();
-    return false;
-  }
-  json params = server.startup_cursor.empty()
-                    ? json::object()
-                    : json{{"cursor", server.startup_cursor}};
-  server.list_id = server.next_id++;
-  if (McpSend(server, server.list_id, method, params)) return true;
-  server.Shutdown();
-  return false;
-}
-
-// Tools first, then skills when the server serves them.
+// Its tools are offered only once its skills are in too: a tool call while a
+// list is outstanding would read past that list's reply.
 void FinishStartupList(std::vector<Tool>& tools, McpServer& server,
                        const RuntimeConfig& config) {
   json listed = std::exchange(server.startup_listed, json::array());
   server.startup_pages = 0;
   server.startup_cursors.clear();
-  if (server.startup == McpStartupState::kDiscoveringSkills) {
+  if (server.startup == McpStartupState::kDiscoveringTools) {
+    server.startup_tools = std::move(listed);
+    if (server.serves_skills) {
+      server.startup = McpStartupState::kDiscoveringSkills;
+      return;
+    }
+  } else {
     McpSetSkills(server, listed);
-    server.startup = McpStartupState::kReady;
-    return;
   }
-  McpReplaceServerTools(tools, server, config, listed);
-  server.startup = server.serves_skills ? McpStartupState::kDiscoveringSkills
-                                        : McpStartupState::kReady;
+  if (server.serves_tools) {
+    McpReplaceServerTools(tools, server, config,
+                          std::exchange(server.startup_tools, json::array()));
+  }
+  server.startup = McpStartupState::kReady;
 }
 }  // namespace
 
@@ -254,24 +246,45 @@ bool McpAdvanceStartupLists(std::vector<Tool>& tools, McpServer& server,
                             const RuntimeConfig& config) {
   while (server.startup == McpStartupState::kDiscoveringTools ||
          server.startup == McpStartupState::kDiscoveringSkills) {
-    const char* method = server.startup == McpStartupState::kDiscoveringTools
-                             ? "tools/list"
-                             : "skills/list";
-    if (server.list_id < 0 && !SendStartupPage(server, method)) return false;
-    json response;
-    McpResponseState state = McpTryResponse(server, server.list_id, response);
-    if (state == McpResponseState::kPending) return false;
-    if (state == McpResponseState::kClosed) {
-      server.error = std::string(method) + ": server exited";
-      McpError(server.name, server.error + McpStderrHint(server.name));
+    const bool skills = server.startup == McpStartupState::kDiscoveringSkills;
+    const char* method = skills ? "skills/list" : "tools/list";
+    bool failed = false;
+    if (server.list_id < 0) {
+      failed = !McpPageAllowed(server.name, method, server.startup_pages,
+                               server.startup_cursors, server.startup_cursor);
+      if (!failed) {
+        json params = server.startup_cursor.empty()
+                          ? json::object()
+                          : json{{"cursor", server.startup_cursor}};
+        server.list_id = server.next_id++;
+        if (!McpSend(server, server.list_id, method, params)) {
+          server.Shutdown();
+          return false;
+        }
+      }
+    }
+    if (!failed) {
+      json response;
+      McpResponseState state = McpTryResponse(server, server.list_id, response);
+      if (state == McpResponseState::kPending) return false;
+      if (state == McpResponseState::kClosed) {
+        server.error = std::string(method) + ": server exited";
+        McpError(server.name, server.error + McpStderrHint(server.name));
+        server.Shutdown();
+        return false;
+      }
+      server.list_id = -1;
+      failed = !McpConsumePage(server, method, response, server.startup_listed,
+                               server.startup_cursor);
+    }
+    // Skills that cannot be listed leave the server with its tools alone.
+    if (failed && !skills) {
       server.Shutdown();
       return false;
     }
-    server.list_id = -1;
-    if (!McpConsumePage(server, method, response, server.startup_listed,
-                        server.startup_cursor)) {
-      server.Shutdown();
-      return false;
+    if (failed) {
+      server.startup_listed = json::array();
+      server.startup_cursor.clear();
     }
     if (server.startup_cursor.empty()) FinishStartupList(tools, server, config);
   }
@@ -290,7 +303,9 @@ bool McpAdvanceStartup(std::vector<Tool>& tools, McpServer& server,
       error = "server exited";
     } else if (McpValidateDiscovery(server, discovery, error)) {
       server.discovery_id = -1;
-      server.startup = McpStartupState::kDiscoveringTools;
+      server.startup = server.serves_tools
+                           ? McpStartupState::kDiscoveringTools
+                           : McpStartupState::kDiscoveringSkills;
     }
     if (!error.empty()) {
       McpError(server.name, state == McpResponseState::kClosed

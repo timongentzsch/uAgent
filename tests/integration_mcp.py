@@ -601,7 +601,7 @@ SKILL_FILES = {
 }
 
 
-def write_skill_server(home, workspace, required=True):
+def write_skill_server(home, workspace, required=True, skills_delay=0, skills_error=False):
     """An MCP server serving `acme/review` with a supporting file, `broken`
     whose listed digest is wrong, and a generated `daily`; requests are logged."""
 
@@ -650,15 +650,24 @@ def write_skill_server(home, workspace, required=True):
         "        result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}, "
         "'resources': {}, 'extensions': {'io.modelcontextprotocol/skills': {}}}}\n"
         "    elif method == 'tools/list':\n"
-        "        result = {'tools': []}\n"
+        "        result = {'tools': [{'name': 'echo', 'inputSchema': {'type': 'object'}}]}\n"
+        "    elif method == 'tools/call':\n"
+        "        result = {'content': [{'type': 'text', 'text': 'echoed'}]}\n"
+        "    elif method == 'skills/list' and ERROR:\n"
+        "        print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], "
+        "'error': {'code': -32601, 'message': 'no skills here'}}), flush=True)\n"
+        "        continue\n"
         "    elif method == 'skills/list':\n"
+        "        time.sleep(DELAY)\n"
         "        result = {'skills': LISTED, 'ttlMs': 0, 'cacheScope': 'private'}\n"
         "    elif method == 'resources/read':\n"
         "        result = {'contents': [{'uri': params['uri'], 'text': FILES[params['uri']]}]}\n"
         "    else:\n"
         "        result = {}\n"
         "    result.setdefault('resultType', 'complete')\n",
-        setup=f"LOG = {str(log)!r}\nLISTED = {listed!r}\nFILES = {SKILL_FILES!r}\n",
+        setup=f"LOG = {str(log)!r}\nLISTED = {listed!r}\nFILES = {SKILL_FILES!r}\n"
+        f"DELAY = {skills_delay!r}\nERROR = {skills_error!r}\n",
+        extra_imports=("time",),
     )
     entry = {"command": sys.executable, "args": [str(fake)], "required": required}
     (home / ".mcp.json").write_text(json.dumps({"mcpServers": {"probe": entry}}))
@@ -691,6 +700,11 @@ def test_mcp_served_skills_load_after_the_person_allows_them(root, home, *, bina
 
     def route(_, body):
         results = tool_results(body["messages"])
+        if "Summarize the bounded transcript" in json.dumps(body["messages"][-1]):
+            return event({"content": "summary"})
+        if "results" in seen:
+            seen["after"] = body["messages"]
+            return event({"content": "after compaction"})
         if not results:
             skill = next(t for t in body["tools"] if t["function"]["name"] == "skill")
             seen["catalogue"] = skill["function"]["description"]
@@ -717,6 +731,14 @@ def test_mcp_served_skills_load_after_the_person_allows_them(root, home, *, bina
                 ),
             )
         web.until(session, lambda value: value["metadata"]["status"] == "idle")
+        # Compaction keeps a local skill as system text, never a served one.
+        web.command("submit", session, text="/compact")
+        web.until(session, lambda value: value["metadata"]["status"] == "idle")
+        web.command("submit", session, text="next")
+        web.until(session, lambda _: "after" in seen)
+        web.until(session, lambda value: value["metadata"]["status"] == "idle")
+    system = json.dumps([m for m in seen["after"] if m.get("role") == "system"])
+    assert_true("LOCAL REVIEW" in system and "REVIEW STEPS" not in system, system)
     catalogue = seen["catalogue"]
     assert_true("- review: The local review" in catalogue, catalogue)
     assert_true("- probe:acme/review: Review a change" in catalogue, catalogue)
@@ -765,3 +787,61 @@ def test_mcp_served_skill_is_refused_with_nobody_to_ask(root, home, *, binary):
     listed = run_dialog(workspace, base_env(home, server.url), "/skills\n/q\n", binary=binary)
     assert_true('"name": "probe:acme/review"' in listed.stdout, listed.stdout)
     assert_true('"server": "probe"' in listed.stdout, listed.stdout)
+
+
+def test_mcp_late_skills_join_while_another_server_works(root, home, *, binary):
+    """An optional server whose skills/list answers after the startup window
+    ends ready, with its tools and skills, at the step after another server's
+    tool ran."""
+    workspace = root / "mcp-skills-late"
+    workspace.mkdir()
+    write_skill_server(home, workspace, required=False, skills_delay=3)
+    other = workspace / "other.py"
+    write_mcp_server(
+        other,
+        "    if method == 'server/discover':\n"
+        "        result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}}}\n"
+        "    elif method == 'tools/list':\n"
+        "        result = {'tools': [{'name': 'wait', 'inputSchema': {'type': 'object'}}]}\n"
+        "    elif method == 'tools/call':\n"
+        "        time.sleep(3)\n"
+        "        result = {'content': [{'type': 'text', 'text': 'waited'}]}\n"
+        "    else:\n"
+        "        result = {}\n",
+        extra_imports=("time",),
+    )
+    config = json.loads((home / ".mcp.json").read_text())
+    config["mcpServers"]["other"] = {"command": sys.executable, "args": [str(other)]}
+    (home / ".mcp.json").write_text(json.dumps(config))
+    offered = []
+
+    def route(_, body):
+        names = {t["function"]["name"]: t["function"] for t in body["tools"]}
+        offered.append(("probe_echo" in names, "probe:acme/review" in json.dumps(names)))
+        if tool_results(body["messages"]):
+            return event({"content": "after"})
+        return tool_call("other_wait", {})
+
+    with Server([route]) as server:
+        result = run(workspace, base_env(home, server.url), "--yolo", "-p", "go", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    assert_true(offered == [(False, False), (True, True)], offered)
+
+
+def test_mcp_failed_skills_list_keeps_the_server(root, home, *, binary):
+    workspace = root / "mcp-skills-error"
+    workspace.mkdir()
+    write_skill_server(home, workspace, skills_error=True)
+    seen = []
+
+    def route(_, body):
+        if results := tool_results(body["messages"]):
+            seen.extend(results)
+            return event({"content": "after"})
+        return tool_call("probe_echo", {})
+
+    with Server([route]) as server:
+        result = run(workspace, base_env(home, server.url), "--yolo", "-p", "go", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    assert_true(seen == ["echoed"], seen)
+    assert_true("no skills here" in result.stderr + result.stdout, result.stderr)

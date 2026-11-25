@@ -136,7 +136,9 @@ from `.claude` or `.codex`. A tool may name a skill that unlocks it
 
 **Served skills.** An MCP server that declares the
 `io.modelcontextprotocol/skills` extension and `resources` is asked
-`skills/list` after `tools/list` (`src/mcp/skills.cc`). Its skills join the
+`skills/list` after `tools/list` (`src/mcp/skills.cc`); it need not serve
+tools, and its tools are offered once both lists are in. A `skills/list`
+that fails leaves it with its tools and no skills. Its skills join the
 same catalogue as `<server>:<path>`, so a local skill of the same name stays
 what its own name opens. A listing whose files are `"dynamic"`, exceed 512
 files or 16 MiB, or whose name is not its path's last segment is left out
@@ -144,9 +146,10 @@ with a note. Opening one asks a person in every approval mode, rules
 included, with the server, skill and file digests on the card; nobody to ask
 refuses it. Its `SKILL.md`, and later a file it lists (`skill {name, file}`,
 only after it was opened), is read with `resources/read` and used only when
-its size and SHA-256 match the listing. Of the front matter only `name` and
-`description` are compared with the listing, not every field: no other field
-grants anything here. The text enters the conversation marked with its
+its size and SHA-256 match the listing. Of the front matter only the
+unindented `name` and `description` are compared with the listing, not every
+field, and a description written over several lines only by its name: no
+other field grants anything here. The text enters the conversation marked with its
 server. A late server's skills rebuild the `skill` tool in place, so a
 conversation without one keeps its prompt prefix.
 

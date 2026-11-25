@@ -24,6 +24,7 @@
 #include "include/core/skills.h"
 #include "include/mcp/config.h"
 #include "include/mcp/discover.h"
+#include "include/mcp/elicit.h"
 #include "include/mcp/register.h"
 #include "include/mcp/result.h"
 #include "include/mcp/rpc.h"
@@ -273,6 +274,185 @@ TEST_CASE(TestMcpContractHelpers) {
             McpStderrHint(server.name));
   std::error_code remove_error;
   fs::remove_all(image_home, remove_error);
+}
+
+TEST_CASE(TestMcpElicitation) {
+  const json schema = json::parse(R"({"type":"object","required":["name"],
+    "properties":{
+      "name":{"type":"string","minLength":2,"maxLength":8},
+      "mail":{"type":"string","format":"email"},
+      "age":{"type":"integer","minimum":18,"default":30},
+      "ok":{"type":"boolean"},
+      "color":{"type":"string","oneOf":[{"const":"#f00","title":"Red"},
+                                        {"const":"#0f0","title":"Green"}]},
+      "size":{"type":"string","enum":["s","m"]},
+      "tags":{"type":"array","minItems":1,"maxItems":2,
+              "items":{"anyOf":[{"const":"a","title":"A"},{"const":"b"},
+                                {"const":"c"}]}}}})");
+  CHECK(!ElicitSchemaIssue(schema));
+  CHECK(
+      ElicitChoices(schema["properties"]["size"]) ==
+      json::parse(R"([{"value":"s","label":"s"},{"value":"m","label":"m"}])"));
+  CHECK(ElicitChoices(schema["properties"]["tags"])[1]["label"] == "b");
+  json nested = schema;
+  nested["properties"]["home"] = {{"type", "object"}};
+  CHECK(ElicitSchemaIssue(nested)->find("`home` is nested") !=
+        std::string::npos);
+  nested = schema;
+  nested["properties"]["tags"]["items"] = {{"type", "object"}};
+  CHECK(ElicitSchemaIssue(nested).has_value());
+  nested = schema;
+  nested["required"] = {"missing"};
+  CHECK(ElicitSchemaIssue(nested).has_value());
+  CHECK(ElicitSchemaIssue({{"type", "object"}}).has_value());
+  for (const char* bad :
+       {R"({"type":"string","title":5})",
+        R"({"type":"string","oneOf":[{"const":"a","title":1}]})",
+        R"({"type":"integer","default":"ten"})",
+        R"({"type":"number","minimum":5,"maximum":1})",
+        R"({"type":"string","minimum":"x","maxLength":-1})"}) {
+    nested = schema;
+    nested["properties"]["bad"] = json::parse(bad);
+    CHECK(ElicitSchemaIssue(nested).has_value());
+  }
+
+  const json& fields = schema["properties"];
+  json value;
+  std::string error;
+  CHECK(ElicitParseField(fields["age"], "", value, error) && value == 30);
+  CHECK(ElicitParseField(fields["name"], " ", value, error) && value.is_null());
+  CHECK(!ElicitParseField(fields["age"], "17", value, error));
+  CHECK(error == "enter a number at least 18");
+  CHECK(!ElicitParseField(fields["age"], "18.5", value, error));
+  CHECK(ElicitParseField(fields["ok"], "yes", value, error) && value == true);
+  CHECK(ElicitParseField(fields["color"], "2", value, error) &&
+        value == "#0f0");
+  CHECK(ElicitParseField(fields["color"], "Red", value, error) &&
+        value == "#f00");
+  CHECK(!ElicitParseField(fields["color"], "Blue", value, error));
+  CHECK(ElicitParseField(fields["tags"], "1, c", value, error) &&
+        value == json({"a", "c"}));
+  CHECK(!ElicitParseField(fields["tags"], "1,2,3", value, error));
+  CHECK(error == "choose at least 1 and at most 2 options");
+  CHECK(!ElicitParseField(fields["mail"], "a b@c", value, error));
+  CHECK(!ElicitParseField(fields["name"], "x", value, error));
+
+  CHECK(ElicitContentIssue(schema, json::object()) == "name: required");
+  CHECK(ElicitContentIssue(schema, {{"name", "ab"}, {"extra", 1}}) ==
+        "extra: not a field of this form");
+  CHECK(!ElicitContentIssue(schema, {{"name", "ab"}, {"tags", {"b"}}}));
+
+  const json form = {{"mode", "form"}, {"requestedSchema", schema}};
+  const json link = {{"mode", "url"}};
+  CHECK(!ElicitReplyIssue(
+      form, {{"action", "accept"}, {"content", {{"name", "ab"}}}}));
+  CHECK(ElicitReplyIssue(form, {{"action", "accept"}}).has_value());
+  CHECK(!ElicitReplyIssue(link, {{"action", "accept"}}));
+  CHECK(ElicitReplyIssue(link, {{"action", "accept"}, {"content", {}}})
+            .has_value());
+  CHECK(ElicitReplyIssue(link, {{"action", "maybe"}}).has_value());
+
+  McpServer server;
+  server.name = "probe";
+  CHECK(!JsonValue(McpRequestMeta(server),
+                   "io.modelcontextprotocol/clientCapabilities", json())
+             .contains("elicitation"));
+  json asked;
+  std::string answer;
+  bool closed = false;
+  server.elicit = [&](const json& shown, bool* eof) {
+    asked = shown;
+    *eof = closed;
+    return answer;
+  };
+  CHECK(JsonValue(McpRequestMeta(server),
+                  "io.modelcontextprotocol/clientCapabilities",
+                  json())["elicitation"] ==
+        json({{"form", json::object()}, {"url", json::object()}}));
+  std::string note;
+  const json params = {{"message", "Who?"}, {"requestedSchema", schema}};
+  answer = R"({"action":"accept","content":{"name":"ab"},"extra":1})";
+  CHECK(McpElicit(server, params, note) ==
+        json::parse(R"({"action":"accept","content":{"name":"ab"}})"));
+  CHECK(asked["server"] == "probe" && asked["mode"] == "form" &&
+        asked["message"] == "Who?" && note.empty());
+  CHECK(asked["requestedSchema"]["properties"]["color"]["choices"][0] ==
+        json({{"value", "#f00"}, {"label", "Red"}}));
+  closed = true;
+  answer = R"({"action":"decline"})";
+  CHECK(McpElicit(server, params, note) == json({{"action", "cancel"}}));
+  closed = false;
+  CHECK(McpElicit(server, params, note) == json({{"action", "decline"}}));
+
+  asked = nullptr;
+  nested = schema;
+  nested["properties"]["home"] = {{"type", "object"}};
+  CHECK(McpElicit(server, {{"message", "m"}, {"requestedSchema", nested}},
+                  note) == json({{"action", "decline"}}));
+  CHECK(asked.is_null() && note.find("declined probe's request") == 1);
+  for (const char* url :
+       {"javascript:alert(1)", "https://bank.example@evil.example/", "https://",
+        "https://a b.example", "https://evil.example\\.bank.example/",
+        "https://bank%2eexample/", "https://b\xc3\xa4nk.example/"}) {
+    note.clear();
+    CHECK(McpElicit(server, {{"mode", "url"}, {"message", "m"}, {"url", url}},
+                    note) == json({{"action", "decline"}}));
+    CHECK(!note.empty());
+  }
+  answer = R"({"action":"accept"})";
+  note.clear();
+  CHECK(McpElicit(server,
+                  {{"mode", "url"},
+                   {"message", "Sign in"},
+                   {"url", "https://Login.Example:8443/start?x=@y"}},
+                  note) == json({{"action", "accept"}}));
+  CHECK(asked["host"] == "login.example" && !asked["punycode"] && note.empty());
+  McpElicit(server,
+            {{"mode", "url"},
+             {"message", "m"},
+             {"url", "https://xn--bnk-sna.example/"}},
+            note);
+  CHECK(asked["host"] == "xn--bnk-sna.example" && asked["punycode"]);
+
+  // One round: roots answered, the first answer that is not an accept cancels
+  // the rest unseen, and an accepted link lets the retry wait.
+  const json open = {
+      {"method", "elicitation/create"},
+      {"params",
+       {{"mode", "url"}, {"message", "m"}, {"url", "https://login.example/"}}}};
+  int asks = 0;
+  server.elicit = [&](const json&, bool*) {
+    ++asks;
+    return answer;
+  };
+  json responses;
+  bool wait = false;
+  CHECK(McpInputResponses(server,
+                          {{"a", open}, {"b", {{"method", "roots/list"}}}},
+                          responses, wait, note));
+  CHECK(wait && asks == 1 && responses["b"].contains("roots"));
+  answer = R"({"action":"decline"})";
+  responses = json::object();
+  wait = false;
+  CHECK(McpInputResponses(server, {{"a", open}, {"b", open}, {"c", open}},
+                          responses, wait, note));
+  CHECK(asks == 2 && !wait && responses["a"]["action"] == "decline" &&
+        responses["b"] == json({{"action", "cancel"}}) &&
+        responses["c"] == json({{"action", "cancel"}}));
+  answer = R"({"action":"accept"})";
+  json many = json::object();
+  for (size_t index = 0; index < kMcpElicitationsPerRound + 2; ++index) {
+    many[std::string(1, static_cast<char>('a' + index))] = open;
+  }
+  note.clear();
+  responses = json::object();
+  CHECK(McpInputResponses(server, many, responses, wait, note));
+  CHECK(asks == 2 + static_cast<int>(kMcpElicitationsPerRound) &&
+        responses["f"]["action"] == "decline" &&
+        note.find("beyond 4 at once") != std::string::npos);
+  CHECK(!McpInputResponses(server,
+                           {{"a", {{"method", "sampling/createMessage"}}}},
+                           responses, wait, note));
 }
 
 TEST_CASE(TestWorkspaceScopedSession) {

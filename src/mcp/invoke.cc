@@ -8,6 +8,7 @@
 #include "include/core/json.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/mcp/elicit.h"
 #include "include/mcp/result.h"
 #include "include/mcp/rpc.h"
 #include "include/mcp/server.h"
@@ -24,11 +25,16 @@ ToolResult McpInvokeRemote(McpServer& server, const std::string& remote_name,
                            McpStderrHint(server.name));
   }
   json response;
+  std::string note;
   if (RunCancellable([&] {
         json params = {{"name", remote_name}, {"arguments", arguments}};
-        auto deadline = std::min(
-            context.deadline, DeadlineAfter(context.RemainingSeconds(timeout)));
+        bool wait = false;
         for (int round = 0; round < 8; ++round) {
+          // Each request has its own budget, so a person's time answering is
+          // never the server's; a retry after an accepted link has none.
+          const auto deadline =
+              wait ? context.deadline
+                   : std::min(context.deadline, DeadlineAfter(timeout));
           response = McpRpc(server, "tools/call", params,
                             SecondsUntil(deadline), true, deadline);
           const json* result = JsonObject(response, "result");
@@ -47,20 +53,23 @@ ToolResult McpInvokeRemote(McpServer& server, const std::string& remote_name,
             if (!(*result)["requestState"].is_string()) return;
             params["requestState"] = (*result)["requestState"];
           }
+          wait = false;
           if (const json* inputs = JsonObject(*result, "inputRequests")) {
-            for (const auto& [key, input] : inputs->items()) {
-              if (JsonValue(input, "method", "") != "roots/list") return;
-              params["inputResponses"][key] = {{"roots", server.roots}};
+            if (!McpInputResponses(server, *inputs, params["inputResponses"],
+                                   wait, note)) {
+              return;
             }
           } else if (result->contains("inputRequests")) {
             return;
           }
-          if (SecondsUntil(deadline) <= 0) return;
+          if (AbortRequested() || SecondsUntil(context.deadline) <= 0) return;
         }
       })) {
     return ToolCancelled("error: call cancelled by user");
   }
-  return McpResultText(server, response, context.call_id);
+  ToolResult result = McpResultText(server, response, context.call_id);
+  AddHint(result, Trim(note));
+  return result;
 }
 
 }  // namespace uagent

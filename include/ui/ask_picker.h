@@ -28,5 +28,21 @@ std::optional<std::string> PickSecret(const std::string& prompt,
 // The same from one typed line, for a terminal without raw input: parts
 // split by ";"; option numbers ("1" or "1,3") choose, the rest is free text.
 std::string AskAnswersFromLine(const json& questions, const std::string& line);
+
+// One line typed under `lead`; nullopt when escaped or closed.
+using LineReader =
+    std::function<std::optional<std::string>(const std::string& lead)>;
+
+// An MCP server's elicitation answered a line at a time, a form field by
+// field and then reviewed; the ElicitResult as text, nullopt when cancelled.
+// Without `escape` (a cooked terminal) "c" cancels instead of Esc.
+std::optional<std::string> AnswerElicitation(const json& shown,
+                                             const LineReader& line,
+                                             bool escape);
+
+// The same in a raw-mode terminal, drawn in `region` (as PickAskAnswers).
+std::optional<std::string> PickElicitation(const json& shown,
+                                           LiveRegion& region, int wake,
+                                           const std::function<bool()>& live);
 }  // namespace uagent
 #endif

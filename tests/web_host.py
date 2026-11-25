@@ -35,9 +35,17 @@ parser.add_argument("--auto-review", action="store_true")
 # to continue the newest conversation.
 parser.add_argument("--titles", action="store_true")
 args = parser.parse_args()
-stop = threading.Event()
-signal.signal(signal.SIGINT, lambda *_: stop.set())
-signal.signal(signal.SIGTERM, lambda *_: stop.set())
+stopping = False
+
+
+def request_stop(_signum, _frame):
+    # Signals can interrupt the main thread while it holds a lock.
+    global stopping
+    stopping = True
+
+
+signal.signal(signal.SIGINT, request_stop)
+signal.signal(signal.SIGTERM, request_stop)
 
 
 # Set once a title has been asked for, and how many looks the "Filing probe"
@@ -107,6 +115,10 @@ def film(done):
     )
 
 
+# The turn web/recordings/cover.rec.js stills: one command, left waiting.
+COVER = "Check the idle memory benchmark"
+
+
 def answer(handler, body):
     if "questions" in body:
         return decide(handler, body)
@@ -153,6 +165,17 @@ def answer(handler, body):
         )
     if FILM in prompt:
         return film({message.get("tool_call_id") for message in body["messages"]})
+    if COVER in prompt:
+        if any(message.get("role") == "tool" for message in body["messages"]):
+            return event({"content": "The benchmark was not run."})
+        return tool_call(
+            "run",
+            {
+                "command": "python3 benchmarks/compare_agents.py --from-report report.json",
+                "description": "Recompute the medians",
+            },
+            call_id="cover-run",
+        )
     unselected = prompt in ("Retained follow-up", "Filing probe", "File me probe")
     expected_model = "model-a" if unselected else "model-b"
     assert body.get("model") == expected_model, body.get("model")
@@ -313,7 +336,7 @@ def answer(handler, body):
         return event({"content": "Released."})
     if prompt.startswith("The person merges this side chat"):
         if "Held summary probe" in json.dumps(body["messages"]):
-            while not released.wait(0.05) and not stop.is_set():
+            while not released.wait(0.05) and not stopping:
                 pass
         return event({"content": "SIDE-SUMMARY: the table has two columns."})
     if "finished (merged)" in prompt:
@@ -508,5 +531,5 @@ with (
         # Until told to stop, or until the test runner that started this is
         # gone: a runner that was killed tells nobody.
         parent = os.getppid()
-        while not stop.wait(1) and os.getppid() == parent:
-            pass
+        while not stopping and os.getppid() == parent:
+            time.sleep(0.05)

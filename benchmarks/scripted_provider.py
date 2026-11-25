@@ -66,6 +66,14 @@ def responses(model):
 
 
 class Provider(BaseHTTPRequestHandler):
+    def do_HEAD(self):
+        if self.path.split("?")[0] != "/anthropic/api/hello":
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self):
         self.send_error(404)
 
@@ -83,7 +91,13 @@ class Provider(BaseHTTPRequestHandler):
             packet = json.dumps({"type": event, **fields})
             chunks.append(f"event: {event}\ndata: {packet}\n\n")
         payload = "".join(chunks).encode()
-        self.log_message("%s %s tools=%d", route, data["model"], len(data.get("tools", [])))
+        self.log_message(
+            "%s %s tools=%d agent=%s",
+            route,
+            data["model"],
+            len(data.get("tools", [])),
+            self.headers.get("User-Agent", "unknown"),
+        )
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Content-Length", str(len(payload)))

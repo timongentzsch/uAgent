@@ -205,8 +205,21 @@ is the stateless `2026-07-28` revision: newline-delimited JSON-RPC, every
 request carrying `_meta` with the protocol version and client info. The
 client sends `server/discover`, pages `tools/list` (at most 100 pages), and
 subscribes with `subscriptions/listen` for `notifications/tools/list_changed`.
-A `tools/call` that returns `input_required` for `roots/list` is answered
-with the server's roots, up to 8 rounds. A tool is named
+A `tools/call` that returns `input_required` is answered for `roots/list`
+with the server's roots and for `elicitation/create` by the person, up to
+8 rounds. `UAGENT_MCP_TIMEOUT` bounds each request, so time spent answering
+is not counted; the retry after an accepted link waits on the person's
+browser and is bounded only by the turn and by stopping it. Where someone
+can answer (a session with a client), every request declares
+`elicitation: {form, url}`; `McpInputResponses` (`src/mcp/elicit.cc`) puts
+at most 4 requests of a round to the person as `elicit` interactions, and
+the first one not accepted cancels the rest unseen. A form must be the flat
+schema the protocol allows, with string titles and defaults and bounds that
+fit; a link must be a plain `http(s)` URL whose host has no userinfo,
+backslash, escape or non-ASCII byte, and a punycode host is marked. Anything
+else is declined and the result tells the model why. The person's reply is
+checked against the schema before it is sent, and no answer is `cancel`.
+A tool is named
 `<server>_<tool>`, sanitized to `[A-Za-z0-9_-]` and 64 characters; a name
 that collides is skipped. Every MCP tool is `external` and needs approval
 unless its entry sets `"trust": true` and the tool declares
@@ -224,7 +237,8 @@ unless its entry sets `"trust": true` and the tool declares
   `UAGENT_MAX_ACTIVITIES` live activities.
 - MCP: `UAGENT_MCP_MAX_SERVERS` servers, `UAGENT_MCP_MAX_TOOLS` tools per
   server, 256 KiB of schemas per server (`kMcpSchemaBytes`), 400-character
-  descriptions, `UAGENT_MCP_TIMEOUT` per call and per required startup.
+  descriptions, `UAGENT_MCP_TIMEOUT` per request (not the retry after an
+  accepted link) and per required startup.
   Optional servers (`"required": false`) share a 2 s startup window and
   finish discovery at a later step. An agent starts no MCP servers.
 - The file tools refuse hidden paths (browser profile, settings, credential

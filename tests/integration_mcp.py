@@ -13,10 +13,12 @@ from integration_support import (
     function_names,
     mcp_servers,
     run,
+    run_pty,
     tool_call,
     tool_results,
     write_mcp_server,
 )
+from web_support import web_host
 
 
 def test_mcp_roots_continuation_preserves_arguments(root, home, *, binary):
@@ -64,6 +66,160 @@ def test_mcp_roots_continuation_preserves_arguments(root, home, *, binary):
             binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
+
+
+FORM = {
+    "type": "object",
+    "required": ["name"],
+    "properties": {
+        "name": {"type": "string", "title": "Name"},
+        "age": {"type": "integer", "title": "Age", "default": 30},
+    },
+}
+
+
+def write_elicit_server(home, workspace, cases, delays=None):
+    """An MCP server whose `ask` tool asks `cases[case]` (key -> elicitation)
+    in one round and returns the inputResponses it got back. `delays[case]`
+    holds seconds to wait before the first answer and before the result.
+    Each retry is logged to `retries`."""
+    fake = workspace / "server.py"
+    write_mcp_server(
+        fake,
+        "    params = message.get('params', {})\n"
+        "    capabilities = params['_meta']['io.modelcontextprotocol/clientCapabilities']\n"
+        "    assert capabilities['elicitation'] == {'form': {}, 'url': {}}\n"
+        "    if method == 'server/discover':\n"
+        "        result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}}}\n"
+        "    elif method == 'tools/list':\n"
+        "        result = {'tools': [{'name': 'ask', 'inputSchema': {'type': 'object', "
+        "'properties': {'case': {'type': 'string'}}}}]}\n"
+        "    elif method != 'tools/call':\n"
+        "        result = {}\n"
+        "    else:\n"
+        "        case = params['arguments']['case']\n"
+        "        retry = 'inputResponses' in params\n"
+        "        time.sleep(DELAYS.get(case, (0, 0))[retry])\n"
+        "        if retry:\n"
+        "            with open(RETRIES, 'a') as log:\n"
+        "                log.write(case + '\\n')\n"
+        "            answer = json.dumps(params['inputResponses'], sort_keys=True)\n"
+        "            result = {'content': [{'type': 'text', 'text': 'got ' + answer}]}\n"
+        "        else:\n"
+        "            requests = {key: {'method': 'elicitation/create', 'params': value} "
+        "for key, value in CASES[case].items()}\n"
+        "            result = {'resultType': 'input_required', 'inputRequests': requests}\n"
+        "    result.setdefault('resultType', 'complete')\n",
+        setup=f"CASES = {cases!r}\nDELAYS = {delays or {}!r}\n"
+        f"RETRIES = {str(workspace / 'retries')!r}\n",
+        extra_imports=("time",),
+    )
+    (home / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"probe": {"command": sys.executable, "args": [str(fake)]}}})
+    )
+    return workspace / "retries"
+
+
+def test_mcp_elicitation_is_answered_in_the_terminal(root, home, *, binary):
+    """Form and link requests are put to the person: accepted, declined at a
+    field, cancelled; a cancel ends its round unseen and an unshowable form is
+    declined with a note. mcp.timeout bounds each request, not the call, and
+    not the retry after an accepted link."""
+    workspace = root / "mcp-elicit"
+    workspace.mkdir()
+    write_elicit_server(
+        home,
+        workspace,
+        {
+            "form": {"q": {"message": "Form A?", "requestedSchema": FORM}},
+            "decline": {"q": {"message": "Form B?", "requestedSchema": FORM}},
+            "url": {"q": {"mode": "url", "message": "Link C", "url": "https://login.example/c"}},
+            "pair": {
+                "a": {"message": "Pair E1", "requestedSchema": FORM},
+                "b": {"message": "Pair E2", "requestedSchema": FORM},
+            },
+            "nested": {
+                "q": {
+                    "message": "Nested",
+                    "requestedSchema": {
+                        "type": "object",
+                        "properties": {"home": {"type": "object"}},
+                    },
+                }
+            },
+        },
+        # Together longer than mcp.timeout, each request within it.
+        {"form": (2, 2), "url": (0, 4)},
+    )
+    order = ["form", "decline", "url", "pair", "nested"]
+
+    def route(_, body):
+        results = tool_results(body["messages"])
+        if len(results) < len(order):
+            return tool_call("probe_ask", {"case": order[len(results)]}, call_id=f"c{len(results)}")
+        expected = [
+            'got {"q": {"action": "accept", "content": {"age": 30, "name": "Ada"}}}',
+            'got {"q": {"action": "decline"}}',
+            'got {"q": {"action": "accept"}}',
+            'got {"a": {"action": "cancel"}, "b": {"action": "cancel"}}',
+            'got {"q": {"action": "decline"}}',
+        ]
+        fine = all(want in got for want, got in zip(expected, results, strict=True))
+        fine = fine and "declined probe's request for input" in results[-1]
+        return event({"content": "elicit-ok" if fine else "elicit-bad"})
+
+    accepted = b"probe \xe2\x86\x92 accepted"
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_MCP_TIMEOUT"] = "3"
+        status, output = run_pty(
+            workspace,
+            env,
+            [
+                (b"go\n", b"Form A?"),
+                (b"\r", b"Name"),
+                (b"Ada\r", b"[a] Accept"),
+                (b"a\r", accepted, b"Form B?", None),
+                (b"/decline\r", b"probe \xe2\x86\x92 declined", b"Link C", None),
+                (b"a\r", accepted, b"Pair E1", None),
+                (b"\x1b", b"elicit-", b"Ready", None),
+                b"/quit\n",
+            ],
+            timeout=40,
+            args=("--yolo",),
+            binary=binary,
+        )
+    assert_true(status == 0, output)
+    assert_true(b"elicit-ok" in output, output)
+    assert_true(b"Pair E2" not in output, output)
+    assert_true(b"It goes to \x1b[1mlogin.example" in output, output)
+
+
+def test_mcp_elicitation_ends_with_a_stopped_turn(root, home, *, binary):
+    """Stopping the turn while a card is open closes it: nothing is sent back
+    to the server, and the conversation is free again."""
+    workspace = root / "mcp-elicit-stop"
+    workspace.mkdir()
+    retries = write_elicit_server(
+        home, workspace, {"form": {"q": {"message": "Form?", "requestedSchema": FORM}}}
+    )
+
+    def route(_, body):
+        if tool_results(body["messages"]):
+            return event({"content": "after"})
+        return tool_call("probe_ask", {"case": "form"})
+
+    with Server([route]) as server, web_host(binary, root, home, server.url) as (web, code, _, _):
+        web.pair(code)
+        session = web.create(workspace)
+        web.command("permissions", session, mode="yolo")
+        web.command("submit", session, text="go")
+        asked = web.until(session, lambda value: bool(value.get("pending")))
+        assert_true(asked["pending"]["kind"] == "elicit", asked["pending"])
+        web.command("interrupt", session)
+        ended = web.until(session, lambda value: value["metadata"]["status"] == "idle")
+        assert_true(not ended.get("pending"), ended)
+    assert_true(not retries.exists(), retries.read_text() if retries.exists() else "")
 
 
 def test_mcp_image_reaches_the_model(root, home, *, binary):

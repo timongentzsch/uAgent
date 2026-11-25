@@ -189,6 +189,14 @@ std::vector<Tool> BuildTools(AppContext& context,
   // An agent's MCP servers are its first ancestor's: each agent starting
   // its own fleet would multiply them.
   if (AgentDepth() == 0) {
+    if (context.channel && InteractiveApprovalAvailable()) {
+      runtime.mcp.elicit = [](const json& shown, bool* eof) {
+        return ReadInteraction({.kind = "elicit",
+                                .prompt = JsonValue(shown, "message", ""),
+                                .elicitation = shown},
+                               eof);
+      };
+    }
     error = McpRegister(tools, runtime.mcp, runtime.config,
                         RemoteWorkspace() ? json(nullptr) : trusted_snapshot);
     if (!error.empty()) return {};

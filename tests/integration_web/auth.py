@@ -178,13 +178,11 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
                 "/api/command", {**payload, "request_id": "e" * 32, "text": "/fork"}
             )
             assert_true(status == 409 and "conversation controls" in denied["error"], denied)
-            for index, bare in enumerate(("/model",)):
-                status, denied, _ = client.json(
-                    "/api/command",
-                    {**payload, "request_id": f"b{index:031x}", "text": bare},
-                )
-                assert_true(status == 200 and denied["accepted"], denied)
-                client.until(session, lambda value: value["metadata"]["status"] == "idle")
+            status, denied, _ = client.json(
+                "/api/command", {**payload, "request_id": "b" * 32, "text": "/model"}
+            )
+            assert_true(status == 200 and denied["accepted"], denied)
+            client.until(session, lambda value: value["metadata"]["status"] == "idle")
             assert_true(
                 [path for path in session_files(home) if path.name.startswith("web-")] == files,
                 "slash fork changed worker identity",

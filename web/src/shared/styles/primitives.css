@@ -1507,6 +1507,9 @@
     --row-padding: var(--space-3);
     background: transparent;
   }
+  .row.flush-row {
+    padding-inline: 0;
+  }
   .row-icon {
     display: inline-flex;
     flex: none;

@@ -225,6 +225,7 @@ target_link_libraries(uagent_agent PUBLIC uagent_toolcore)
 add_library(
   uagent_tools
   src/mcp/discover.cc
+  src/mcp/elicit.cc
   src/mcp/invoke.cc
   src/mcp/register.cc
   src/mcp/rpc.cc

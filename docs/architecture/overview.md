@@ -45,7 +45,7 @@ socket, and a `TransientBatcher` coalesces stream deltas and usage before
 they are published.
 
 The web host runs cpp-httplib with a pool that idles at 4 threads and grows
-to 37: 4 event streams (`kWebSseConnections`), 5 browser viewers
+to 41: 8 event streams (`kWebSseConnections`), 5 browser viewers
 (`kViewerInstances`), 16 terminal sockets (`kWebTerminalSockets`) and 12
 request workers. Beside the pool it runs a file-watch thread (settings,
 catalogue, presence), the scheduler thread and the notification thread, and

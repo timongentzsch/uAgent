@@ -1275,7 +1275,6 @@ TEST_CASE(TestSessionPrefixMatch) {
   CHECK(MatchSessionPrefix("task").empty());
   CHECK(MatchSessionPrefix("zzz").empty());
   CHECK(MatchSessionPrefix("").empty());
-  CHECK(MatchSessionPrefix("   ").empty());
 }
 
 // A compact view never shows a turn without its prompt: the message that

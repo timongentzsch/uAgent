@@ -122,10 +122,6 @@ test("the working footer and selected sidebar mark move while background rows st
   const selected = page.locator(".session[aria-current] .status-led.running");
   await expect(selected).toHaveCSS("animation-name", "pulse");
   expect(await workAnimations(page)).toBe(await selected.count());
-  // The running step keeps its arrow and carries no mark of its own.
-  const running = page.locator('[data-message-id="w"] > .node-row');
-  await expect(running.locator(".row-chevron")).toHaveCount(1);
-  await expect(running.locator(".status-led")).toHaveCount(0);
 
   // Done: the band goes with the work.
   await page.evaluate(

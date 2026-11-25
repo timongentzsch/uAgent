@@ -82,12 +82,6 @@ def pending_approval_push(root, home, binary, extra_env=None):
             return deliveries[0]
 
 
-def test_web_push_announces_pending_approval(root, home, *, binary):
-    delivery = pending_approval_push(root / "push", home / "push", binary)
-    assert_true(delivery["endpoint"].startswith("https://fcm.googleapis.com/"), delivery)
-    assert_true(delivery["vapid"] and delivery["bytes"] > 0, delivery)
-
-
 def test_web_push_names_the_conversation_unless_turned_off(root, home, *, binary):
     on = pending_approval_push(root / "on", home / "on", binary)
     off = pending_approval_push(
@@ -96,6 +90,8 @@ def test_web_push_names_the_conversation_unless_turned_off(root, home, *, binary
         binary,
         {"UAGENT_WEB_NOTIFICATION_DETAIL": "off"},
     )
+    assert_true(on["endpoint"].startswith("https://fcm.googleapis.com/"), on)
+    assert_true(on["vapid"] and on["bytes"] > 0, on)
     named = f',"reason":"approval","title":"{TITLE}"'
     # Off sends the bare id and session; on adds exactly the reason and title.
     # The sequence in the notice's id may differ by a digit between hosts.

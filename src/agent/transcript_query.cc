@@ -51,7 +51,6 @@ std::map<uint64_t, Entry> Entries(const Conversation& conversation,
     entries.try_emplace(ids[i], Entry{&conversation.At(i),
                                       MessageKindName(conversation.KindAt(i))});
   }
-  bool legacy_notices = false;
   for (const auto& facts : conversation.DisplayFacts()) {
     if (JsonValue(facts, "name", "") == "agent_start") {
       if (const json* parts = JsonArray(facts, "parts")) {
@@ -70,61 +69,21 @@ std::map<uint64_t, Entry> Entries(const Conversation& conversation,
     }
     std::string kind = JsonValue(facts, "kind", "");
     if (kind == "activity" || kind == "turn_summary" || kind == "compaction") {
-      legacy_notices |= !facts.contains("work") &&
-                        (kind == "compaction" || facts.contains("memory"));
       entries.try_emplace(JsonValue(facts, "sequence", uint64_t{0}),
                           Entry{&facts, kind});
-    }
-  }
-  if (legacy_notices) {
-    const std::string* work = nullptr;
-    const std::string* turn = nullptr;
-    for (auto& [sequence, entry] : entries) {
-      const json& record = *entry.message;
-      if (entry.kind == "turn_summary") {
-        work = nullptr;
-      } else if (entry.kind == "compaction" || record.contains("memory")) {
-        if (!record.contains("work") && turn &&
-            JsonValue(record, "turn_root", "") == *turn) {
-          entry.legacy_work = work;
-        }
-      } else if (entry.kind == "user" || entry.kind == "attachment" ||
-                 entry.kind == "tool_result" || entry.kind == "assistant") {
-        const auto& facts = conversation.DisplayFacts();
-        const auto found = facts.find("m-" + std::to_string(sequence));
-        const json& meta = found == facts.end() ? kNone : *found;
-        turn = JsonStringRef(meta, "turn_root");
-        const json* calls = JsonArray(record, "tool_calls");
-        work = entry.kind == "assistant" && (!calls || calls->empty())
-                   ? nullptr
-                   : JsonStringRef(meta, "work");
-      }
     }
   }
   return entries;
 }
 
-// A report can be on another page from its assignment. Old inter-session
-// mail has the sender's ID only in its envelope. Leave recognition of the
-// message kind to its renderer and preserve all recorded facts and text.
+// A report can be on another page from its assignment. Leave recognition of
+// the message kind to its renderer and preserve all recorded facts and text.
 void LabelAgent(json& node, const AgentLabels& labels) {
   if (labels.empty()) return;
   std::string_view id;
   if (const json* agent = JsonObject(node, "agent")) {
     if (JsonValue(*agent, "outcome", "") == "merged") return;
     if (const auto* sender = JsonStringRef(*agent, "session")) id = *sender;
-  } else if (JsonValue(node, "origin", "") == "message") {
-    const json* body = JsonObject(node, "body");
-    const auto* text = body ? JsonStringRef(*body, "text") : nullptr;
-    constexpr std::string_view kPrefix = "[agent ";
-    if (text && text->starts_with(kPrefix)) {
-      const std::string_view rest =
-          std::string_view(*text).substr(kPrefix.size());
-      if (rest.size() >= kAgentNameChars + 2 &&
-          rest.substr(kAgentNameChars, 2) == " \"") {
-        id = rest.substr(0, kAgentNameChars);
-      }
-    }
   }
   if (auto found = labels.find(id); found != labels.end()) {
     node["agent_label"] = std::string(found->second);

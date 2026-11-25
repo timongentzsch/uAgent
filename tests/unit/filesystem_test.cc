@@ -334,12 +334,10 @@ TEST_CASE(TestFileTools) {
   CHECK(ToolEditFile(batch.string(), {{"same", "other", false}})
             .output.find("matches 2 times") != std::string::npos);
   CHECK(contents(batch) == "same same\n");
-  CHECK(ToolEditFile(batch.string(), {{"same", "changed", true},
-                                      {"missing", "never written", false}})
-            .output.find("edit 2 `old` not found") != std::string::npos);
-  CHECK(contents(batch) == "same same\n");
   ToolResult rolled_back = ToolEditFile(
       batch.string(), {{"same", "changed", true}, {"missing", "never", false}});
+  CHECK(rolled_back.output.find("edit 2 `old` not found") != std::string::npos);
+  CHECK(contents(batch) == "same same\n");
   CHECK(rolled_back.output.find("applied=false") != std::string::npos);
   CHECK(rolled_back.output.find("1: same same") != std::string::npos);
   CHECK(rolled_back.output.find("1: changed changed") == std::string::npos);
@@ -607,7 +605,6 @@ TEST_CASE(TestFileTools) {
   fs::remove_all(root, ec);
   fs::remove_all(external, ec);
 
-  // A directory is refused by the path policy, not by remove().
   fs::path doomed = root / "doomed.txt";
   CHECK(ToolWriteFile(doomed.string(), "alpha\nbeta\n").Ok());
   ToolResult deleted = ToolDeleteFileWithDisplay(doomed.string());
@@ -619,6 +616,7 @@ TEST_CASE(TestFileTools) {
   ToolResult twice = ToolDeleteFileWithDisplay(doomed.string());
   CHECK(!twice.Ok());
   CHECK(twice.error == ToolErrorCode::kNotFound);
+  // A directory is refused by the path policy, not by remove().
   fs::path guarded = root / "not-a-file";
   fs::create_directories(guarded);
   CHECK(!ToolDeleteFileWithDisplay(guarded.string()).Ok());
@@ -637,8 +635,6 @@ TEST_CASE(TestFileTools) {
   CHECK(FileIdentity(binary.string()) != first);
 }
 
-// Two changes to one file in a turn keep the bytes from before the first; an
-// undo restores them only while the file still holds what the turn left.
 TEST_CASE(TestPatch) {
   std::string error;
   const std::vector<ToolPart> calls = ParsePatch(

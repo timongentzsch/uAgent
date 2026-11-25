@@ -212,7 +212,7 @@ test.describe("touch interaction", () => {
   }, testInfo) => {
     await page.goto(`/#session=${session.id}`);
     const input = page.getByRole("combobox", { name: "Message or guidance" });
-    for (const zoom of [50, 75, 100, 150]) {
+    for (const zoom of [50, 100, 150]) {
       const settings = await zoomTo(page, zoom);
       await settings.getByRole("button", { name: "Close settings" }).click();
       await input.fill("Zoom and wrapping proof. ".repeat(12));

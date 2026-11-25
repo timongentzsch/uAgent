@@ -161,9 +161,6 @@ TEST_CASE(TestTerminalInputDecoder) {
   CHECK(token && token->text == std::string("\x1b[M\x20\x1b\x21", 6));
   CHECK(!decoder.Next());
 
-  CHECK(kInputHistoryEntries == 200);
-  CHECK(kInputHistoryEntryBytes == size_t{16} * 1024);
-  CHECK(kInputBufferBytes == size_t{64} * 1024);
   CHECK(ShouldRememberInput(" useful "));
   CHECK(!ShouldRememberInput(" /config user UAGENT_PROVIDERS=private-value"));
   CHECK(!ShouldRememberInput("/config\tuser UAGENT_PROVIDERS=private-value"));

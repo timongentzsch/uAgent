@@ -249,19 +249,8 @@ void Conversation::ResetHistory(json baseline, std::vector<MessageKind> kinds) {
 }
 
 json Conversation::FileMoves(const json& display) {
-  if (const json* saved = JsonArray(display, "file_moves")) return *saved;
-  // Sessions written before the boundary list kept only the move receipt.
-  json moves = json::array();
-  if (const json* facts = JsonObject(display, "facts")) {
-    for (const auto& fact : *facts) {
-      if (const json* moved = JsonObject(fact, "moved")) {
-        moves.push_back({{"sequence", JsonValue(fact, "sequence", uint64_t{0})},
-                         {"from", JsonValue(*moved, "from", "")},
-                         {"lead_only", true}});
-      }
-    }
-  }
-  return moves;
+  const json* saved = JsonArray(display, "file_moves");
+  return saved ? *saved : json::array();
 }
 
 json Conversation::DisplayMetadata() const {

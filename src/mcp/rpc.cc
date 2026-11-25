@@ -17,13 +17,17 @@
 
 namespace uagent {
 
-json McpRequestMeta() {
+json McpRequestMeta(const McpServer& s) {
+  json capabilities = {{"roots", json::object()}};
+  if (s.elicit) {
+    capabilities["elicitation"] = {{"form", json::object()},
+                                   {"url", json::object()}};
+  }
   return {
       {"io.modelcontextprotocol/protocolVersion", kMcpModernProtocolVersion},
       {"io.modelcontextprotocol/clientInfo",
        {{"name", "uagent"}, {"version", kVersion}}},
-      {"io.modelcontextprotocol/clientCapabilities",
-       {{"roots", json::object()}}}};
+      {"io.modelcontextprotocol/clientCapabilities", std::move(capabilities)}};
 }
 
 bool McpWrite(McpServer& s, const std::string& data,
@@ -108,7 +112,7 @@ bool McpSend(McpServer& s, int64_t id, const std::string& method,
   json m = {{"jsonrpc", "2.0"}, {"method", method}};
   if (id >= 0) m["id"] = id;
   if (!params.is_null()) m["params"] = params;
-  if (id >= 0) EnsureObject(m, "params")["_meta"] = McpRequestMeta();
+  if (id >= 0) EnsureObject(m, "params")["_meta"] = McpRequestMeta(s);
   return McpWrite(s, JsonDump(m) + "\n", deadline);
 }
 
@@ -140,7 +144,7 @@ bool McpHandleMessage(McpServer& s, const json& message) {
     }
   }
   // Modern stdio forbids server requests and client JSON-RPC responses.
-  // Roots are answered only through input_required tool results.
+  // Roots and elicitation are answered only through input_required results.
   return true;
 }
 

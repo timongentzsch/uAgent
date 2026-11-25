@@ -115,6 +115,32 @@ bool Terminal::PresentDecision(const json& pending,
     }
     return true;
   }
+  if (!decision.empty() && JsonValue(pending, "kind", "") == "elicit") {
+    const json shown = JsonValue(pending, "elicitation", json::object());
+    const auto live = [this, decision] {
+      std::lock_guard lock(mutex_);
+      return JsonValue(pending_, "id", "") == decision;
+    };
+    std::optional<std::string> answer =
+        raw_ ? PickElicitation(shown, region_, wake_.read.Get(), live)
+             : AnswerElicitation(
+                   shown,
+                   [&](const std::string& lead) -> std::optional<std::string> {
+                     fputs(lead.c_str(), stdout);
+                     fflush(stdout);
+                     std::string cooked;
+                     for (;;) {
+                       auto input = ReadInput(cooked);
+                       if (!input || !live()) return std::nullopt;
+                       if (input->kind == InteractiveInputKind::kLine) {
+                         return Trim(input->text);
+                       }
+                     }
+                   },
+                   /*escape=*/false);
+    if (live()) Reply(decision, answer.value_or(""), {{"cancelled", !answer}});
+    return true;
+  }
   // A password is read here, hidden, and goes nowhere but the reply.
   if (!decision.empty() && JsonValue(pending, "kind", "") == "secret") {
     const std::string prompt = TerminalSafe(JsonValue(pending, "prompt", ""));

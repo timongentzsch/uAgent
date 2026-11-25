@@ -29,7 +29,7 @@ struct GetterCheck {
   int64_t (*getter)();
 };
 
-// Every boolean setting, so one declared as a string fails here.
+// A boolean setting: one declared as a string fails here.
 constexpr const char* kBoolSettings[] = {
     "UAGENT_SANDBOX_NET",
 };

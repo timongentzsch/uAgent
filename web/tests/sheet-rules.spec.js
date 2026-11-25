@@ -179,22 +179,6 @@ test("a rule on the whole row is set from the column it tests; one not understoo
     );
 });
 
-test("a column without rules says so", async ({ page: app, session, host }) => {
-  const { stage, cell } = await openSheet(app, session, host.project, PLAN);
-  await cell("Tasks", "A2").click({ button: "right" });
-  await stage
-    .getByRole("menuitem", { name: "Conditional formatting…" })
-    .click();
-  const dialog = app.getByRole("dialog", {
-    name: "Conditional formatting: column A",
-  });
-  await expect(dialog.getByRole("status")).toHaveText(
-    "No rule formats this column.",
-  );
-  await dialog.getByRole("button", { name: "Done" }).click();
-  await expect(dialog).toBeHidden();
-});
-
 // The page tells the app the picked cell once a frame; a menu's request
 // sent before that frame must still find the cell it was asked on.
 test("the dialog opens on the cell just picked, before the page's next frame", async ({

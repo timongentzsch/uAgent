@@ -490,6 +490,14 @@ def assert_token_budget_stop(root, home, server, *args, binary):
     return envelope
 
 
+def last_user(body):
+    return next(
+        message.get("content")
+        for message in reversed(body["messages"])
+        if message.get("role") == "user"
+    )
+
+
 def tool_results(messages):
     """Every tool-role message content, in order."""
     return [str(m.get("content", "")) for m in messages if m.get("role") == "tool"]
@@ -789,14 +797,9 @@ def midturn_compaction_env(home, url):
     return env
 
 
-def saved_json_files(folder, pattern="*.json", *, recursive=False):
-    base = pathlib.Path(folder)
-    return list(base.rglob(pattern) if recursive else base.glob(pattern))
-
-
 def session_files(home):
     """Saved session files, excluding live mirror sidecars and inbox queues."""
-    return saved_json_files(pathlib.Path(home) / ".uagent" / "history", recursive=True)
+    return list((pathlib.Path(home) / ".uagent" / "history").rglob("*.json"))
 
 
 def wait_until_stopped(pid, timeout=10):

@@ -46,7 +46,7 @@ std::string MarkerPath(const std::string& source,
 }
 
 // A completed marker describes the version read, including replacements with
-// the same timestamp. Older markers contain just "done" and use their mtime.
+// the same timestamp.
 std::string DoneMarker(const FileStamp& stamp) {
   return "done\n" +
          JsonDump(json::array({stamp.device, stamp.inode, stamp.size,
@@ -110,7 +110,6 @@ std::shared_ptr<ExtractionSource> ClaimCandidate(
       const auto state = ReadFile(marker, 512);
       const auto modified = fs::last_write_time(marker, ec);
       if (!state || ec || *state == DoneMarker(version) ||
-          (Trim(*state) == "done" && modified >= session.mtime) ||
           (!state->starts_with("done\n") && now - modified < kStaleClaim)) {
         continue;
       }

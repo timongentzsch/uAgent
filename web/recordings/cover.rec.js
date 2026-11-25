@@ -154,6 +154,13 @@ test("cover", async ({ page, host, request, command, browser }, testInfo) => {
     });
     await route.fulfill({ json: catalogue });
   });
+  // The fixture's provider is named mock; the conversation shows a real one.
+  await page.route(new RegExp(`/api/sessions/${shown.id}$`), async (route) => {
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    if (snapshot.state) snapshot.state.route = `${models[0][0]}:high`;
+    await route.fulfill({ response, json: snapshot });
+  });
   await page.route("**/api/command", async (route) => {
     const body = route.request().postDataJSON();
     if (body.kind !== "model" || body.operation !== "catalog")

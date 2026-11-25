@@ -11,6 +11,7 @@ import {
   Textarea,
 } from "./ui.tsx";
 import Ask from "./ask.tsx";
+import Elicit from "./elicit.tsx";
 import { AttachmentList } from "./attachments.tsx";
 import DiffView from "./diff-view.tsx";
 import { useApi } from "../state/api.ts";
@@ -81,6 +82,8 @@ export default function Decision({
   } | null>(null);
   const approval = pending.kind === "approval" ? pending.approval : undefined;
   const asking = pending.kind === "ask";
+  // Both bring their own text: the questions, or the server's request.
+  const own = asking || pending.kind === "elicit";
   // One reply in flight at a time: answer and cancel share the guard.
   const answer = async (fields: Answer) => {
     setSending(true);
@@ -123,7 +126,7 @@ export default function Decision({
   const title =
     pending.route === "parent"
       ? "The parent agent is deciding"
-      : asking
+      : own
         ? "Needs your answer"
         : "Needs your decision";
   const preview = cleanText(approval?.preview);
@@ -156,7 +159,7 @@ export default function Decision({
         <p class="small">You can still answer first.</p>
       )}
       {pending.note && <p class="small">{cleanText(pending.note)}</p>}
-      {!asking && (
+      {!own && (
         <div class="decision-preview">
           {approval && (
             <>
@@ -234,6 +237,13 @@ export default function Decision({
           send={(text, ids) => void send(text, ids)}
           cancel={cancel}
           report={report}
+        />
+      ) : pending.kind === "elicit" ? (
+        <Elicit
+          request={pending.elicitation}
+          idle={idle}
+          send={(text) => void send(text)}
+          cancel={cancel}
         />
       ) : card ? (
         <form

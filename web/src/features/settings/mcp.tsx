@@ -99,6 +99,7 @@ export function McpServers({
                 <code class="small">{server.command}</code>
                 {server.log && <pre class="mcp-log small">{server.log}</pre>}
                 <Row
+                  flush
                   label="Enabled"
                   detail={`Edits ${scope === "global" ? "~/.mcp.json" : server.file}`}
                 >

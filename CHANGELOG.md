@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- MCP servers can ask for input while a tool runs (elicitation, form and URL modes). The card names the server; a form is checked before it is sent, and a link is shown whole for you to open in your own browser. `mcp.timeout` now bounds each request to the server rather than the whole call, so time spent answering is not counted, and the request that follows an opened link may wait until the turn ends.
+
 ## v1.12.0 - 2026-11-24
 
 ### Changes

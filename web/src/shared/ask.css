@@ -1,4 +1,4 @@
-.decision form.ask {
+.decision form:is(.ask, .elicit) {
   flex-direction: column;
   flex-wrap: nowrap;
   align-items: stretch;
@@ -35,7 +35,7 @@
   outline: none;
 }
 /* Cancel leaves; Back and Next travel. */
-.ask > .dialog-actions > :first-child {
+:is(.ask, .elicit) > .dialog-actions > :first-child {
   margin-right: auto;
 }
 .ask-question {
@@ -121,4 +121,16 @@
 .ask-question > .file-button,
 .ask-question > .file-chip {
   justify-self: start;
+}
+.elicit-fields {
+  display: grid;
+  gap: var(--space-4);
+}
+.elicit-fields > p {
+  margin: 0;
+}
+.elicit-url {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

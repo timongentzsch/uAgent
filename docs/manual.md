@@ -211,6 +211,19 @@ the rest of the conversation (or **Rules…** when a rule refused it). After
 3 refusals in a row, or 20 in a conversation, Auto asks you until you
 answer one.
 
+An MCP server can ask you for input while one of its tools runs. Its card
+names the server and shows its message with either a form (text, numbers,
+yes/no and choices; Enter keeps a field's default in the terminal) or a
+link. **Accept** sends the form, **Decline** refuses and **Cancel** leaves
+without an answer; in the terminal `/decline` declines at any field and Esc
+cancels. A link is shown whole with its host in bold, with a warning when
+the host is a punycode name, and is never opened for you: open it in your
+own browser, then **Continue** (`a` in the terminal). A run nobody can
+answer, such as `uagent -p`, does not offer servers this. `mcp.timeout`
+bounds each request to the server, so time spent answering is not counted;
+after you continue from a link, the server may wait for you until the turn
+ends or you stop it.
+
 **Plan mode** only reads: commands run in the `readonly` sandbox and the
 only file it writes is a plan kept beside the conversation's history, never
 in the folder. A turn ends with the plan shared and three answers: **Approve

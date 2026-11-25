@@ -17,6 +17,7 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
+#include "include/mcp/elicit.h"
 #include "include/ui/input_decoder.h"
 #include "include/ui/live_region.h"
 
@@ -36,7 +37,8 @@ class Keys {
       if (auto token = decoder_.Next(expired)) return token;
       if (!live()) return std::nullopt;
       pollfd waits[] = {{STDIN_FILENO, POLLIN, 0}, {wake_, POLLIN, 0}};
-      if (poll(waits, 2, deadline ? 20 : -1) <= 0) continue;
+      // Next can have just started a lone Escape's wait for more bytes.
+      if (poll(waits, 2, decoder_.WakeDeadline() ? 20 : -1) <= 0) continue;
       DrainDescriptor(wake_);
       if (!waits[0].revents) continue;
       unsigned char bytes[1024];
@@ -165,6 +167,36 @@ std::string Render(const json& question, const Answer& answer, size_t cursor,
 bool Answered(const Answer& answer) {
   return !answer.other.empty() ||
          std::ranges::find(answer.chosen, true) != answer.chosen.end();
+}
+
+// A form field as asked: its label, its choices and what it takes.
+std::string FieldLead(const std::string& name, const json& field,
+                      bool required) {
+  std::string lead = std::string(BOLD()) +
+                     TerminalSafe(JsonValue(field, "title", name)) + RST() +
+                     (required ? "" : " (optional)");
+  const std::string description = JsonValue(field, "description", "");
+  if (!description.empty()) {
+    lead += AsciiGlyphs(" — ") + TerminalSafe(description);
+  }
+  const json choices = ElicitChoices(field);
+  for (size_t index = 0; index < choices.size(); ++index) {
+    lead += "\n  " + std::to_string(index + 1) + ". " +
+            TerminalSafe(JsonValue(choices[index], "label", ""));
+  }
+  const std::string type = JsonValue(field, "type", "");
+  std::string takes = type == "array"     ? "numbers, comma-separated"
+                      : !choices.empty()  ? "a number"
+                      : type == "boolean" ? "yes or no"
+                      : type == "integer" ? "a whole number"
+                      : type == "number"  ? "a number"
+                                          : JsonValue(field, "format", "");
+  if (field.contains("default")) {
+    takes += (takes.empty() ? "" : AsciiGlyphs(" · ")) + "Enter keeps " +
+             TerminalSafe(field["default"].dump());
+  }
+  if (!takes.empty()) lead += "\n" + std::string(DIM()) + takes + RST();
+  return lead + "\n";
 }
 }  // namespace
 
@@ -298,6 +330,111 @@ json PickAskAnswers(const json& questions, LiveRegion& region, int wake,
                                  " → " + TerminalSafe(shown)));
   }
   return {{"text", JsonDump(answers)}, {"attachments", attachments}};
+}
+
+std::optional<std::string> AnswerElicitation(const json& shown,
+                                             const LineReader& line,
+                                             bool escape) {
+  const std::string head =
+      std::string(BOLD()) + TerminalSafe(JsonValue(shown, "server", "")) +
+      RST() + " asks: " + TerminalSafe(JsonValue(shown, "message", "")) + "\n";
+  const std::string cancel = escape ? " · Esc cancel" : " · [c] Cancel";
+  // A field takes any text, so there the answers are slash words.
+  const std::string decline =
+      std::string(DIM()) +
+      AsciiGlyphs(escape ? "/decline declines · Esc cancels"
+                         : "/decline declines · /cancel cancels") +
+      RST() + "\n";
+  const bool form = JsonValue(shown, "mode", "") == "form";
+  const json schema = JsonValue(shown, "requestedSchema", json::object());
+  const json fields = JsonValue(schema, "properties", json::object());
+  const json required = JsonValue(schema, "required", json::array());
+  json content = json::object();
+  std::string body;
+  if (!form) {
+    // Shown whole and never fetched: the person opens it themselves.
+    body =
+        "Open in your browser: " + TerminalSafe(JsonValue(shown, "url", "")) +
+        "\nIt goes to " + BOLD() + TerminalSafe(JsonValue(shown, "host", "")) +
+        RST() + "\n";
+    if (JsonValue(shown, "punycode", false)) {
+      body +=
+          "The host is an internationalised (punycode) name: check it is the "
+          "site you expect.\n";
+    }
+  }
+  for (bool asking = form;;) {
+    for (const auto& [name, field] : fields.items()) {
+      if (!asking) break;
+      const bool needed =
+          std::ranges::find(required, json(name)) != required.end();
+      std::string note;
+      for (;;) {
+        auto typed =
+            line(head + FieldLead(name, field, needed) + decline + note + "> ");
+        if (!typed || *typed == "/cancel") return std::nullopt;
+        if (*typed == "/decline") return JsonDump({{"action", "decline"}});
+        json value;
+        std::string error;
+        if (!ElicitParseField(field, *typed, value, error)) {
+          note = DIM() + TerminalSafe(error) + RST() + "\n";
+        } else if (value.is_null() && needed) {
+          note = std::string(DIM()) + "required" + RST() + "\n";
+        } else {
+          if (!value.is_null()) content[name] = value;
+          break;
+        }
+      }
+    }
+    if (form) {
+      body.clear();
+      for (const auto& [name, value] : content.items()) {
+        body += "  " + TerminalSafe(name) + ": " + TerminalSafe(value.dump()) +
+                "\n";
+      }
+    }
+    auto choice =
+        line(head + body +
+             AsciiGlyphs((form ? "[a] Accept · [d] Decline · [e] Edit"
+                               : "[a] Opened, continue · [d] Decline") +
+                         cancel + " > "));
+    if (!choice) return std::nullopt;
+    *choice = AsciiLower(*choice);
+    if (*choice == "a") {
+      json result = {{"action", "accept"}};
+      if (form) result["content"] = content;
+      return JsonDump(result);
+    }
+    if (*choice == "d") return JsonDump({{"action", "decline"}});
+    if (*choice == "c") return std::nullopt;
+    asking = form && *choice == "e";
+    if (asking) content = json::object();
+  }
+}
+
+std::optional<std::string> PickElicitation(const json& shown,
+                                           LiveRegion& region, int wake,
+                                           const Live& live) {
+  Keys keys(wake);
+  const Live awake = [&] {
+    region.Flush();
+    return live();
+  };
+  auto answer = AnswerElicitation(
+      shown,
+      [&](const std::string& lead) {
+        return ReadLine(keys, region, lead, awake);
+      },
+      /*escape=*/true);
+  region.SetOverlay("");
+  const std::string action = JsonValue(
+      json::parse(answer.value_or("{}"), nullptr, false), "action", "");
+  region.Commit(Note(Tone::kNeutral,
+                     TerminalSafe(JsonValue(shown, "server", "")) + " → " +
+                         (action == "accept"    ? "accepted"
+                          : action == "decline" ? "declined"
+                                                : "cancelled")));
+  return answer;
 }
 
 }  // namespace uagent

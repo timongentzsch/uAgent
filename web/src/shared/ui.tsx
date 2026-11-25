@@ -266,6 +266,7 @@ export function Row({
   current,
   disabled,
   expanded,
+  flush = false,
 }: {
   icon?: ComponentChildren;
   label: ComponentChildren;
@@ -277,6 +278,8 @@ export function Row({
   current?: boolean;
   // A disclosure: detail opens in place below the row.
   expanded?: boolean;
+  // Level with the fields of a form instead of inset in a list.
+  flush?: boolean;
 }) {
   const body = (
     <>
@@ -307,7 +310,7 @@ export function Row({
       <ChevronRight class="row-chevron" />
     </Button>
   ) : (
-    <div class="row">{body}</div>
+    <div class={flush ? "row flush-row" : "row"}>{body}</div>
   );
 }
 

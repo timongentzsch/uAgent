@@ -112,6 +112,7 @@ std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
     auto srv = std::make_unique<McpServer>();
     srv->name = name;
     srv->config = conf.is_object() ? conf : json::object();
+    srv->elicit = runtime.elicit;
     // Every configured server is recorded, running or not, so the settings
     // overview can say why one is missing.
     auto skip = [&](std::string why) {
@@ -231,6 +232,7 @@ void Restart(std::vector<Tool>& tools, McpRuntime& runtime,
   auto fresh = std::make_unique<McpServer>();
   fresh->name = old.name;
   fresh->config = old.config;
+  fresh->elicit = runtime.elicit;
   McpServer& server = runtime.Replace(old, std::move(fresh));
   if (JsonValue(server.config, "disabled", false)) return;
   // The same checks as at startup: a config that failed them still does.

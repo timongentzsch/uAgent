@@ -131,7 +131,7 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 
 | Key | Variable | Default | Range | Scopes | Applies | What |
 | --- | --- | --- | --- | --- | --- | --- |
-| `mcp.timeout` | `UAGENT_MCP_TIMEOUT` | `60` | 1– | user, project | restart | seconds allowed for one MCP call |
+| `mcp.timeout` | `UAGENT_MCP_TIMEOUT` | `60` | 1– | user, project | restart | seconds an MCP server has for each request, except the retry after an accepted link |
 | `mcp.maxServers` | `UAGENT_MCP_MAX_SERVERS` | `32` | 1–256 | user, project | restart | MCP servers started; the rest are listed as skipped |
 | `mcp.maxTools` | `UAGENT_MCP_MAX_TOOLS` | `256` | 1–4096 | user, project | restart | tools one MCP server may list |
 

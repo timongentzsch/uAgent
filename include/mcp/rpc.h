@@ -15,7 +15,7 @@ namespace uagent {
 
 inline constexpr char kMcpModernProtocolVersion[] = "2026-07-28";
 
-json McpRequestMeta();
+json McpRequestMeta(const McpServer& s);
 
 // Drains the server's stdout while blocked: with both pipes full it would hang.
 bool McpWrite(McpServer& s, const std::string& data,

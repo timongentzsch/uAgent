@@ -166,6 +166,41 @@ export const fakeStream = ({ epoch, cursor }) => {
   };
 };
 
+// Types `text` into what a click picks, a cell or a field, and enters it.
+export async function enter(target, text) {
+  await target.click();
+  await target.page().keyboard.type(text);
+  await target.page().keyboard.press("Enter");
+}
+
+// A host for the dev page: the list of `sessions`, the snapshot of the one
+// `open` at `state`, what `more` answers (true when it did), and 404 for the
+// rest.
+export const mockHost = (
+  page,
+  { epoch, cursor, sessions, open = sessions[0], state, more },
+) =>
+  page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const json = (body) => route.fulfill({ json: { v: 2, ...body } });
+    if (path === "/api/sessions")
+      return json({
+        epoch,
+        cursor,
+        sessions,
+        capabilities: {},
+        devices: [],
+        commands: [],
+      });
+    if (path === `/api/sessions/${open.id}`)
+      return json({ epoch, cursor, metadata: open, state, pending: null });
+    if (await more?.(route, path, json)) return;
+    return route.fulfill({
+      status: 404,
+      json: { v: 2, error: "Not in this mock" },
+    });
+  });
+
 // The composer sends and attaches nothing until the event stream has caught
 // up. A click waits for that; a key press, setInputFiles or a dispatched
 // drop does not, and what it carried is lost.

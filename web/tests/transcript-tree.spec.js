@@ -5,6 +5,7 @@ import {
   chooseDetail,
   fakeStream,
   openView,
+  mockHost,
 } from "./fixtures.js";
 import { agents, arrivals, conversation, pondering } from "./golden-turns.js";
 
@@ -29,28 +30,11 @@ async function open(page, level, nodes = conversation, children = []) {
     localStorage.setItem("uagent-detail", detail);
     localStorage.setItem("uagent-thinking", "show");
   }, level);
-  await page.route("**/api/**", (route) => {
-    const path = new URL(route.request().url()).pathname;
-    const json = (body, status = 200) =>
-      route.fulfill({ status, json: { v: 2, ...body } });
-    if (path === "/api/sessions")
-      return json({
-        epoch: "e",
-        cursor: 1,
-        sessions: [SESSION, ...children],
-        capabilities: {},
-        devices: [],
-        commands: [],
-      });
-    if (path === `/api/sessions/${ID}`)
-      return json({
-        epoch: "e",
-        cursor: 1,
-        metadata: SESSION,
-        state: { phase: "idle", view: { nodes } },
-        pending: null,
-      });
-    return json({ error: "Not in this mock" }, 404);
+  await mockHost(page, {
+    epoch: "e",
+    cursor: 1,
+    sessions: [SESSION, ...children],
+    state: { phase: "idle", view: { nodes } },
   });
   await page.goto(new URL(`/#session=${ID}`, DEV_SERVER_URL).href);
   await expect(

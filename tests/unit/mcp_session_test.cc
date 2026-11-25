@@ -289,9 +289,7 @@ TEST_CASE(TestWorkspaceScopedSession) {
   ActivitySupervisor processes;
   UsageAccumulator usage;
   std::vector<Tool> tools;
-  Agent agent(
-      api, tools, processes, usage,
-      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
+  Agent agent(api, tools, processes, usage, Denied);
   api.capabilities.image_input = false;
   agent.RouteChanged();
   CHECK(!api.capabilities.image_input);
@@ -416,10 +414,7 @@ TEST_CASE(TestContextBreakdown) {
   instructions.text = "Indent with tabs.";
   instructions.sources = {(test.workspace / "AGENTS.md").string()};
   instructions.memory_always = "The user prefers tabs.";
-  Agent agent(
-      api, tools, processes, usage,
-      [](const Tool&, const json&, int64_t) { return std::string("denied"); },
-      {}, instructions);
+  Agent agent(api, tools, processes, usage, Denied, {}, instructions);
 
   const std::string path = (test.root / "session.json").string();
   std::string error;

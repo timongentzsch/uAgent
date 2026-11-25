@@ -48,10 +48,7 @@ TEST_CASE(TestEarlyTurnInterruption) {
     std::vector<Tool> tools;
     ActivitySupervisor processes;
     UsageAccumulator usage;
-    Agent agent(api, tools, processes, usage,
-                [](const Tool&, const json&, int64_t) {
-                  return std::string("denied");
-                });
+    Agent agent(api, tools, processes, usage, Denied);
     Observability observable;
     auto* previous = ActiveObservability();
     int notices = 0, responses = 0;
@@ -679,9 +676,7 @@ TEST_CASE(TestEffectiveImageModel) {
   std::vector<Tool> tools;
   ActivitySupervisor processes;
   UsageAccumulator usage;
-  Agent agent(
-      api, tools, processes, usage,
-      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
+  Agent agent(api, tools, processes, usage, Denied);
   api.config.image_model = "custom/vision";
   api.capabilities.image_input = false;
   CHECK(agent.EffectiveImageModel() == "custom/vision");
@@ -736,19 +731,16 @@ TEST_CASE(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) {
   std::vector<Tool> tools;
   ActivitySupervisor processes;
   UsageAccumulator usage;
-  const auto denied = [](const Tool&, const json&, int64_t) {
-    return std::string("denied");
-  };
   std::string error;
   {
-    Agent killed(api, tools, processes, usage, denied);
+    Agent killed(api, tools, processes, usage, Denied);
     CHECK(killed.DeliverMail());
     CHECK(killed.Save(path, error));
     // Gone with the process: the wake was only queued.
     CHECK(SteeringState().TakeNextAutoStart().has_value());
   }
   {
-    Agent restarted(api, tools, processes, usage, denied);
+    Agent restarted(api, tools, processes, usage, Denied);
     CHECK(restarted.Load(path, CanonicalCwd(), error));
     RecoverMail(own);
     CHECK(restarted.DeliverMail());
@@ -758,7 +750,7 @@ TEST_CASE(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) {
     restarted.Say(next->text, "", next->origin);
     CHECK(restarted.Save(path, error));
   }
-  Agent again(api, tools, processes, usage, denied);
+  Agent again(api, tools, processes, usage, Denied);
   CHECK(again.Load(path, CanonicalCwd(), error));
   RecoverMail(own);
   CHECK(!again.DeliverMail());
@@ -773,10 +765,7 @@ TEST_CASE(TestMailKeepsItsOriginBesideTheSameWords) {
   std::vector<Tool> tools;
   ActivitySupervisor processes;
   UsageAccumulator usage;
-  const auto denied = [](const Tool&, const json&, int64_t) {
-    return std::string("denied");
-  };
-  Agent agent(api, tools, processes, usage, denied);
+  Agent agent(api, tools, processes, usage, Denied);
   agent.Arrive("same words", {{"kind", "message"}, {"mail", "mail-1"}});
   agent.Say("same words", "");
   const auto next = SteeringState().TakeNextAutoStart();

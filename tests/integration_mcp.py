@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import sys
 import time
@@ -13,6 +14,7 @@ from integration_support import (
     function_names,
     mcp_servers,
     run,
+    run_dialog,
     run_pty,
     tool_call,
     tool_results,
@@ -852,7 +854,9 @@ def test_optional_mcp_notification_before_discovery_is_not_fatal(root, home, *, 
             return event({"content": "notification-ok"})
         if "notice_echo" in function_names(body):
             return tool_call("notice_echo", {})
-        if len(results) >= 2:
+        # Discovery answers 2.3 s in, past the 2 s window; a slow interpreter
+        # start on a loaded runner can push it past a second short step.
+        if len(results) >= 3:
             return event({"content": "notification-missing"})
         return tool_call("run", {"command": "sleep 0.5"})
 
@@ -908,3 +912,306 @@ def test_optional_mcp_slow_tool_list_resumes_one_request(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "delayed-ready", result.stdout)
         assert_true(requests.read_text() == "1", requests.read_text())
+
+
+SKILL_FILES = {
+    "skill://acme/review/SKILL.md": "---\nname: review\ndescription: Review a change\n"
+    "metadata:\n  owner: team\n---\n\nREVIEW STEPS: read references/guide.md.\n",
+    "skill://acme/review/references/guide.md": "GUIDE BODY\n",
+    "skill://broken/SKILL.md": "---\nname: broken\ndescription: Listed wrongly\n---\n\nX\n",
+    "skill://renamed/SKILL.md": "---\nname: other\ndescription: Renamed\n---\n\nX\n",
+    "skill://blob/SKILL.md": "---\nname: blob\ndescription: As a blob\n---\n\nX\n",
+    "skill://moved/SKILL.md": "---\nname: moved\ndescription: Elsewhere\n---\n\nX\n",
+}
+
+
+def write_skill_server(home, workspace, required=True, skills_delay=0, skills_error=False):
+    """An MCP server serving, over two pages, `acme/review` with a supporting
+    file; `broken` whose listed digest is wrong; `renamed` whose SKILL.md names
+    another skill; `blob` sent as a blob and `moved` under another uri; and,
+    left out, a generated `daily`, a 17 MiB `big` and a 513-file `many`.
+    Requests are logged."""
+
+    def manifest(*uris, wrong=False):
+        return [
+            {
+                "uri": uri,
+                "digest": "sha256:"
+                + hashlib.sha256((SKILL_FILES[uri] + ("!" if wrong else "")).encode()).hexdigest(),
+                "size": len(SKILL_FILES[uri].encode()),
+            }
+            for uri in uris
+        ]
+
+    listed = [
+        {
+            "uri": "skill://acme/review/SKILL.md",
+            "frontmatter": {
+                "name": "review",
+                "description": "Review a change",
+                "metadata": {"owner": "team"},
+            },
+            "resources": manifest(
+                "skill://acme/review/SKILL.md", "skill://acme/review/references/guide.md"
+            ),
+        },
+        {
+            "uri": "skill://broken/SKILL.md",
+            "frontmatter": {"name": "broken", "description": "Listed wrongly"},
+            "resources": manifest("skill://broken/SKILL.md", wrong=True),
+        },
+        {
+            "uri": "skill://daily/SKILL.md",
+            "frontmatter": {"name": "daily", "description": "Generated daily"},
+            "resources": "dynamic",
+        },
+        *(
+            {
+                "uri": f"skill://{name}/SKILL.md",
+                "frontmatter": {"name": name, "description": description},
+                "resources": manifest(f"skill://{name}/SKILL.md"),
+            }
+            for name, description in (
+                ("renamed", "Renamed"),
+                ("blob", "As a blob"),
+                ("moved", "Elsewhere"),
+            )
+        ),
+        *(
+            {
+                "uri": f"skill://{name}/SKILL.md",
+                "frontmatter": {"name": name, "description": "Too large"},
+                "resources": [{**big, "uri": f"skill://{name}/{index}"} for index in range(count)]
+                + [{**big, "uri": f"skill://{name}/SKILL.md"}],
+            }
+            for name, count, big in (
+                ("big", 0, {"digest": "sha256:" + "0" * 64, "size": 17 << 20}),
+                ("many", 512, {"digest": "sha256:" + "0" * 64, "size": 1}),
+            )
+        ),
+    ]
+    fake = workspace / "server.py"
+    log = workspace / "requests"
+    write_mcp_server(
+        fake,
+        "    params = message.get('params', {})\n"
+        "    with open(LOG, 'a') as out:\n"
+        "        out.write(json.dumps([method, params.get('uri')]) + '\\n')\n"
+        "    if method == 'server/discover':\n"
+        "        result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}, "
+        "'resources': {}, 'extensions': {'io.modelcontextprotocol/skills': {}}}}\n"
+        "    elif method == 'tools/list':\n"
+        "        result = {'tools': [{'name': 'echo', 'inputSchema': {'type': 'object'}}]}\n"
+        "    elif method == 'tools/call':\n"
+        "        result = {'content': [{'type': 'text', 'text': 'echoed'}]}\n"
+        "    elif method == 'skills/list' and ERROR:\n"
+        "        print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], "
+        "'error': {'code': -32601, 'message': 'no skills here'}}), flush=True)\n"
+        "        continue\n"
+        "    elif method == 'skills/list':\n"
+        "        later = 'cursor' in params\n"
+        "        time.sleep(0 if later else DELAY)\n"
+        "        result = {'skills': LISTED[2:] if later else LISTED[:2], 'ttlMs': 0, "
+        "'cacheScope': 'private'}\n"
+        "        if not later:\n"
+        "            result['nextCursor'] = 'next'\n"
+        "    elif method == 'resources/read':\n"
+        "        uri, text = params['uri'], FILES[params['uri']]\n"
+        "        content = {'uri': uri + '?' if 'moved' in uri else uri, 'text': text}\n"
+        "        if 'blob' in uri:\n"
+        "            content = {'uri': uri, 'blob': base64.b64encode(text.encode()).decode()}\n"
+        "        result = {'contents': [content]}\n"
+        "    else:\n"
+        "        result = {}\n"
+        "    result.setdefault('resultType', 'complete')\n",
+        setup=f"LOG = {str(log)!r}\nLISTED = {listed!r}\nFILES = {SKILL_FILES!r}\n"
+        f"DELAY = {skills_delay!r}\nERROR = {skills_error!r}\n",
+        extra_imports=("base64", "time"),
+    )
+    entry = {"command": sys.executable, "args": [str(fake)], "required": required}
+    (home / ".mcp.json").write_text(json.dumps({"mcpServers": {"probe": entry}}))
+    local = home / ".agents" / "skills" / "review"
+    local.mkdir(parents=True)
+    (local / "SKILL.md").write_text("---\ndescription: The local review\n---\n\nLOCAL REVIEW\n")
+
+    def requests():
+        return [tuple(json.loads(line)) for line in log.read_text().splitlines()]
+
+    return requests
+
+
+def test_mcp_served_skills_load_after_the_person_allows_them(root, home, *, binary):
+    """Served skills join the catalogue as `<server>:<path>` beside a local
+    skill of the same name; a load asks the person even in yolo, is checked
+    against the manifest, and nothing is read before it is needed."""
+    workspace = root / "mcp-skills"
+    workspace.mkdir()
+    requests = write_skill_server(home, workspace)
+    guide = {"name": "probe:acme/review", "file": "references/guide.md"}
+    calls = [
+        guide,
+        {"name": "review"},
+        {"name": "probe:acme/review"},
+        guide,
+        {"name": "probe:broken"},
+        {"name": "probe:acme/review", "file": "missing.md"},
+        {"name": "probe:acme/review", "file": "../broken/SKILL.md"},
+        {"name": "probe:renamed"},
+        {"name": "probe:blob"},
+        {"name": "probe:moved"},
+        {"name": "probe:acme/review"},
+    ]
+    cards = ["broken", "renamed", "blob", "moved"]
+    answers = [("probe:acme/review", "y"), *((f"probe:{n}", "y") for n in cards)]
+    answers.append(("probe:acme/review", "n"))
+    seen = {}
+
+    def route(_, body):
+        results = tool_results(body["messages"])
+        if "Summarize the bounded transcript" in json.dumps(body["messages"][-1]):
+            return event({"content": "summary"})
+        if "results" in seen:
+            seen["after"] = body["messages"]
+            return event({"content": "after compaction"})
+        if not results:
+            skill = next(t for t in body["tools"] if t["function"]["name"] == "skill")
+            seen["catalogue"] = skill["function"]["description"]
+            seen["read_before"] = [r for r in requests() if r[0] == "resources/read"]
+        if len(results) < len(calls):
+            return tool_call("skill", calls[len(results)], call_id=f"c{len(results)}")
+        seen["results"] = results
+        return event({"content": "done"})
+
+    with Server([route]) as server, web_host(binary, root, home, server.url) as (web, code, _, _):
+        web.pair(code)
+        session = web.create(workspace)
+        web.command("permissions", session, mode="yolo")
+        web.command("submit", session, text="go")
+        for name, answer in answers:
+            asked = web.until(session, lambda value: bool(value.get("pending")))
+            shown = json.dumps(asked["pending"])
+            assert_true(name in shown and "MCP server probe" in shown, shown)
+            web.command("reply", session, interaction_id=asked["pending"]["id"], text=answer)
+            web.until(
+                session,
+                lambda value, held=asked: (
+                    (value.get("pending") or {}).get("id") != held["pending"]["id"]
+                ),
+            )
+        web.until(session, lambda value: value["metadata"]["status"] == "idle")
+        # Compaction carries a local skill on as harness text, never a served one.
+        web.command("submit", session, text="/compact")
+        web.until(session, lambda value: value["metadata"]["status"] == "idle")
+        web.command("submit", session, text="next")
+        web.until(session, lambda _: "after" in seen)
+        web.until(session, lambda value: value["metadata"]["status"] == "idle")
+    after = json.dumps(seen["after"])
+    assert_true("kept across compaction" in after and "LOCAL REVIEW" in after, after)
+    assert_true("REVIEW STEPS" not in after, after)
+    catalogue = seen["catalogue"]
+    assert_true("- review: The local review" in catalogue, catalogue)
+    assert_true("- probe:acme/review: Review a change" in catalogue, catalogue)
+    assert_true("probe:broken" in catalogue and "probe:moved" in catalogue, catalogue)
+    left_out = ("daily", "probe:big", "probe:many")
+    assert_true(not any(name in catalogue for name in left_out), catalogue)
+    assert_true(seen["read_before"] == [], seen)
+    results = seen["results"]
+    assert_true("open probe:acme/review before its files" in results[0], results)
+    assert_true("LOCAL REVIEW" in results[1], results)
+    assert_true("served by MCP server probe" in results[2], results)
+    assert_true("REVIEW STEPS" in results[2] and "owner" not in results[2], results)
+    assert_true("GUIDE BODY" in results[3], results)
+    unused = "does not match its listed size and digest"
+    assert_true(unused in results[4], results)
+    assert_true(all("is not a file of probe:acme/review" in r for r in results[5:7]), results)
+    assert_true("differs from probe's listing" in results[7], results)
+    assert_true(unused in results[8] and unused in results[9], results)
+    assert_true("not approved" in results[10], results)
+    reads = [r[1] for r in requests() if r[0] == "resources/read"]
+    expected = ["skill://acme/review/SKILL.md", "skill://acme/review/references/guide.md"]
+    expected += [f"skill://{name}/SKILL.md" for name in cards]
+    assert_true(reads == expected, reads)
+
+
+def test_mcp_served_skill_is_refused_with_nobody_to_ask(root, home, *, binary):
+    workspace = root / "mcp-skills-headless"
+    workspace.mkdir()
+    # Optional: its skills arrive through the non-blocking startup.
+    requests = write_skill_server(home, workspace, required=False)
+
+    seen = []
+
+    def route(_, body):
+        if results := tool_results(body["messages"]):
+            seen.extend(results)
+            return event({"content": "after"})
+        return tool_call("skill", {"name": "probe:acme/review"})
+
+    with Server([route]) as server:
+        result = run(workspace, base_env(home, server.url), "--yolo", "-p", "go", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    assert_true("loading a skill an MCP server serves" in "".join(seen), seen)
+    assert_true("nobody is here" in "".join(seen), seen)
+    assert_true(all(r[0] != "resources/read" for r in requests()), requests())
+    # The terminal's skill list names this conversation's served skills.
+    listed = run_dialog(workspace, base_env(home, server.url), "/skills\n/q\n", binary=binary)
+    assert_true('"name": "probe:acme/review"' in listed.stdout, listed.stdout)
+
+
+def test_mcp_late_skills_join_while_another_server_works(root, home, *, binary):
+    """An optional server whose skills/list answers after the startup window
+    ends ready, with its tools and skills, at the step after another server's
+    tool ran."""
+    workspace = root / "mcp-skills-late"
+    workspace.mkdir()
+    write_skill_server(home, workspace, required=False, skills_delay=3)
+    other = workspace / "other.py"
+    write_mcp_server(
+        other,
+        "    if method == 'server/discover':\n"
+        "        result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}}}\n"
+        "    elif method == 'tools/list':\n"
+        "        result = {'tools': [{'name': 'wait', 'inputSchema': {'type': 'object'}}]}\n"
+        "    elif method == 'tools/call':\n"
+        "        time.sleep(WAIT.pop() if WAIT else 0)\n"
+        "        result = {'content': [{'type': 'text', 'text': 'waited'}]}\n"
+        "    else:\n"
+        "        result = {}\n",
+        setup="WAIT = [3]\n",
+        extra_imports=("time",),
+    )
+    config = json.loads((home / ".mcp.json").read_text())
+    config["mcpServers"]["other"] = {"command": sys.executable, "args": [str(other)]}
+    (home / ".mcp.json").write_text(json.dumps(config))
+    offered = []
+
+    def route(_, body):
+        names = {t["function"]["name"]: t["function"] for t in body["tools"]}
+        offered.append(("probe_echo" in names, "probe:acme/review" in json.dumps(names)))
+        # Each step takes up one page of the late listing.
+        if offered[-1] == (True, True) or len(offered) > 4:
+            return event({"content": "after"})
+        return tool_call("other_wait", {}, call_id=f"c{len(offered)}")
+
+    with Server([route]) as server:
+        result = run(workspace, base_env(home, server.url), "--yolo", "-p", "go", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    assert_true(offered[0] == (False, False) and offered[-1] == (True, True), offered)
+
+
+def test_mcp_failed_skills_list_keeps_the_server(root, home, *, binary):
+    workspace = root / "mcp-skills-error"
+    workspace.mkdir()
+    write_skill_server(home, workspace, skills_error=True)
+    seen = []
+
+    def route(_, body):
+        if results := tool_results(body["messages"]):
+            seen.extend(results)
+            return event({"content": "after"})
+        return tool_call("probe_echo", {})
+
+    with Server([route]) as server:
+        result = run(workspace, base_env(home, server.url), "--yolo", "-p", "go", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    assert_true(seen == ["echoed"], seen)

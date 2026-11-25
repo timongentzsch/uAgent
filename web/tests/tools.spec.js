@@ -237,11 +237,12 @@ test("MCP servers show their state and switch on and off", async ({
     server,
     [
       "import json, sys",
+      "skill = {'uri': 'skill://review/SKILL.md', 'frontmatter': {'name': 'review', 'description': 'Review a change'}, 'resources': [{'uri': 'skill://review/SKILL.md', 'digest': 'sha256:' + '0' * 64, 'size': 1}]}",
       "for line in sys.stdin:",
       "    message = json.loads(line)",
       "    if 'id' not in message: continue",
       "    method = message.get('method')",
-      "    result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}}} if method == 'server/discover' else {'tools': [{'name': 'echo', 'inputSchema': {'type': 'object'}}]} if method == 'tools/list' else {}",
+      "    result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}, 'resources': {}, 'extensions': {'io.modelcontextprotocol/skills': {}}}} if method == 'server/discover' else {'tools': [{'name': 'echo', 'inputSchema': {'type': 'object'}}]} if method == 'tools/list' else {'skills': [skill]} if method == 'skills/list' else {}",
       "    print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], 'result': result}), flush=True)",
     ].join("\n"),
   );
@@ -273,12 +274,16 @@ test("MCP servers show their state and switch on and off", async ({
   const global = settings.getByRole("region", { name: "MCP servers" });
   await expect(global).toContainText("~/.mcp.json");
   const probe = global.getByRole("button", { name: /probe/ });
-  await expect(probe).toContainText("1 tool");
+  await expect(probe).toContainText("1 tool · 1 skill");
   await expect(global.getByRole("button", { name: /broken/ })).toContainText(
     /exited|failed/i,
   );
 
   await probe.click();
+  // A served skill shows under the server that serves it.
+  const detail = global.locator(".mcp-detail");
+  await expect(detail).toContainText("probe:review");
+  await expect(detail).toContainText("Review a change");
   await global.getByRole("switch", { name: "Enable probe" }).uncheck();
   await expect(probe).toContainText("Disabled");
   expect(

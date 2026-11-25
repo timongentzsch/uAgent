@@ -293,6 +293,21 @@ TEST_CASE(TestSkillDiscovery) {
   CHECK(crowded.description.size() <= 8000);
   CHECK(crowded.run(json::object(), {}).facts.items == 64);
   CHECK(crowded.description.find("skill-63") != std::string::npos);
+
+  // Served skills fit into what installed ones leave; they never strip them.
+  std::vector<Skill> local{
+      {"mine", "local-description-sentinel", {}, {}, {}, {}}};
+  std::vector<Skill> served;
+  served.reserve(256);
+  for (int index = 0; index < 256; ++index) {
+    served.push_back(
+        {"srv:path/skill-" + std::to_string(index), "served", {}, {}, {}, {}});
+  }
+  const std::string both = SkillToolDescription(local, served);
+  CHECK(both.size() <= 8000);
+  CHECK(both.find("- mine: local-description-sentinel") != std::string::npos);
+  CHECK(SkillToolDescription(local) ==
+        SkillToolDescription(local, std::vector<Skill>{}));
 }
 
 }  // namespace uagent

@@ -121,6 +121,8 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kMcpSchemaBytes` | `256 KiB` |  |
 | `kMcpLogBytes` | `16 MiB` |  |
 | `kMcpDescriptionChars` | `400` |  |
+| `kMcpSkillFiles` | `512` | Files one skill an MCP server serves may list. |
+| `kMcpSkillBytes` | `16 MiB` | Bytes those files may total. |
 | `kMaintenanceStamp` | `".maintained"` | Stamp file and interval of the pass over every artifact directory. |
 | `kMaintenanceIntervalHours` | `24` |  |
 | `kLogPumpPollMs` | `100` | How often a stoppable log pump checks whether it was asked to stop. |

@@ -407,9 +407,15 @@ composer.
 | --- | --- | --- |
 | see or edit memories | `/memory`, `/memory set KEY @FILE`, `/memory forget KEY` | Library |
 | see or add skills | `/skills`, `/skills set KEY @FILE` | Library |
+| see skills an MCP server serves | `/skills` (under `served`) | Settings → MCP servers → the server |
 | switch a skill off or on | `/skills disable ID`, `/skills enable ID` | Library |
 | import from Claude Code or Codex | `/skills import`, `/memory import` | Library → Import |
 | manage scheduled tasks | `/schedule`, `/schedule run\|pause\|resume\|forget ID` | Scheduled |
+
+An MCP server may serve skills, named `server:path`. They belong to the
+conversation that started the server, so the Library, which spans every
+conversation, does not list them. Before the agent opens one, you are asked,
+whatever the approval mode.
 
 A key is `global/NAME` or `project/NAME`. The **Library** lists the
 memories, skills, artifacts and presented files of every place a

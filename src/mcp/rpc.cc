@@ -252,7 +252,8 @@ json McpRpc(McpServer& s, const std::string& method, const json& params,
   return McpAwaitUntil(s, id, timeout_s, cancellable, deadline);
 }
 
-bool McpValidateDiscovery(const json& discovery, std::string& error) {
+bool McpValidateDiscovery(McpServer& s, const json& discovery,
+                          std::string& error) {
   if (!discovery.contains("result") || !discovery["result"].is_object()) {
     error = JsonErrorMessage(discovery, "server discovery failed");
     return false;
@@ -267,9 +268,13 @@ bool McpValidateDiscovery(const json& discovery, std::string& error) {
             std::string(kMcpModernProtocolVersion) + "`";
     return false;
   }
-  if (!result.contains("capabilities") || !result["capabilities"].is_object() ||
-      !JsonObject(result["capabilities"], "tools")) {
-    error = "server did not negotiate tools capability";
+  const json capabilities = JsonValue(result, "capabilities", json());
+  const json extensions = JsonValue(capabilities, "extensions", json());
+  s.serves_tools = JsonObject(capabilities, "tools") != nullptr;
+  s.serves_skills = JsonObject(capabilities, "resources") &&
+                    JsonObject(extensions, "io.modelcontextprotocol/skills");
+  if (!s.serves_tools && !s.serves_skills) {
+    error = "server did not negotiate tools or skills";
     return false;
   }
   return true;

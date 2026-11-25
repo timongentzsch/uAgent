@@ -252,6 +252,7 @@ add_library(
   src/mcp/register.cc
   src/mcp/rpc.cc
   src/mcp/server.cc
+  src/mcp/skills.cc
   src/mcp/tasks.cc
   src/tools/ask.cc
   src/tools/files.cc

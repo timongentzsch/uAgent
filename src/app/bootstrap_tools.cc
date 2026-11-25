@@ -61,6 +61,24 @@ session::AssetStoreResult StoreSessionFile(const std::string& session_path,
       /*committed=*/true, tool_copy, shared);
 }
 
+namespace {
+// In place, so a catalogue that did not change leaves the prompt unchanged.
+void PlaceSkillTool(std::vector<Tool>& tools, AppContext& context) {
+  std::vector<std::string> names = ToolNames(tools);
+  std::erase(names, "skill");
+  std::vector<Tool> made;
+  if (!context.skills.empty() || !ServedSkills(&context.runtime.mcp).empty()) {
+    made.push_back(SkillTool(context.skills, std::move(names),
+                             &context.runtime.mcp,
+                             context.runtime.config.mcp_timeout_s));
+    ApplyToolPolicy(made, context.tool_policy);
+  }
+  auto at = std::ranges::find(tools, std::string("skill"), &Tool::name);
+  if (at != tools.end()) at = tools.erase(at);
+  if (!made.empty()) tools.insert(at, std::move(made.front()));
+}
+}  // namespace
+
 std::vector<Tool> BuildTools(AppContext& context,
                              const std::filesystem::path& workspace,
                              const json& trusted_snapshot,
@@ -220,16 +238,9 @@ std::vector<Tool> BuildTools(AppContext& context,
              !(tool.capabilities & Capability(ToolCapability::kExecute));
     });
   }
-  std::vector<std::string> tool_names = ToolNames(tools);
-  KeepSupportedSkills(skills, tool_names);
-  if (!skills.empty()) {
-    std::vector<Tool> skill_tool{SkillTool(skills, tool_names)};
-    ApplyToolPolicy(skill_tool, context.tool_policy);
-    if (!skill_tool.empty()) {
-      tool_names.push_back(skill_tool.front().name);
-      tools.push_back(std::move(skill_tool.front()));
-    }
-  }
+  KeepSupportedSkills(skills, ToolNames(tools));
+  context.skills = std::move(skills);
+  PlaceSkillTool(tools, context);
   return tools;
 }
 
@@ -241,6 +252,7 @@ Agent::ToolRefresher MakeToolRefresher(AppContext* app) {
                                    app->runtime.config, deadline);
     if (changed) {
       ApplyToolPolicy(app->tools, app->tool_policy);
+      PlaceSkillTool(app->tools, *app);
       app->session_rules.Clear();
     }
     return changed;

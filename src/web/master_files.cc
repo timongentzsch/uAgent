@@ -420,11 +420,12 @@ void Master::Preview(const Request& request, Response& response) {
     return;
   }
   if (relative.starts_with(kSheetPrefix)) {
-    const std::filesystem::path file =
-        SheetDir() / relative.substr(kSheetPrefix.size());
+    const std::filesystem::path rest = relative.substr(kSheetPrefix.size());
+    const std::filesystem::path file = SheetDir() / rest;
     const std::string mime = SheetMime(file);
     std::string bytes, error;
-    if (mime.empty() || relative.find("..") != std::string::npos ||
+    if (mime.empty() || !rest.is_relative() ||
+        relative.find("..") != std::string::npos ||
         !ReadRegularFile(file.string(), kUploadBytes, bytes, error)) {
       Error(response, "not found", 404);
       return;

@@ -63,7 +63,13 @@ export function McpServers({
           const expanded = open === server.name;
           const detail = [
             server.state === "ready"
-              ? plural(server.tools, "tool")
+              ? [
+                  plural(server.tools, "tool"),
+                  server.skills.length > 0 &&
+                    plural(server.skills.length, "skill"),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
               : server.state === "failed"
                 ? server.error
                 : SUMMARY[server.state],
@@ -97,6 +103,14 @@ export function McpServers({
             expanded && (
               <div key={`${server.name}:detail`} class="mcp-detail">
                 <code class="small">{server.command}</code>
+                {server.skills.map((skill) => (
+                  <Row
+                    flush
+                    key={skill.name}
+                    label={skill.name}
+                    detail={skill.description}
+                  />
+                ))}
                 {server.log && <pre class="mcp-log small">{server.log}</pre>}
                 <Row
                   flush

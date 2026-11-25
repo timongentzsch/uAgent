@@ -195,6 +195,10 @@ inline constexpr size_t kSandboxPolicyArgBytes = KiB(96);
 inline constexpr size_t kMcpSchemaBytes = KiB(256);
 inline constexpr size_t kMcpLogBytes = MiB(16);
 inline constexpr size_t kMcpDescriptionChars = 400;
+// Files one skill an MCP server serves may list.
+inline constexpr size_t kMcpSkillFiles = 512;
+// Bytes those files may total.
+inline constexpr size_t kMcpSkillBytes = MiB(16);
 // Stamp file and interval of the pass over every artifact directory.
 inline constexpr char kMaintenanceStamp[] = ".maintained";
 inline constexpr int64_t kMaintenanceIntervalHours = 24;

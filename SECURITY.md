@@ -203,6 +203,17 @@ approval; a task's requests for input reach the person exactly as the
 call's own do, and stopping the call sends `tasks/cancel`, which the
 server may ignore.
 
+A skill an MCP server serves is untrusted text. Loading one is the gate: it
+always asks a person, in every approval mode and whatever the remembered
+rules, and is refused where nobody can answer. The card names the server,
+the skill and its files' digests, and the files are used only when their size
+and SHA-256 match the server's listing. Once allowed, what the agent runs
+next follows the conversation's approval mode as it would without the skill:
+the skill grants no tools or permissions, `allowed-tools` and any other
+front matter are ignored, and nothing it bundles runs on the host by itself.
+A served skill reads files only from its own server, never shadows a skill
+of another origin, and its text is marked with the server it came from.
+
 ### Paired devices and the web host
 
 The web host listens on `127.0.0.1` unless `web.bind` says otherwise.

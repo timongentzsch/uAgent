@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
@@ -28,6 +29,7 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
+#include "include/mcp/skills.h"
 #include "include/providers/providers.h"
 #include "src/app/commands_internal.h"
 
@@ -302,6 +304,16 @@ CommandReply RunSlashCommand(AppSession& session,
           : command.spec->id == SlashCommandId::kSkills ? "skills"
                                                         : "schedule",
           command.argument);
+      // Served skills belong to this conversation's servers, not the folder.
+      if (command.spec->id == SlashCommandId::kSkills &&
+          result.contains("items")) {
+        for (const auto& server : session.context.runtime.mcp.Servers()) {
+          if (!server->alive) continue;
+          for (json& row : McpSkillRows(*server)) {
+            result["served"].push_back(std::move(row));
+          }
+        }
+      }
       return reply;
     case SlashCommandId::kTools:
       HandleTools(session, command.argument, reply);

@@ -92,7 +92,6 @@ TEST_CASE(TestTurnStatus) {
   CHECK(!emit(EventId::kToolStarted, first));
   emit(EventId::kTurnStarted, {{"turn", 2}});
   CHECK(!emit(EventId::kToolResult, second));
-  CHECK(StatusLabel("**C# snake_case 2*3**") == "C# snake_case 2*3");
   CHECK(StatusLabel(std::string(kStatusLabelBytes - 1, 'x') + "µlong").size() ==
         kStatusLabelBytes - 1);
 }

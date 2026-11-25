@@ -35,50 +35,6 @@ TurnStatusView Working(std::chrono::milliseconds elapsed) {
   return view;
 }
 
-// TerminalColumns() probes TIOCGWINSZ on both standard descriptors before
-// COLUMNS, so neither may be a terminal for the width to be known.
-class FixedWidth {
- public:
-  explicit FixedWidth(int columns) {
-    const char* prior = getenv("COLUMNS");
-    had_columns_ = prior != nullptr;
-    if (prior) saved_columns_ = prior;
-    setenv("COLUMNS", std::to_string(columns).c_str(), 1);
-    empty_ = tmpfile();
-    if (empty_) {
-      saved_out_ = dup(STDOUT_FILENO);
-      saved_in_ = dup(STDIN_FILENO);
-      dup2(fileno(empty_), STDOUT_FILENO);
-      dup2(fileno(empty_), STDIN_FILENO);
-    }
-  }
-  ~FixedWidth() {
-    if (saved_out_ >= 0) {
-      dup2(saved_out_, STDOUT_FILENO);
-      close(saved_out_);
-    }
-    if (saved_in_ >= 0) {
-      dup2(saved_in_, STDIN_FILENO);
-      close(saved_in_);
-    }
-    if (empty_) fclose(empty_);
-    if (had_columns_) {
-      setenv("COLUMNS", saved_columns_.c_str(), 1);
-    } else {
-      unsetenv("COLUMNS");
-    }
-  }
-  FixedWidth(const FixedWidth&) = delete;
-  FixedWidth& operator=(const FixedWidth&) = delete;
-
- private:
-  bool had_columns_ = false;
-  std::string saved_columns_;
-  FILE* empty_ = nullptr;
-  int saved_out_ = -1;
-  int saved_in_ = -1;
-};
-
 // What was recorded of a call in `state`, its result worded `word`, or by
 // its state when it did not succeed.
 json Record(const std::string& id, const std::string& name,

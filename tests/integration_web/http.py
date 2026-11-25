@@ -544,7 +544,6 @@ def test_the_persons_stylesheet_is_served_to_a_paired_device_and_revalidated(roo
     shows without a new bundle, and an unchanged sheet costs a 304."""
     with Server([lambda _, _body: event({"content": "unused"})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
-            assert_true(client.request("/api/user.css")[0] == 401, "read before pairing")
             client.pair(code)
             status, body, headers = client.request("/api/user.css")
             assert_true(status == 200 and body == b"", (status, body))

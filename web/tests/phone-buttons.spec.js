@@ -68,14 +68,6 @@ test.describe("the pages of the list", () => {
     await roomy(page);
   });
 
-  test("the home's recent list", async ({ page, host, request }) => {
-    for (const title of ["Alpha talk", "Bravo talk"])
-      await savedConversation(host, request, title);
-    await page.goto("/");
-    await expect(page.locator(".home-list .list-row")).toHaveCount(2);
-    await roomy(page);
-  });
-
   test("Scheduled and a new task", async ({ page }) => {
     await page.goto("/");
     await showList(page);

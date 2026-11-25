@@ -18,7 +18,6 @@ void WriteGlobal(const std::filesystem::path& dir, const std::string& name,
   std::ofstream out(dir / (name + ".md"));
   out << std::string(bytes, 'x') << "\n";
 }
-
 }  // namespace
 
 TEST_CASE(TestForgottenMemoryCutoff) {
@@ -76,14 +75,11 @@ TEST_CASE(TestForgottenMemoryCutoff) {
 
 TEST_CASE(TestMemoryAlwaysOnSelection) {
   namespace fs = std::filesystem;
-  const char* prior_home = getenv("HOME");
-  const std::string saved_home = prior_home ? prior_home : "";
-  fs::path root = fs::temp_directory_path() / "uagent-memory-test";
+  TestWorkspace workspace("memory-test");
+  const fs::path root = workspace.home;
   std::error_code ec;
-  fs::remove_all(root, ec);
   fs::path globals = root / ".uagent" / "memory" / "global";
-  fs::create_directories(globals, ec);
-  setenv("HOME", root.c_str(), 1);
+  fs::create_directories(globals);
 
   WriteGlobal(globals, "small_a", 40);
   WriteGlobal(globals, "small_b", 40);
@@ -123,27 +119,16 @@ TEST_CASE(TestMemoryAlwaysOnSelection) {
   MemoryIndex tight = LoadMemoryIndex(root, 40);
   CHECK(tight.truncated);
   CHECK(tight.text.size() <= 40);
-
-  if (prior_home) {
-    setenv("HOME", saved_home.c_str(), 1);
-  } else {
-    unsetenv("HOME");
-  }
-  fs::remove_all(root, ec);
 }
 
 // The agent and the Library read one store; the 32-per-scope limit governs
 // writes only.
 TEST_CASE(TestMemoryOneView) {
   namespace fs = std::filesystem;
-  const char* prior_home = getenv("HOME");
-  const std::string saved_home = prior_home ? prior_home : "";
-  fs::path root = fs::temp_directory_path() / "uagent-memory-one-view";
-  std::error_code ec;
-  fs::remove_all(root, ec);
+  TestWorkspace workspace("memory-one-view");
+  const fs::path root = workspace.home;
   fs::path globals = root / ".uagent" / "memory" / "global";
-  fs::create_directories(globals, ec);
-  setenv("HOME", root.c_str(), 1);
+  fs::create_directories(globals);
 
   for (int i = 0; i < 36; ++i) WriteGlobal(globals, "m" + std::to_string(i), 8);
   WriteGlobal(globals, "zz-oversized", 2600);
@@ -165,13 +150,5 @@ TEST_CASE(TestMemoryOneView) {
   CHECK(ToolMemoryAction("set", "global/zz-oversized", std::string("short"))
             .Ok());
   CHECK(ToolMemoryAction("forget", "global/zz-oversized", std::nullopt).Ok());
-
-  if (prior_home) {
-    setenv("HOME", saved_home.c_str(), 1);
-  } else {
-    unsetenv("HOME");
-  }
-  fs::remove_all(root, ec);
 }
-
 }  // namespace uagent

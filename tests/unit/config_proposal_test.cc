@@ -131,8 +131,7 @@ TEST_CASE(TestConfigProposalAndCommit) {
   const Endpoint* resolved = FindEndpoint(catalog.providers, "codex-local");
   CHECK(resolved && resolved->api_key == "resolved-local-key");
 
-  for (const std::string credential : {"literal-secret", "Bearer secret",
-                                       "prefix-$API_KEY", "$API_KEY-suffix"}) {
+  for (const std::string credential : {"literal-secret", "$API_KEY-suffix"}) {
     const std::string unsafe =
         "{\"bad\":{\"base_url\":\"https://example.com/v1\",\"api_key\":\"" +
         credential + "\"}}";

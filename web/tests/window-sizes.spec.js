@@ -2,6 +2,7 @@
 // window. Sizes are those a foldable phone may report; no device is named.
 import {
   connected,
+  fillerHistory,
   test,
   expect,
   headerAction,
@@ -24,10 +25,7 @@ async function openLong(page, host) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   await expect(connected(page)).toBeVisible();
-  const messages = Array.from({ length: 60 }, (_, index) => ({
-    role: index % 2 ? "assistant" : "user",
-    content: `Sized message ${index}. ` + "Filler text here. ".repeat(8),
-  }));
+  const messages = fillerHistory("Sized");
   await saveHistory(host, "sized.json", {
     id: "sized",
     title: "Sized conversation",

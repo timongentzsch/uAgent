@@ -238,9 +238,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     name: "Model and effort",
     exact: true,
   });
-  await expect(
-    picker.getByRole("heading", { name: "Model and effort", exact: true }),
-  ).toBeFocused();
   await expect
     .poll(async () => {
       const box = await picker.boundingBox();

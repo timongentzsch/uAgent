@@ -37,6 +37,8 @@ const remove = async (page, question, row) => {
   await expect(dialog).toContainText(
     `“${question}” and its answers are removed for good. What was merged into the conversation stays.`,
   );
+  // An idle side chat's runtime closes unsaid: it is not the conversation.
+  await expect(dialog).not.toContainText("closes first");
   await dialog.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(dialog).toHaveCount(0);
 };

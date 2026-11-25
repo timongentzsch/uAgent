@@ -119,11 +119,13 @@ export default function ConversationActions({
           {side
             ? `“${modal.session.title || "Side chat"}” and its answers are removed for good. What was merged into the conversation stays.`
             : `Delete “${modal.session.title}” and its saved messages and attachments? Files in the folder stay in place. This cannot be undone.`}{" "}
-          {modal.session.generation
-            ? modal.session.turn_active
+          {!modal.session.generation
+            ? ""
+            : modal.session.turn_active || modal.session.merging
               ? "The running turn stops first."
-              : "The open conversation closes first."
-            : ""}
+              : side
+                ? ""
+                : "The open conversation closes first."}
         </p>
       )}
       {error && <LoadError error={error} />}

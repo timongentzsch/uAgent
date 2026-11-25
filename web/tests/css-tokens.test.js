@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { declarations, page, sheets, tree } from "./stylesheets.js";
+import { declarations, page, tree } from "./stylesheets.js";
 
 // A token block: the palettes (the root and the inverse surface) and the
 // root's scales. Only a custom property there may hold a literal.
@@ -150,18 +150,9 @@ test("animations and transitions use the motion tokens", () => {
   );
 });
 
-// A media query cannot read a custom property, so the breakpoints are
-// written out in the stylesheets and again where a script asks the same
-// question. This pins the set, and that the scripts use the same numbers.
-test("breakpoints in the stylesheets match the scripts'", () => {
-  const found = new Set();
-  for (const { css } of sheets)
-    for (const [, kind, width] of css.matchAll(
-      /@media[^{]*\((max|min)-width:\s*(\d+)px\)/g,
-    ))
-      found.add(`${kind}-width: ${width}px`);
-  // 601 is the first width the 600px phone layout does not cover.
-  assert.deepEqual([...found].sort(), ["max-width: 600px", "min-width: 601px"]);
+// A media query cannot read a custom property, so a script asks the phone
+// layout's question with the stylesheets' number (layout.test.js pins those).
+test("the scripts ask about the phone width as the stylesheets do", () => {
   const layout = readFileSync("src/shared/layout.ts", "utf8");
   assert.match(layout, /useMedia\("\(max-width: 600px\)"\)/);
 });

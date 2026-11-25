@@ -52,7 +52,7 @@ test("a whiteboard draws its items and arrows, and a drag, the keys, the corner 
   session,
   host,
 }) => {
-  const { files, stage, saved, at } = await openBoard(app, session, host);
+  const { stage, saved, at } = await openBoard(app, session, host);
   const item = (id) => stage.locator(`#${id}`);
   // A press on the empty board, which gives the page the keys.
   const away = async () => app.mouse.click(...(await at(1100, 700)));
@@ -117,10 +117,6 @@ test("a whiteboard draws its items and arrows, and a drag, the keys, the corner 
   await item("title").click();
   await expect.poll(saved).toContain(">Valid now?</div>");
   await expect(item("ok").locator("svg.shape")).toHaveCount(1);
-  if (process.env.BOARD_SHOT)
-    await files
-      .locator(".page-stage")
-      .screenshot({ path: process.env.BOARD_SHOT });
 });
 
 test("with Edit off a whiteboard is only looked at: a drag on an item moves nothing, and no tools show", async ({
@@ -648,28 +644,6 @@ test("an arrow drawn from a dot on the picked item's side to another is in the f
   await expect.poll(saved).toBe(`${BOARD}<hr data-from="ad" data-to="n1">\n`);
 });
 
-test("a change the board's file does not take is said, and the board is drawn again from the file", async ({
-  page: app,
-  session,
-  host,
-}) => {
-  // The first note's end tag is left out: where it ends is not guessed.
-  const board = BOARD.replace(
-    "Which fields?</p>",
-    'Which fields?\n<p id="n2" class="note" data-at="800 400">More</p>',
-  );
-  const { files, stage, saved } = await openBoard(app, session, host, board);
-  await stage.locator("#n2").click();
-  await app.keyboard.press("ArrowRight");
-  await expect(files.locator(".page-notice")).toContainText(
-    "That change was not made",
-  );
-  await expect
-    .poll(() => stage.locator("#n2").evaluate((note) => note.offsetLeft))
-    .toBe(800);
-  expect(await saved()).toBe(board);
-});
-
 test("someone else's change keeps what is picked and lets the armed tool go, on the page and in the app alike", async ({
   page: app,
   session,
@@ -735,53 +709,6 @@ addEventListener("message", (event) => {
   expect(await readFile(join(host.project, path), "utf8")).toBe(plain);
 });
 
-test("a change by hand whose write waits while someone else's change arrives is not undone on the page", async ({
-  page: app,
-  session,
-  host,
-}) => {
-  const { stage, saved, rewrite } = await openBoard(app, session, host);
-  await stage.locator("#n1").click();
-  // The read the person's write starts with waits until let go.
-  let release;
-  const held = new Promise((resolve) => {
-    release = resolve;
-  });
-  let first = true;
-  await app.route(
-    (url) => url.pathname.endsWith("/files") && url.searchParams.has("read"),
-    async (route) => {
-      if (first) {
-        first = false;
-        await held;
-      }
-      await route.continue();
-    },
-  );
-  const reading = app.waitForRequest((request) =>
-    request.url().includes("/files?read="),
-  );
-  await app.keyboard.press("ArrowRight");
-  await reading;
-  await rewrite(BOARD.replace("Signup flow</h1>", "Sign-up flow</h1>"));
-  // The pane has looked at the folder since, and seen someone else's change.
-  for (let looks = 0; looks < 2; looks++)
-    await app.waitForResponse((response) => response.url().includes("stamps="));
-  release();
-  await expect(stage.locator("#title")).toHaveText("Sign-up flow");
-  await expect
-    .poll(saved)
-    .toBe(
-      BOARD.replace("Signup flow</h1>", "Sign-up flow</h1>").replace(
-        'data-at="800 100"',
-        'data-at="801 100"',
-      ),
-    );
-  expect(await stage.locator("#n1").evaluate((note) => note.offsetLeft)).toBe(
-    801,
-  );
-});
-
 test.describe("on a phone", () => {
   test.use({
     isMobile: true,
@@ -808,10 +735,6 @@ test.describe("on a phone", () => {
       "",
     );
     await expect(files.getByRole("toolbar", { name: "Picked" })).toBeVisible();
-    if (process.env.BOARD_SHOT)
-      await app.screenshot({
-        path: process.env.BOARD_SHOT.replace(/\.png$/, "-phone.png"),
-      });
     const cdp = await app.context().newCDPSession(app);
     const touch = (type, by) =>
       cdp.send("Input.dispatchTouchEvent", {

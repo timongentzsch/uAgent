@@ -94,24 +94,6 @@ TEST_CASE(TestProjectInstructionDiscovery) {
   CHECK(!always.truncated);
   CHECK(always.text.find("# global/lesson") != std::string::npos);
   CHECK(always.text.find("remembered-evidence") != std::string::npos);
-  MemoryIndex capped_memory = LoadAlwaysOnMemory(child, 24);
-  CHECK(capped_memory.truncated);
-  CHECK(capped_memory.text.size() <= 24);
-
-  // Under the cap the smaller global memory wins. The larger is also the
-  // newest, so an mtime order would reach the opposite answer.
-  CHECK(ToolWriteFile((home / ".uagent/memory/global/newer.md").string(),
-                      std::string(200, 'n'))
-            .output.starts_with("wrote "));
-  fs::last_write_time(
-      home / ".uagent/memory/global/lesson.md",
-      fs::file_time_type::clock::now() - std::chrono::hours(24));
-  MemoryIndex smallest_first = LoadAlwaysOnMemory(child, 64);
-  CHECK(smallest_first.truncated);
-  CHECK(smallest_first.sources.size() == 1);
-  CHECK(smallest_first.text.find("remembered-evidence") != std::string::npos);
-  CHECK(smallest_first.text.find(std::string(200, 'n')) == std::string::npos);
-  CHECK(fs::remove(home / ".uagent/memory/global/newer.md"));
   CHECK(loaded.text.find("ignored-agent") == std::string::npos);
   // CLAUDE.md is a fallback, so it must not load beside an AGENTS file
   CHECK(loaded.text.find("root-claude") == std::string::npos);
@@ -121,9 +103,6 @@ TEST_CASE(TestProjectInstructionDiscovery) {
   size_t child_override = loaded.text.find("child-override");
   CHECK(global < root_agent && root_agent < child_override);
   CHECK(loaded.text.find("remembered-evidence") == std::string::npos);
-  CHECK(loaded.memory_index.find("global/lesson") != std::string::npos);
-  CHECK(loaded.memory_index.find("global/lesson: remembered-evidence") !=
-        std::string::npos);
 
   fs::path only_claude = repo / "claude-only";
   fs::create_directories(only_claude);

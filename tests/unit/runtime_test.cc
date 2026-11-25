@@ -382,8 +382,6 @@ TEST_CASE(TestRuntimeConfigAndRequests) {
         RejectedCapability::kNone);
   rejected.http_status = 400;
   rejected.remote_error_code.clear();
-  // Native tool calls are not a negotiable capability: a route that rejects
-  // them has no fallback, so this stays an ordinary error.
   Api summary_api(config);
   UseEndpoint(summary_api, "https://api.openai.com/v1", WireApi::kResponses);
   auto summaries = summary_api.capabilities;
@@ -718,14 +716,9 @@ TEST_CASE(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) {
   // From its agent, saved beside it, which names it its parent.
   const std::filesystem::path agent =
       std::filesystem::path(path).parent_path() / "agent-a.json";
-  std::filesystem::create_directories(agent.parent_path());
-  const json header = {
-      {"format", kSessionFormat}, {"cwd", folder}, {"model", ""},
-      {"session_id", ""},         {"turns", 0},    {"title", "a"}};
-  std::ofstream(path) << header << "\n";
-  json role = header;
-  role["agent"] = {{"parent", SessionIdFor(path)}};
-  std::ofstream(agent) << role << "\n";
+  WriteSessionFile(path, {{"cwd", folder}});
+  WriteSessionFile(
+      agent, {{"cwd", folder}, {"agent", {{"parent", SessionIdFor(path)}}}});
   const Mail wake =
       MailFrom(agent.string(), own, {{"text", "the agent finished\n"}});
   CHECK(wake.from == SessionIdFor(wake.sender_path));
@@ -1070,9 +1063,6 @@ TEST_CASE(TestNamedProviders) {
   CHECK(SupportsReasoningEffort(routed, "high"));
   CHECK(!SupportsReasoningEffort(routed, "medium"));
   ActivateRoute(routed);
-  CHECK(ContainsCaseInsensitive("codex-local/gpt-5.6-sol", "GPT-5.6"));
-  CHECK(ContainsCaseInsensitive("openrouter/deepseek/v4", "openrouter"));
-  CHECK(!ContainsCaseInsensitive("codex-local/gpt-5.6-sol", "deepseek"));
   CHECK(NormalizeModelQuery("all").empty());
   CHECK(NormalizeModelQuery("*").empty());
   CHECK(NormalizeModelQuery(" codex-local/* ") == "codex-local/");

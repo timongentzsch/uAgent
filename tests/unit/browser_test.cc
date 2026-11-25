@@ -294,6 +294,13 @@ struct FakeRuntime : FakeBrowser {
   }
   browser::Runtime runtime;
 };
+
+// The look an answer names.
+std::string ViewId(const std::string& output) {
+  const size_t at = output.find("View ID: ") + 9;
+  return output.substr(at, output.find(' ', at) - at);
+}
+
 }  // namespace
 
 // A container fetches Chrome after it starts: until it is there, an action
@@ -1290,10 +1297,6 @@ TEST_CASE(TestBrowserToolSteps) {
   const Tool tool = BrowserTool("cccccccccccccccccccccccccccccccc",
                                 [](const std::string&, const std::string&,
                                    bool*) { return std::string(); });
-  const auto view = [](const std::string& output) {
-    const size_t at = output.find("View ID: ") + 9;
-    return output.substr(at, output.find(' ', at) - at);
-  };
   ToolResult opened =
       tool.run({{"action", "open"}, {"url", "https://example.com/"}}, {});
   CHECK(opened.Ok());
@@ -1304,13 +1307,13 @@ TEST_CASE(TestBrowserToolSteps) {
   // An approval names what an action acts on and where, and a remembered
   // one covers that action on the site, whatever the look it came from.
   const json click = {
-      {"action", "click"}, {"element", 1}, {"view_id", view(opened.output)}};
+      {"action", "click"}, {"element", 1}, {"view_id", ViewId(opened.output)}};
   CHECK(tool.approval_preview(click) ==
         "click [1] text \"Search\" (empty) on https://example.com/\n"
         "Remembered, it covers any browser click on https://example.com.");
   CHECK(tool.approval_preview({{"action", "type"},
                                {"element", 1},
-                               {"view_id", view(opened.output)},
+                               {"view_id", ViewId(opened.output)},
                                {"text", "kestrel"},
                                {"key", "Enter"}}) ==
         "type \"kestrel\" into [1] text \"Search\" (empty) then press Enter "
@@ -1340,7 +1343,7 @@ TEST_CASE(TestBrowserToolSteps) {
             {{"action", "open"}, {"url", "https://example.com/c"}}));
   ToolResult filled = tool.run({{"action", "type"},
                                 {"element", 1},
-                                {"view_id", view(opened.output)},
+                                {"view_id", ViewId(opened.output)},
                                 {"text", "kestrel"},
                                 {"replace", true},
                                 {"key", "Enter"}},
@@ -1351,7 +1354,7 @@ TEST_CASE(TestBrowserToolSteps) {
   // A field that is gone stops the call before anything is typed.
   CHECK(!tool.run({{"action", "type"},
                    {"element", 2},
-                   {"view_id", view(filled.output)},
+                   {"view_id", ViewId(filled.output)},
                    {"text", "lost"},
                    {"key", "Enter"}},
                   {})
@@ -1360,7 +1363,7 @@ TEST_CASE(TestBrowserToolSteps) {
   // dialog: the page behind it cannot be read until it is answered.
   std::ofstream(fake.data / "profile" / "dialog-on-click") << "confirm";
   ToolResult asked = tool.run(
-      {{"action", "click"}, {"element", 1}, {"view_id", view(filled.output)}},
+      {{"action", "click"}, {"element", 1}, {"view_id", ViewId(filled.output)}},
       {});
   CHECK(asked.output ==
         "click done.\nA confirm dialog is open: \"Really "
@@ -1373,7 +1376,7 @@ TEST_CASE(TestBrowserToolSteps) {
   std::ofstream(fake.data / "profile" / "dialog-on-click") << "prompt";
   ToolResult stopped = tool.run({{"action", "type"},
                                  {"element", 1},
-                                 {"view_id", view(answered.output)},
+                                 {"view_id", ViewId(answered.output)},
                                  {"text", "meant for the page"},
                                  {"key", "Enter"}},
                                 {});
@@ -1429,7 +1432,7 @@ TEST_CASE(TestBrowserToolSteps) {
   ToolResult again =
       tool.run({{"action", "open"}, {"url", "https://example.com/"}}, {});
   ToolResult fetched = tool.run(
-      {{"action", "click"}, {"element", 1}, {"view_id", view(again.output)}},
+      {{"action", "click"}, {"element", 1}, {"view_id", ViewId(again.output)}},
       {});
   CHECK(fetched.output.find("Downloaded report.pdf to downloads/report.pdf.") !=
         std::string::npos);
@@ -1449,7 +1452,7 @@ TEST_CASE(TestBrowserToolSteps) {
         ApprovalClass::kYoloEligibleMutation);
   CHECK(tool.approval_preview({{"action", "drag"},
                                {"element", 1},
-                               {"view_id", view(fetched.output)},
+                               {"view_id", ViewId(fetched.output)},
                                {"to_x", 5},
                                {"to_y", 6}})
             .starts_with("drag [1] text \"Search\" (empty) to (5, 6) on "));
@@ -1654,17 +1657,13 @@ TEST_CASE(TestBrowserToolBatch) {
   const Tool tool = BrowserTool("dddddddddddddddddddddddddddddddd",
                                 [](const std::string&, const std::string&,
                                    bool*) { return std::string(); });
-  const auto view = [](const std::string& output) {
-    const size_t at = output.find("View ID: ") + 9;
-    return output.substr(at, output.find(' ', at) - at);
-  };
   const auto batch = [](const std::string& look, const json& steps) {
     return json{{"action", "batch"}, {"view_id", look}, {"steps", steps}};
   };
   ToolResult opened =
       tool.run({{"action", "open"}, {"url", "https://example.com/"}}, {});
   const json form =
-      batch(view(opened.output),
+      batch(ViewId(opened.output),
             json::array({{{"action", "type"}, {"element", 1}, {"text", "kes"}},
                          {{"action", "press"}, {"key", "Enter"}},
                          {{"action", "click"}, {"element", 1}}}));
@@ -1689,7 +1688,7 @@ TEST_CASE(TestBrowserToolBatch) {
       filled.output.starts_with("1 type done.\n2 press done.\n3 click done.\n"
                                 "No change on the page.\nView ID: "));
   ToolResult stopped =
-      tool.run(batch(view(filled.output),
+      tool.run(batch(ViewId(filled.output),
                      json::array({{{"action", "click"}, {"element", 1}},
                                   {{"action", "click"}, {"element", 2}},
                                   {{"action", "press"}, {"key", "Escape"}}})),
@@ -1700,7 +1699,7 @@ TEST_CASE(TestBrowserToolBatch) {
       "The remaining steps did not run.\nNo change on the page.\nView ID: "));
   // A batch whose first step fails did nothing.
   ToolResult refused =
-      tool.run(batch(view(stopped.output),
+      tool.run(batch(ViewId(stopped.output),
                      json::array({{{"action", "click"}, {"element", 2}},
                                   {{"action", "press"}, {"key", "Escape"}}})),
                {});
@@ -1709,7 +1708,7 @@ TEST_CASE(TestBrowserToolBatch) {
                                  "look again. No step ran."));
   std::ofstream(fake.data / "profile" / "dialog-on-click") << "confirm";
   ToolResult asked =
-      tool.run(batch(view(stopped.output),
+      tool.run(batch(ViewId(stopped.output),
                      json::array({{{"action", "click"}, {"element", 1}},
                                   {{"action", "press"}, {"key", "Escape"}}})),
                {});

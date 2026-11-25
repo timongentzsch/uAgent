@@ -7,8 +7,7 @@ import {
 } from "./fixtures.js";
 import { agents, arrivals, conversation, pondering } from "./golden-turns.js";
 
-// The transcript tree on the dev page with a mocked host, at each detail
-// level. Set UAGENT_SHOTS to a folder to keep a screenshot of each.
+// The transcript tree on the dev page with a mocked host, at each detail level.
 test.use({ serviceWorkers: "block" });
 
 const ID = "a".repeat(32);
@@ -161,13 +160,6 @@ for (const [device, viewport] of [
         items.map((row) => Math.round(row.getBoundingClientRect().height)),
       );
       expect(new Set(heights).size, JSON.stringify(heights)).toBe(1);
-      if (process.env.UAGENT_SHOTS) {
-        // The mock has no service worker, which the page reports.
-        await page.getByRole("button", { name: "Dismiss" }).click();
-        await page.locator(".transcript").screenshot({
-          path: `${process.env.UAGENT_SHOTS}/${device}-${level}.png`,
-        });
-      }
     });
 
 test("a long result word gives way to the headline on a phone", async ({

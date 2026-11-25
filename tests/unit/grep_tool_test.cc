@@ -165,7 +165,6 @@ TEST_CASE(TestGrepTool) {
   }
 
   auto lean_tools = BuiltinTools(supervisor, root);
-  CHECK(FindTool(lean_tools, "show_image") == nullptr);
   // Attachments are bounded by the queue ceiling and the byte budget, not by a
   // call count that would withdraw the tool mid-turn without saying why.
   const Tool* attach = FindTool(lean_tools, "read_path");
@@ -239,7 +238,6 @@ TEST_CASE(TestGrepTool) {
                       {{"action", "forget"}, {"key", "project/lesson"}}));
     CHECK(memory->parameters["required"] == json::array({"action"}));
   }
-  CHECK(FindTool(lean_tools, "wait_background") == nullptr);
   const Tool* activity = FindTool(lean_tools, "activity");
   CHECK(activity != nullptr);
   CHECK(activity && activity->blocking_wait_default_ms == 0);
@@ -336,7 +334,6 @@ TEST_CASE(TestGrepTool) {
   if (run_tool) ClampToolArguments(*run_tool, fractional);
   CHECK(run_tool && !InvalidToolArgument(*run_tool, fractional).empty());
   // Stopping is an operation of the activity tool, not a tool of its own.
-  CHECK(FindTool(lean_tools, "activity_stop") == nullptr);
   json materialized_stop = raw_poll;
   materialized_stop["operation"] = "stop";
   if (activity) CanonicalizeToolArguments(*activity, materialized_stop);

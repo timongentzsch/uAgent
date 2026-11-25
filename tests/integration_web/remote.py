@@ -1,6 +1,5 @@
 """Stateless execution gateways: isolated runtimes, receipts and main ownership."""
 
-import base64
 import concurrent.futures
 import contextlib
 import hashlib
@@ -18,7 +17,16 @@ import time
 import uuid
 from urllib.parse import urlencode
 
-from integration_support import Server, assert_true, base_env, budget, event, tool_call, wait_until
+from integration_support import (
+    SMALL_PNG,
+    Server,
+    assert_true,
+    base_env,
+    budget,
+    event,
+    tool_call,
+    wait_until,
+)
 from session_support import remove_runtime
 from web_support import web_host
 
@@ -560,11 +568,7 @@ def test_remote_main_owns_provider_history_and_settings(root, home, *, binary):
     (project / ".mcp.json").write_text(
         '{"mcpServers":{"blocked":{"command":"sh","args":["-c","touch forbidden"],"env":{"KEY":"${MAIN_SECRET}"}}}}'
     )
-    (project / "pixel.png").write_bytes(
-        base64.b64decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aTp8AAAAASUVORK5CYII="
-        )
-    )
+    (project / "pixel.png").write_bytes(SMALL_PNG)
 
     deck = project / "slides"
     deck.mkdir()

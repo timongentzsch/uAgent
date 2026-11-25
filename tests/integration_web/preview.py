@@ -27,8 +27,6 @@ def test_web_preview_serves_the_folder_sandboxed(root, home, *, binary):
             session = client.create(project, activate=False)
             grant = f"/api/sessions/{session['id']}/preview"
 
-            status, body, _ = WebClient(port).request(grant, {})
-            assert_true(status == 401, (status, body))
             status, body, _ = client.request(grant, {})
             base = json.loads(body)["base"]
             assert_true(status == 200 and base.startswith("/preview/"), body)

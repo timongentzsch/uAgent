@@ -144,6 +144,13 @@ export const withoutServiceWorker = (page) =>
     route.fulfill({ contentType: "text/javascript", body: "" }),
   );
 
+// Sixty alternating messages, long enough to scroll.
+export const fillerHistory = (label) =>
+  Array.from({ length: 60 }, (_, index) => ({
+    role: index % 2 ? "assistant" : "user",
+    content: `${label} message ${index}. ` + "Filler text here. ".repeat(8),
+  }));
+
 // The composer sends and attaches nothing until the event stream has caught
 // up. A click waits for that; a key press, setInputFiles or a dispatched
 // drop does not, and what it carried is lost.

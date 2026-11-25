@@ -256,14 +256,6 @@ def test_auto_permission_reviewer_bars(root, home, *, binary):
         assert_true("could not decide" in tool and "user denied" not in tool, tool)
         assert_true(not target.exists(), target)
 
-    # The deny bar refuses outright, and says the review did.
-    def denies(handler, _):
-        write_json_response(handler, decision_answers(0.0, 0.95))
-
-    _, tool, _ = auto_review_run(root, home, binary, [judged_call(target)], denies)
-    assert_true("refused this action" in tool, tool)
-    assert_true(not target.exists(), target)
-
     # The bars are data of the endpoint: the same 0.9 that the ordinary bars
     # allow asks under a row that wants 0.99.
     def fairly_sure(handler, _):

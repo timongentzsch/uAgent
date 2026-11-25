@@ -57,7 +57,7 @@ bool Is(const ApprovalDecision& decision, ApprovalEffect effect,
 
 }  // namespace
 
-// Today's order, case by case.
+// The order, case by case.
 TEST_CASE(TestApprovalOrder) {
   // Ask: a person decides what no rule covers.
   CHECK(Is(Decide(Command(), In(Mode::kAsk)), kAskPerson, kMode));

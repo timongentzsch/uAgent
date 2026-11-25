@@ -2,9 +2,26 @@
 
 ## Unreleased
 
+### Upgrade notes
+
+- Some data written by older releases is no longer read: move receipts kept only on the lead conversation or only in its messages, memory and compaction notices saved without their place in the turn, the old mail envelope that named a reporting agent, the single-key draft map in the browser, a preview address handed to a runtime started by an older web host, the plain `done` memory marker, a patch saved with only its per-file receipts (shown as a call with no result), a turn's work row saved before its steps were counted by kind, and an agent request in a page from a host that named the agent only in the message text. An agent saved with no recorded approval mode now runs in Ask instead of Auto.
+
+### Changes
+
+- MCP servers can ask for input while a tool runs (elicitation, form and URL modes). The card names the server; a form is checked before it is sent, and a link is shown whole for you to open in your own browser. `mcp.timeout` now bounds each request to the server rather than the whole call, so time spent answering is not counted, and the request that follows an opened link may wait until the turn ends.
+- MCP servers can answer a tool call with a task (Tasks extension): µAgent polls it at the server's interval until it ends, shows its status message, answers its requests for input on the same card, and cancels it when the call is stopped or the turn's deadline passes.
+- `GET files?changes=` always returns each row's `working` and `staged` Git status letters; the `split` value is gone.
+- The footprint comparison scripts, their raw results and the approval reviewer's labelled cases moved out of the repository. `benchmarks/` keeps what the tests run.
+
 ### Fixes
 
 - A `web_fetch` rule for a site no longer matches an address whose query or fragment holds `@` and that site's name; the rule is keyed by the host the fetch goes to. A preview's sheet engine route no longer serves a file outside the engine's folder.
+- A `web_fetch` allowed for one site no longer follows a redirect to another. It follows redirects itself only on the same host, never from https to http, at most five times; for any other target the model is told the new address, and fetching it asks for approval and checks the site rules again.
+- A save from Files and the agent's write to the same file at the same moment no longer lose one of them silently: both take a lock on the file's folder around reading, checking and replacing it, so the later one sees the earlier one's text or is refused as changed.
+- A reply whose tool calls had a missing or repeated id, or no name, no longer leaves the next Anthropic or Responses request carrying a call without a matching result, which the provider refused until the conversation compacted. A Chat Completions or Responses stream that names hundreds of tool-call slots opens at most 256, and an MCP server sending many short lines is read in one pass.
+- Up to eight open pages keep their live connection. With a fifth page open, the oldest connection was ended, reconnected and ended the next, so the pages took turns going offline.
+- Signing out, or a host that no longer knows the device, now also removes the saved hosts, read and unread marks, side-chat tabs, scroll bookmarks, Files' last folder, folded places and unsent Library and scheduled-task drafts from the browser. Appearance and layout settings stay.
+- The app reads your stylesheet again only when a conversation's turn starts or ends, not on every status update. A conversation deleted while this device is connected no longer leaves its read count in browser storage.
 
 ## v1.12.0 - 2026-11-24
 

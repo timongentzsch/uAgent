@@ -44,7 +44,6 @@ HEAVY_DIRS = (
     ".github/",
     "cmake/",
     "deploy/",
-    "third_party/",
 )
 
 
@@ -87,7 +86,7 @@ def tidy(paths):
     run, a run by hand and a release read everything."""
     wide = any(
         path.endswith((".h", ".hpp", ".clang-tidy"))
-        or path.startswith((".github/", "third_party/"))
+        or path.startswith(".github/")
         or path in ("CMakeLists.txt", "CMakePresets.json", ".dockerignore")
         for path in paths
     )

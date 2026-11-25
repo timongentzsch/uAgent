@@ -17,6 +17,11 @@ Before a commit, run what CI checks on every change:
 git diff --check
 ```
 
+Configuring downloads the two pinned header libraries, nlohmann/json and
+cpp-httplib (`CMakeLists.txt`). Offline, point
+`-DFETCHCONTENT_SOURCE_DIR_JSON=` and `-DFETCHCONTENT_SOURCE_DIR_HTTPLIB=` at
+unpacked copies of those releases.
+
 Builds are warning-clean under `-Wall -Wextra -Wpedantic -Wconversion
 -Wsign-conversion -Wshadow -Wold-style-cast`, and the presets treat warnings
 as errors. Make a narrowing or signedness change explicit where it happens

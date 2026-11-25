@@ -415,6 +415,8 @@ def test_an_agent_asks_its_parent_which_decides(root, home, *, binary):
             if ASKS.match(t)
         )
         assert_true(asked["envelope"] == len(label.encode()), (asked, label))
+        # How to answer is the model's, kept out of what the person reads.
+        assert_true("Decide with the decide tool" in label, label)
 
 
 def test_a_decision_its_parent_yields_or_leaves_reaches_the_person(root, home, *, binary):

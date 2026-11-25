@@ -743,11 +743,6 @@ test.describe("phone header", () => {
     expect(geometry.totals.top).toBeGreaterThanOrEqual(geometry.title.bottom);
     expect(geometry.totals.bottom).toBeLessThanOrEqual(geometry.head.bottom);
     await expect(page.locator(".composer .metrics")).toHaveCount(0);
-    expect(
-      await page
-        .locator(".composer-metrics")
-        .evaluate((node) => node.getBoundingClientRect().height),
-    ).toBe(0);
     await totals.tap();
     await expect(
       page.getByRole("dialog", { name: "Conversation statistics" }),

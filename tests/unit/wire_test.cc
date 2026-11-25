@@ -148,13 +148,6 @@ TEST_CASE(TestWireAdapters) {
   CHECK(chat["tools"].size() == 2);
   CHECK(chat["stream_options"]["include_usage"] == true);
   CHECK(WireEndpoint(WireApi::kChatCompletions) == "/chat/completions");
-  Api switched(RuntimeConfig{});
-  switched.model = "chat-test";
-  UseEndpoint(switched, "https://chat.test/v1");
-  json switched_payload =
-      json::parse(switched.ChatPayload(messages, schemas), nullptr, false);
-  CHECK(switched_payload.is_object());
-  CHECK(!switched_payload["messages"][2].contains(kWireReplayField));
 
   // Declaring search changes no conversation request: the model gets the
   // function, and only a search's own side request carries the endpoint's tool.

@@ -11,7 +11,6 @@ import {
   openFiles,
   openSession,
   quotesOf,
-  saveHistory,
   savedConversation,
   selectProbeModel,
   slide,

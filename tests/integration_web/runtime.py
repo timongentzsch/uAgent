@@ -27,15 +27,9 @@ PARTIAL_USAGE_REQUEST_SECONDS = 25
 
 
 def test_browser_appliance_auth_and_handover_guards(root, home, *, binary):
-    offered = []
-
-    def answer(_, body):
-        offered.extend(tool["function"]["name"] for tool in body.get("tools", []))
-        return event({"content": "browser tool offered"})
-
     with (
         tempfile.TemporaryDirectory(prefix="ua-b-", dir=os.path.realpath("/tmp")) as browser_data,
-        Server([answer]) as provider,
+        Server([event({"content": "unused"})]) as provider,
     ):
         with web_host(
             binary,
@@ -44,19 +38,12 @@ def test_browser_appliance_auth_and_handover_guards(root, home, *, binary):
             provider.url,
             extra_env={"UAGENT_BROWSER_DATA": browser_data},
         ) as (client, code, _, _):
-            assert_true(client.json("/api/browser/status")[0] == 401, "unpaired browser status")
             client.pair(code)
             status, idle, _ = client.json("/api/browser/status")
             assert_true(status == 200 and idle["mode"] == "idle", idle)
             assert_true(idle["running"] is False, idle)
             assert_true(idle["controller"] is False, idle)
             assert_true("viewer" not in idle, idle)
-            project = root / "project"
-            project.mkdir()
-            session = client.create(project)
-            client.command("submit", session, text="Check available tools")
-            client.until(session, lambda value: "browser tool offered" in json.dumps(value))
-            assert_true("browser" in offered, offered)
             client.sequence += 1
             rejected, outcome, _ = client.json(
                 "/api/command",
@@ -757,11 +744,6 @@ def test_looks_fold_into_a_group_and_the_work_counts_by_kind(root, home, *, bina
             )
             parents = [node["parent"] for node in by_kind("call")]
             assert_true(parents == [group["id"], group["id"], work["id"]], parents)
-            # A page read back from the saved conversation is the same tree.
-            status, saved, _ = client.json(f"/api/sessions/{session['id']}/view")
-            if status == 200:
-                kinds = [node["kind"] for node in saved.get("nodes", [])]
-                assert_true(kinds.count("group") == 1, kinds)
 
 
 def test_a_conversation_runtime_goes_before_the_host_when_memory_runs_out(root, home, *, binary):

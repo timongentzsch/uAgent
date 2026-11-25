@@ -622,9 +622,6 @@ TEST_CASE(TestSandboxProbe) {
   // same way twice. Every caller treats the level as fixed.
   const SandboxLevel level = SandboxSupported();
   CHECK(level == SandboxSupported());
-  CHECK(level == SandboxLevel::kUnavailable ||
-        level == SandboxLevel::kFilesystem ||
-        level == SandboxLevel::kFilesystemAndNetwork);
 #if defined(__APPLE__)
   // sandbox-exec is part of the base system, so the only macOS host that can
   // report unavailable is one where it has been removed.

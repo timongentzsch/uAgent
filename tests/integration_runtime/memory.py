@@ -318,35 +318,6 @@ def test_memory_extraction_preserves_changed_and_unseen_notes(root, home, *, bin
         exercise(scenario)
 
 
-def test_memory_off_conversations_are_never_extracted(root, home, *, binary):
-    """--no-memory leaves no trace in memory: neither recall nor, six idle
-    hours later, a lesson distilled from that conversation."""
-    workspace = root / "memory-off-workspace"
-    workspace.mkdir()
-    session = write_session(
-        home,
-        "memory-off",
-        [
-            {"role": "system", "content": "system"},
-            {"role": "user", "content": "private-detail"},
-            {"role": "assistant", "content": "noted"},
-            {"role": "user", "content": "more"},
-            {"role": "assistant", "content": "ok"},
-        ],
-        cwd=workspace,
-        turns=2,
-        memory=False,
-    )
-    age(session)
-    with Server([event({"content": "should not be asked"})]) as server:
-        code, output = run_pty(
-            workspace, base_env(home, server.url), b"/q\n", startup_marker=b"Ready", binary=binary
-        )
-        assert_true(code == 0, output)
-        assert_true(len(server.requests) == 0, server.requests)
-    assert_true(not list((home / ".uagent/memory/.processed").rglob("*.state")), "claimed")
-
-
 def test_memory_background_extractor_releases_failed_claims(root, _home, *, binary):
     def scenario(name, kinds=None):
         case_home = root / f"memory-{name}-home"
@@ -642,3 +613,5 @@ def test_memory_off_survives_resume_and_future_extraction(root, home, *, binary)
             age(sessions[0])
             code, output = run_pty(workspace, env, b"/q\n", startup_marker=b"Ready", binary=binary)
             assert_true(code == 0 and len(server.requests) == 3, output)
+            claimed = list((home / ".uagent/memory/.processed").rglob("*.state"))
+            assert_true(not claimed, claimed)

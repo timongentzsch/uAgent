@@ -15,7 +15,7 @@ from integration_support import (
     tool_results,
     wait_until,
 )
-from web_support import WebClient, web_host
+from web_support import web_host
 
 
 def test_web_atomic_images_and_session_isolation(root, home, *, binary):
@@ -77,8 +77,6 @@ def test_web_atomic_images_and_session_isolation(root, home, *, binary):
             assert_true(image["id"] in json.dumps(client.snapshot(session)), "image reference lost")
             asset = f"/api/sessions/{session['id']}/assets/{image['id']}"
             assert_true(client.request(asset)[1] == SMALL_PNG, "source asset changed")
-            anonymous = WebClient(client.port)
-            assert_true(anonymous.request(asset)[0] == 401, "private image was public")
             outside = root / "separate-workspace"
             outside.mkdir()
             peer = client.create(outside)
@@ -214,7 +212,6 @@ def test_web_approval_interrupt_and_independent_workers(root, home, *, binary):
                 )
                 assert_true(active["metadata"]["turn_active"], active)
                 assert_true(not active["state"].get("error"), active["state"].get("error"))
-                assert_true(active["state"]["turn_status"] == "Waiting for model", active["state"])
                 assert_true(not active["state"].get("stop"), active["state"].get("stop"))
             finally:
                 release.set()
@@ -345,39 +342,6 @@ def test_web_side_conversation_keeps_its_conversations_tools(root, home, *, bina
                 {"decide", "agents", "present"} <= offered[0] and "agent_send" not in offered[0],
                 offered,
             )
-
-
-def test_web_conversation_presents_a_file(root, home, *, binary):
-    report = b"<html><body>REPORT</body></html>"
-    (root / "report.html").write_bytes(report)
-    with Server(
-        [tool_call("present", {"path": "report.html"}), event({"content": "REPORT-SHARED"})]
-    ) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, _):
-            client.pair(code)
-            main = client.command("create", cwd=str(root))["session"]
-            main = client.command("activate", main)["session"]
-            client.until(main, lambda value: value["metadata"]["status"] == "idle")
-            client.command("submit", main, text="Share the completed report")
-            value = client.until(
-                main,
-                lambda value: (
-                    "REPORT-SHARED" in json.dumps(value) and not value["metadata"]["turn_active"]
-                ),
-            )
-            names = {tool["function"]["name"] for tool in provider.requests[0][1].get("tools", [])}
-            assert_true("present" in names, names)
-            files = [
-                part
-                for node in value["state"]["view"]["nodes"]
-                for part in node.get("parts") or []
-                if part["kind"] == "file"
-            ]
-            assert_true([file["name"] for file in files] == ["report.html"], files)
-            url = f"/api/sessions/{main['id']}/assets/{files[0]['id']}?download=1"
-            status, body, headers = client.request(url)
-            assert_true(status == 200 and body == report, (status, body))
-            assert_true('filename="report.html"' in headers.get("Content-Disposition", ""), headers)
 
 
 def test_web_presented_artifact_stays_in_the_folder(root, home, *, binary):

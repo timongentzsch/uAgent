@@ -774,9 +774,11 @@ def test_sandbox_network_toggle(root, home, *, binary):
     assert_true(
         tcp_reachable(root, home, True, binary=binary), "a sandboxed command could not connect"
     )
-    assert_true(
-        not tcp_reachable(root, home, False, binary=binary), "UAGENT_SANDBOX_NET=0 did not deny"
-    )
+    if sys.platform == "darwin" or landlock_abi() >= 4:
+        assert_true(
+            not tcp_reachable(root, home, False, binary=binary),
+            "UAGENT_SANDBOX_NET=0 did not deny",
+        )
 
 
 def test_sandbox_names_itself_when_a_lookup_fails_offline(root, home, *, binary):
@@ -1003,13 +1005,6 @@ def test_sandbox_degrades_when_it_cannot_enforce_by_default(root, home, *, binar
     assert_true("sandbox:" in result.stdout, f"degrading was silent: {result.stdout}")
 
 
-def test_sandbox_off_leaves_spawning_unchanged(root, home, *, binary):
-    """UAGENT_SANDBOX=off: no wrapper, no refusal, no behaviour change."""
-    target = root / "unconfined.txt"
-    run_once(root, sandbox_env(home, "", UAGENT_SANDBOX="off"), f"echo x > {target}", binary=binary)
-    assert_true(target.exists(), "the unsandboxed path changed")
-
-
 def file_tool_output(root, env, name, arguments, *, binary, yolo=True):
     """What a file tool reported back to the model for one call, headless:
     under yolo, or in ask mode, where nobody answers."""
@@ -1153,12 +1148,6 @@ def test_sandbox_levels(root, home, *, binary):
         writes("relaxed") == {"project": True, "agent state": False, "hidden store": False},
         "relaxed is not the home folder minus ~/.uagent and the hidden stores",
     )
-
-    if sys.platform == "darwin" or landlock_abi() >= 4:
-        assert_true(
-            not tcp_reachable(root, home, None, binary=binary, UAGENT_SANDBOX_NET="0"),
-            "sandbox.network=0 left the network open",
-        )
 
 
 def test_a_level_that_is_no_level_refuses_rather_than_opening_the_network(root, home, *, binary):

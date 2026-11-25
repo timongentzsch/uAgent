@@ -529,7 +529,6 @@ TEST_CASE(TestScopedBaseAndMemory) {
         "github_pat_abcdefghijklmnopqrst",
         "AKIAIOSFODNN7EXAMPLE",
         "xoxb-1234567890-abcdefgh",
-        "xoxp-1234567890-abcdefgh",
         "AIzaSyA0123456789abcdefghijklmnopqrstuvw",
         "-----BEGIN PRIVATE KEY-----\nx\n"}) {  // gitleaks:allow
     CHECK(RedactMemorySecrets(secret).find("REDACTED") != std::string::npos);

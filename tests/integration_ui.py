@@ -13,6 +13,7 @@ from integration_support import (
     base_env,
     budget,
     event,
+    last_user,
     run,
     run_dialog,
     run_pty,
@@ -30,6 +31,12 @@ from integration_support import (
     write_sse_sequence,
 )
 from memory_fixture import project_memory_dir
+
+
+def cooked(slave):
+    attributes = termios.tcgetattr(slave)
+    attributes[3] |= termios.ICANON | termios.ECHO
+    termios.tcsetattr(slave, termios.TCSANOW, attributes)
 
 
 def test_yolo_toggle_refreshes_approval_state(root, home, *, binary):
@@ -1136,11 +1143,6 @@ def test_suspend_restores_and_rearms_terminal(root, home, *, binary):
     # re-arm raw mode on SIGCONT, or the resumed session echoes every keypress.
     seen = {}
 
-    def cooked(slave):
-        attributes = termios.tcgetattr(slave)
-        attributes[3] |= termios.ICANON | termios.ECHO
-        termios.tcsetattr(slave, termios.TCSANOW, attributes)
-
     def suspend(process, master):
         seen["running"] = termios.tcgetattr(master)[3]
         process.send_signal(signal.SIGTSTP)
@@ -1186,11 +1188,6 @@ def test_signal_exit_restores_terminal(root, home, *, binary):
     # discipline too, or the surviving shell has no echo until `stty sane`.
     final = {}
 
-    def cooked(slave):
-        attributes = termios.tcgetattr(slave)
-        attributes[3] |= termios.ICANON | termios.ECHO
-        termios.tcsetattr(slave, termios.TCSANOW, attributes)
-
     def capture(master):
         final["lflag"] = termios.tcgetattr(master)[3]
 
@@ -1222,11 +1219,7 @@ def test_input_redraw_survives_terminal_resize_and_delete(root, home, *, binary)
     expected = original[:-10] + "XYZ"
 
     def answer(_, body):
-        user = next(
-            message.get("content")
-            for message in reversed(body["messages"])
-            if message.get("role") == "user"
-        )
+        user = last_user(body)
         return event({"content": "resize-ok" if user == expected else "resize-bad"})
 
     with Server([answer]) as server:
@@ -1256,11 +1249,7 @@ def test_input_redraw_backspaces_across_a_wide_glyph_wrap(root, home, *, binary)
     expected = "a" * 74 + "\u65e5" + "ok"
 
     def answer(_, body):
-        user = next(
-            message.get("content")
-            for message in reversed(body["messages"])
-            if message.get("role") == "user"
-        )
+        user = last_user(body)
         return event({"content": "wide-ok" if user == expected else f"wide-bad:{user!r}"})
 
     with Server([answer]) as server:
@@ -1448,11 +1437,7 @@ def test_input_at_path_suggestions_and_tab_completion(root, home, *, binary):
     (root / ".hidden.txt").write_text("x", encoding="utf-8")
 
     def answer(_, body):
-        user = next(
-            message.get("content")
-            for message in reversed(body["messages"])
-            if message.get("role") == "user"
-        )
+        user = last_user(body)
         return event(
             {"content": "path-ok" if user == "read @alpha/inner.txt" else f"path-bad:{user!r}"}
         )
@@ -1490,11 +1475,7 @@ def test_input_ctrl_x_ctrl_e_round_trips_through_an_editor(root, home, *, binary
     editor.chmod(0o755)
 
     def answer(_, body):
-        user = next(
-            message.get("content")
-            for message in reversed(body["messages"])
-            if message.get("role") == "user"
-        )
+        user = last_user(body)
         return event(
             {"content": "editor-ok" if user == "draft-edited!" else f"editor-bad:{user!r}"}
         )

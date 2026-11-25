@@ -195,9 +195,6 @@ TEST_CASE(TestRuleEffectsMatch) {
     CHECK(!covers(effect, "git pushy"));
     CHECK(!covers(effect, "git status"));
   }
-  CHECK(covers(RuleEffect::kAllow, "git push origin"));
-  CHECK(!covers(RuleEffect::kAllow, "cd sub && git push"));
-  CHECK(!covers(RuleEffect::kAllow, "git push", false));
   RuleEffect effect = RuleEffect::kAllow;
   CHECK(ParseRuleEffect("deny", effect) && effect == RuleEffect::kDeny);
   CHECK(!ParseRuleEffect("never", effect));

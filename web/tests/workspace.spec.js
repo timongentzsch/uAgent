@@ -5,6 +5,7 @@ import {
   online,
   headerAction,
   saveHistory,
+  savedConversation,
   startInFolder,
   openMore,
 } from "./fixtures.js";
@@ -162,6 +163,37 @@ test("appearance and configuration remain usable at large scales", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("a read mark stays while a list leaves its conversation out, and goes when the host deletes it", async ({
+  page,
+  host,
+  request,
+  command,
+}) => {
+  const other = await savedConversation(host, request, "Kept apart");
+  await page.addInitScript((id) => {
+    if (!localStorage.getItem("uagent-read"))
+      localStorage.setItem("uagent-read", JSON.stringify({ [id]: 1 }));
+  }, other.id);
+  // A list that leaves out a conversation that still exists, as a capped
+  // one can.
+  await page.route(/\/api\/sessions(\?refresh=1)?$/, async (route) => {
+    const response = await route.fetch();
+    const list = await response.json();
+    list.sessions = list.sessions.filter((item) => item.id !== other.id);
+    await route.fulfill({ response, json: list });
+  });
+  await page.goto("/");
+  await expect(connected(page)).toBeVisible();
+  const read = () =>
+    page.evaluate(() => localStorage.getItem("uagent-read") ?? "");
+  expect(await read()).toContain(other.id);
+  await command("delete", {
+    session_id: other.id,
+    generation: other.generation ?? "",
+  });
+  await expect.poll(read).not.toContain(other.id);
 });
 
 test("unread completions, background activity and conversation lifecycle", async ({

@@ -154,7 +154,7 @@ test("on a phone a side chat is a page of its own, listed in its conversation", 
     ),
   ).toBe(true);
   // A row opens its side chat.
-  await rows.last().getByRole("button").click();
+  await rows.last().getByRole("button").first().click();
   await expect(page).not.toHaveURL(here);
   await expect(transcript).toContainText("SIDE-FOLLOWUP-COMPLETE");
   // Its page starts where it was asked.

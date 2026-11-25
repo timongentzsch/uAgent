@@ -397,6 +397,10 @@ test.describe("phone", () => {
     await ask(page, "Second side question");
     await expect(page).not.toHaveURL(here);
     await expect(page.locator(".transcript")).toContainText("Native worker");
+    // Its turn has ended: the press probe would find Stop held.
+    await expect(
+      page.getByRole("button", { name: "Send", exact: true }),
+    ).toBeVisible();
     const head = page.locator(".conversation-head");
     await expect(page.getByRole("button", { name: /^Side chats/ })).toHaveCount(
       0,

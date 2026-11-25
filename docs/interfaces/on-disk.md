@@ -27,6 +27,7 @@ With no home directory (`HOME`, then the password entry) it is
 | `~/.uagent/activity/<pid>-<activity>.log`, `pending-*`, `usage-<session id>.jsonl` | command logs; a child agent's spend, one JSON object per line | the shell tool, child agents | the activity tool, the parent |
 | `~/.uagent/terminals/<pid>.json`, `terminals/logs/` | detached terminal records and logs | the shell tool | the activity tool |
 | `~/.uagent/sessions/<UTC stamp>-<pid>.jsonl`, `mcp/<server>-<pid>.log` | trace (sensitive, `logs.level` debug or `--debug`); MCP server stderr (`logs.level` events and above) | runtimes | people |
+| `~/.uagent/logs/<UTC day>.jsonl` | warnings and errors of every process (`logs.level` events and above; [Logging](../architecture/logging.md)) | every process | people |
 | `~/.uagent/models/<hash>.json` | a provider's model catalogue, no credentials | runtimes | runtimes |
 | `~/.uagent/openrouter-signin.json`, `.maintained` | a pending sign-in's verifier; the daily retention stamp | `setup`, `openrouter` control; runtimes | the same |
 

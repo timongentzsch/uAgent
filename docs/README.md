@@ -36,7 +36,7 @@ Start with the [process diagram and source map](architecture/overview.md). The s
 | Subsystem | Guides |
 | --- | --- |
 | Model requests and tool execution | [Turn loop](architecture/turn-loop.md) · [Providers](architecture/providers.md) · [Tools and approvals](architecture/tools.md) · [Sandbox](architecture/sandbox.md) |
-| Durable conversations | [Sessions](architecture/sessions.md) · [Memory and schedules](architecture/memory-and-schedules.md) |
+| Durable conversations | [Sessions](architecture/sessions.md) · [Memory and schedules](architecture/memory-and-schedules.md) · [Logging](architecture/logging.md) |
 | Devices and remote machines | [Web host](architecture/web-host.md) · [Web client](architecture/web-client.md) · [SSH execution gateway](architecture/execution-gateway.md) |
 | Browser and file previews | [Chrome service](architecture/browser.md) · [Artifact rendering and editing](architecture/artifacts.md) |
 

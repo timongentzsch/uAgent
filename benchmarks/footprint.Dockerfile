@@ -49,7 +49,7 @@ RUN platform=$(echo "$TARGETARCH" | sed s/amd64/x64/) && mkdir -p ~/.local/bin ~
 RUN mkdir codex && curl -fsSL "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-package-$(uname -m)-unknown-linux-musl.tar.gz" | tar -xz -C codex
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
 COPY --chown=bench:bench benchmarks/footprint-omp/ /home/bench/omp/
-RUN cd omp && ~/.bun/bin/bun install --frozen-lockfile
+RUN cd omp && ~/.bun/bin/bun install
 ENV PATH=/home/bench/.local/bin:/home/bench/.bun/bin:$PATH
 COPY benchmarks/compare_agents.py benchmarks/charts.py benchmarks/scripted_provider.py benchmarks/footprint-run.sh /opt/bench/
 ENTRYPOINT ["bash", "/opt/bench/footprint-run.sh"]

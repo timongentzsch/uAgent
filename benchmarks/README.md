@@ -79,10 +79,6 @@ docker run --rm --init --platform linux/arm64 --cpus=2 --memory=4g \
 uv run --with tiktoken==0.14.0 python benchmarks/first_request.py count out/first-request.json
 ```
 
-The earlier v1.11.0 release reports retain its archive sizes, solo probe and
-the evaluation's Linux-storage versus macOS bind-mount results.
-[v1.11.0 packages](results/packages-2026-11-24.json) · [Solo measurements](results/release-probe-2026-11-24.json) · [First request](results/first-request-2026-11-24.json)
-
 ### Historical native samples
 
 The 2026-11-12 snapshot used commit `f3489142`, runtime build
@@ -90,7 +86,7 @@ The 2026-11-12 snapshot used commit `f3489142`, runtime build
 21.0.0, Release `-O3`, with Web Push enabled. Its hermetic evaluation passed
 13 scenarios, 16 variants and 110 checks. Its separate fresh-home request probe
 measured 13 tools, 10,413 schema bytes and a 2,922-character system message.
-[Raw native and evaluation results](results/2026-11-12.json) · [Earlier package measurements](results/packages-2026-11-15.json)
+[Raw native and evaluation results](results/2026-11-12.json)
 
 Local time to serialize 1,000 request payloads, median of five runs in milliseconds:
 
@@ -147,11 +143,6 @@ and cleared it before each idle window. [Startup evidence](results/claude-startu
 µAgent and Codex CLI used the Responses API. Claude Code, omp and OpenCode
 used Anthropic Messages. OpenCode made one extra small-model request per turn.
 The fixture answered all 30 requests locally without model inference. [Scripted provider](scripted_provider.py)
-
-The earlier five-CLI run used µAgent 1.11.0. In that run Claude Code 2.1.331
-exited before each idle sample. A diagnostic launch reported a DNS failure
-for `api.anthropic.com`.
-[Earlier samples](results/comparison-scripted-2026-11-24.json) · [Earlier chart](../docs/images/comparison-scripted.svg)
 
 ### Earlier live-provider comparison
 
@@ -279,7 +270,7 @@ verified matching gateway bundle as described in the install guide.
 
 The published v1.12.0 Linux ARM64 release ran in a network-isolated
 container. Its loopback resolver recorded DNS requests. Direct IP
-connections and live-browser traffic fall outside this probe. [v1.12.0 DNS results](results/egress-1.12.0-linux-arm64.json) · [v1.11.0 DNS results](results/egress-2026-11-24.json)
+connections and live-browser traffic fall outside this probe. [v1.12.0 DNS results](results/egress-1.12.0-linux-arm64.json)
 
 `egress_record.py` drives µAgent through nine situations with its model
 endpoint a scripted server on 127.0.0.1:

@@ -11,9 +11,11 @@
 #include "include/agent/activity.h"
 #include "include/agent/edit_journal.h"
 #include "include/agent/path_policy.h"
+#include "include/app/workspace_files.h"
 #include "include/cli/options.h"
 #include "include/core/config.h"
 #include "include/core/env.h"
+#include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"
@@ -859,6 +861,44 @@ TEST_CASE(TestTerminalSafety) {
   CHECK(SafeFileComponent("../../escape") == "______escape");
   CHECK(FirstLine(std::string(200, 'x')).size() == 200);
   CHECK(FirstLine("first\nsecond") == "first");
+}
+
+// A writer between its read and its replace holds the folder: a save made
+// meanwhile reads what it wrote, and is refused rather than written over it.
+TEST_CASE(TestSaveWaitsForAWriterInItsWindow) {
+  TestWorkspace workspace("save-lock");
+  const std::filesystem::path file = workspace.workspace / "notes.txt";
+  WriteFile(file, "base\n");
+  const std::string revision = DocumentRevision(file.string(), "base\n");
+  int ready[2], go[2];
+  REQUIRE(pipe(ready) == 0 && pipe(go) == 0);
+  const pid_t writer = fork();
+  if (writer == 0) {
+    const FolderLock lock(file);
+    char byte = 0;
+    if (write(ready[1], "r", 1) != 1 || read(go[0], &byte, 1) != 1) _exit(1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::string error;
+    _exit(AtomicWriteFile(file.string(), "agent\n", 0644, true, error) ? 0 : 1);
+  }
+  char byte = 0;
+  REQUIRE(read(ready[0], &byte, 1) == 1);
+  json saved;
+  std::thread person([&] {
+    saved =
+        workspace_files::Request(workspace.workspace, {{"mode", "write"},
+                                                       {"path", "notes.txt"},
+                                                       {"text", "person\n"},
+                                                       {"revision", revision}});
+  });
+  REQUIRE(write(go[1], "g", 1) == 1);
+  person.join();
+  int status = 0;
+  waitpid(writer, &status, 0);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+  CHECK(JsonValue(saved, "conflict", false));
+  CHECK(ReadFile(file.string(), 64).value_or("") == "agent\n");
+  for (int fd : {ready[0], ready[1], go[0], go[1]}) close(fd);
 }
 
 }  // namespace uagent

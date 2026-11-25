@@ -555,6 +555,7 @@ ToolResult ToolEditFile(const std::string& path,
   if (auto invalid = ValidatePathTarget(path, PathTarget::kReadableFile)) {
     return std::move(*invalid);
   }
+  const FolderLock lock(path);
   errno = 0;
   std::ifstream f(path, std::ios::binary);
   if (!f) return FileOpenFailure(path);
@@ -694,6 +695,7 @@ ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
   if (auto invalid = ValidatePathTarget(path, PathTarget::kDeletableFile)) {
     return std::move(*invalid);
   }
+  const FolderLock lock(path);
   FileEffect effect{CanonicalAccessPath(path).string(), true,
                     DiffableContents(path), "", FilePermissions(path)};
   // The path policy above already rejected a missing or non-regular target, so
@@ -723,6 +725,7 @@ ToolResult ToolWriteFileWithDisplay(const std::string& path,
   if (auto invalid = ValidatePathTarget(path, PathTarget::kWritableFile)) {
     return std::move(*invalid);
   }
+  const FolderLock lock(path);
   std::error_code ec;
   bool existed = std::filesystem::is_regular_file(path, ec);
   const auto original_mode = existed ? FilePermissions(path) : std::nullopt;

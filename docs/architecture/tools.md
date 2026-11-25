@@ -219,6 +219,18 @@ fit; a link must be a plain `http(s)` URL whose host has no userinfo,
 backslash, escape or non-ASCII byte, and a punycode host is marked. Anything
 else is declined and the result tells the model why. The person's reply is
 checked against the schema before it is sent, and no answer is `cancel`.
+Every request also declares the `io.modelcontextprotocol/tasks`
+extension, and a `tools/call` answered with a task (`resultType: "task"`)
+is followed inside the same call (`src/mcp/invoke.cc`): `tasks/get` every
+`pollIntervalMs` (1 s when absent, held between 250 ms and 60 s), the wait
+ending on a stop, and the task's `statusMessage` shown as the running
+call's status. Its `inputRequests` are answered as above through
+`tasks/update`, each key once; `completed` gives the result a direct call
+would, `failed` its error and `cancelled` a cancelled call. A stop, the
+turn's deadline or any other early end sends one `tasks/cancel`. Only the
+turn (`limits.maxTurnSeconds`) and stopping bound a task's whole time;
+it is not an activity, so it cannot move to the background and does not
+outlive the runtime.
 A tool is named
 `<server>_<tool>`, sanitized to `[A-Za-z0-9_-]` and 64 characters; a name
 that collides is skipped. Every MCP tool is `external` and needs approval

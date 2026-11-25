@@ -100,6 +100,7 @@ class Runtime {
   std::string RfbSocket() const;
 
   pid_t vnc_pid_ = -1;
+  pid_t compositor_pid_ = -1;
   pid_t chrome_pid_ = -1;
   Fd profile_lock_, cdp_in_, cdp_out_;
   int64_t next_id_ = 0;

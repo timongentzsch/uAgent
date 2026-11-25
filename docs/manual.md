@@ -48,7 +48,8 @@ and [Execution gateway](architecture/execution-gateway.md).
 ## The agent's browser
 
 On a Linux web host with `web.browserData` set (the container sets it),
-the agent drives a real Chrome that every paired device can watch. The
+the agent drives a real Chrome that every paired device can watch. Its
+display is VNC, relayed by the host to a viewer built into the web app. The
 globe button in a conversation's header opens the live screen, read-only.
 **Take over** gives this device the input and pauses the agent's actions
 until **Done** hands back. When the agent asks for a person (a sign-in,

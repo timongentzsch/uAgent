@@ -1,5 +1,8 @@
 // The manual's stills of each kind of artifact: a design system, a design, a
 // sheet, a deck and a document, each a plain HTML file in the folder.
+import { copyFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   artboard,
   expect,
@@ -19,7 +22,12 @@ test.use({
   video: "off",
 });
 
-const tokens = `:root, [data-theme="light"] {
+const face = "jetbrains-mono-latin-wght-normal.woff2";
+const tokens = `@font-face {
+  font-family: "JetBrains Mono"; font-weight: 100 800; font-display: block;
+  src: url("fonts/${face}") format("woff2-variations");
+}
+:root, [data-theme="light"] {
   --bg: #fff; --surface: #fafafa; --raised: #eee; --hover: #e2e2e2; --press: #d4d4d4;
   --text: #111; --muted: #555; --line: #ccc; --field-border: #767676;
   --accent: #000; --on-accent: #fff;
@@ -32,7 +40,7 @@ const tokens = `:root, [data-theme="light"] {
   --live: #22a35a; --added: #3fb950; --removed: #f85149; --warning: #e3b341;
 }
 :root {
-  --font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
   --space-2: 4px; --space-4: 8px; --space-6: 12px; --space-12: 24px;
   --control: 32px; --touch: 44px;
 }
@@ -87,7 +95,7 @@ const book = `<!doctype html><html data-theme="dark"><head><title>µAgent design
     ${swatch("text", "#f5f5f5")}${swatch("muted", "#a3a3a3")}${swatch("line", "#404040")}${swatch("field-border", "#8a8a8a")}${swatch("accent", "#fff")}
     ${swatch("live", "#22a35a")}${swatch("added", "#3fb950")}${swatch("removed", "#f85149")}${swatch("warning", "#e3b341")}
   </div></section>
-  <section><h2>Type<small>one monospace</small></h2><div class="type">
+  <section><h2>Type<small>JetBrains Mono</small></h2><div class="type">
     <b class="glyphs">Aaµ</b><b style="font-size:17px">Display 1.2rem</b>
     <b style="font-size:15.4px">Title 1.1rem</b>
     <span style="font-size:14px;color:var(--text)">Body 1rem, messages and controls</span>
@@ -163,6 +171,16 @@ const notes = paper(
 
 test("artifacts", async ({ page: app, session, host }) => {
   test.setTimeout(120000);
+  await mkdir(join(host.project, "design/system/fonts"), { recursive: true });
+  await copyFile(
+    fileURLToPath(
+      new URL(
+        `../node_modules/@fontsource-variable/jetbrains-mono/files/${face}`,
+        import.meta.url,
+      ),
+    ),
+    join(host.project, "design/system/fonts", face),
+  );
   await writeFiles(host.project, {
     "design/system/tokens.css": tokens,
     "design/system/book.html": book,

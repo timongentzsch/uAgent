@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- The web client ships the JetBrains Mono typeface and uses it everywhere except the terminal's grid, so the app looks the same on every device. Characters outside its Latin set, and the terminal, use the system monospace.
+
 ## v1.13.0 - 2026-11-25
 
 ### Upgrade notes

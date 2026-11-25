@@ -114,7 +114,11 @@ test("weights, tracking, offsets, opacity and stacking use their tokens", () => 
     opacity: /^(?!\s*[01]?\s*$)/,
   };
   assert.deepEqual(
-    strays(({ property, value }) => WRITTEN[property]?.test(bare(value))),
+    strays(
+      ({ rule, property, value }) =>
+        // A font file's own weight range is not a weight a rule picks.
+        !rule.startsWith("@font-face") && WRITTEN[property]?.test(bare(value)),
+    ),
     [],
   );
 });

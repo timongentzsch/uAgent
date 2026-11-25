@@ -4,7 +4,7 @@
   :root {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: "JetBrains Mono", var(--font-system);
     background: var(--bg);
     color: var(--text);
     /* % of the user's browser font size (never px) so their preference is

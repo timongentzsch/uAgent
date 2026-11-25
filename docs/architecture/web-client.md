@@ -29,7 +29,11 @@ beside the binary, not embedded. Tests point the host at a fresh build with
 `UAGENT_INTERNAL_WEB_DIST`.
 
 **Page.** `index.html` runs `/theme.js` and draws a static shell before
-`app/app.tsx` mounts. Heavy renderers (Mermaid, KaTeX, highlight.js, the
+`app/app.tsx` mounts. The Latin JetBrains Mono faces (`@font-face` in
+`styles/tokens.css`, files from `@fontsource-variable/jetbrains-mono`) are
+preloaded, so no text is drawn in another face first. The terminal's grid
+keeps the system monospace (`--font-system`), whose box-drawing joins.
+Heavy renderers (Mermaid, KaTeX, highlight.js, the
 browser viewer, xterm) are lazy chunks that the `renderer-assets` Vite
 plugin keeps out of the precache.
 

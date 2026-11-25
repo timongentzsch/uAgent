@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json"
   },
   "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "5.3.0",
     "@ironcalc/wasm-xlsx": "0.9.1",
     "@mdit/plugin-katex": "1.2.0",
     "@novnc/novnc": "1.7.0",

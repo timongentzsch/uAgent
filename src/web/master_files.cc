@@ -196,7 +196,7 @@ void Master::FileOrigin(const Request& request, Response& response) {
   if (at && path.empty()) {
     return Error(response, "original workspace is uncertain", 409);
   }
-  // Old shared URLs contain only a relative path. Resolve an exact, unique
+  // A link with only a relative path (no origin): resolve an exact, unique
   // match; a same-named file in two workspaces needs an explicit choice.
   json matches = json::array();
   for (const auto& candidate : folders) {

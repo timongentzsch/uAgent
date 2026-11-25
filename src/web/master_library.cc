@@ -157,7 +157,7 @@ void Master::LibraryDelete(const Request& request, Response& response) {
   const std::string session = JsonValue(body, "session_id", "");
   WorkspaceIdentity workspace = host_.WorkspaceOf(session);
   if (session.empty()) {
-    // Older clients identify local places by their absolute path.
+    // A local place is named by its absolute path, with no conversation.
     const json catalogue = host_.Catalogue();
     const auto known = [&](const char* list, const char* field) {
       return std::ranges::any_of(catalogue[list], [&](const json& each) {

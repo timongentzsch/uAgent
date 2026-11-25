@@ -1,4 +1,9 @@
-import { devServerTest as test, expect, DEV_SERVER_URL } from "./fixtures.js";
+import {
+  devServerTest as test,
+  expect,
+  DEV_SERVER_URL,
+  fakeStream,
+} from "./fixtures.js";
 
 // The dev page on a mocked host; src/render-count.ts counts renders, so a
 // re-render of the shell or of every row per streamed frame fails here.
@@ -114,27 +119,14 @@ async function open(page) {
       });
     return json({ error: "Not in this mock" }, 404);
   });
+  await page.addInitScript(fakeStream, {
+    epoch: EPOCH,
+    cursor: HISTORY.length,
+  });
   await page.addInitScript(
     ({ epoch, cursor, id, generation }) => {
       // The level these counts were taken at: every step a row.
       localStorage.setItem("uagent-detail", "default");
-      globalThis.EventSource = class extends EventTarget {
-        readyState = 1;
-        constructor() {
-          super();
-          globalThis.testStream = this;
-          setTimeout(() =>
-            this.dispatchEvent(
-              new MessageEvent("ready", {
-                data: JSON.stringify({ epoch, cursor }),
-              }),
-            ),
-          );
-        }
-        close() {
-          this.readyState = 2;
-        }
-      };
       globalThis.testSequence = cursor + 1;
       globalThis.testSend = (fields) =>
         globalThis.testStream.dispatchEvent(

@@ -1,15 +1,31 @@
 # Documentation
 
-## Using µAgent
+µAgent is one executable that takes several roles. A long-lived host process
+owns conversations, provider keys, approvals and schedules. Terminal, browser
+and phone clients attach to it. Tools execute in the host's folders, on
+machines reached over SSH and in a Chrome the host drives.
 
-| Task | Guide |
-| --- | --- |
-| Install µAgent and connect a model | [Install and verify](operations/install.md) · [Models and providers](manual.md#models-and-providers) |
-| Follow the same live turn from another device | [Pair a device](operations/remote-access.md#pair-a-device) · [Reach the host from a phone](operations/remote-access.md#give-the-host-its-public-origin) |
-| Work in a folder on another machine | [Connect an SSH host](operations/remote-access.md#connect-an-ssh-execution-host) · [Where keys and data live](architecture/execution-gateway.md#responsibility) |
-| Use Chrome profiles, saved logins and manual sign-in | [Browser controls](manual.md#the-agents-browser) · [Password handling](../SECURITY.md#browser-automation) |
-| Create, edit and export workspace files | [Artifact workflow](manual.md#artifacts) · [Supported formats](interfaces/artifact-formats.md) |
-| Delegate work or run it later | [Agents and to-dos](manual.md#agents-and-the-to-do-list) · [Memory and schedules](manual.md#memory-skills-and-schedules) |
+![Terminal, browser and phone attach to one host, which reaches model endpoints over HTTPS, remote machines over SSH and Chrome over pipes](images/how-it-works.png)
+
+## Headline features
+
+| Feature | Use it | How it is built |
+| --- | --- | --- |
+| Native remote: a conversation's tools execute in a folder on another machine while the agent loop, keys and history stay on the host | [Remote hosts](manual.md#remote-hosts) · [Connect an SSH host](operations/remote-access.md#connect-an-ssh-execution-host) | [Execution gateway](architecture/execution-gateway.md) |
+| Chrome with your profile: the agent drives a real, signed-in Chrome and uses saved logins without reading them | [The agent's browser](manual.md#the-agents-browser) | [Browser service](architecture/browser.md) · [Password handling](../SECURITY.md#browser-automation) |
+| One host, every client: terminal, browser and phone follow and steer the same live turn | [Join a running conversation](manual.md#join-a-running-conversation) · [Pair a device](operations/remote-access.md#pair-a-device) | [Process model](architecture/overview.md) · [Web host](architecture/web-host.md) · [Sessions](architecture/sessions.md) |
+| Any model: OpenAI Responses, Chat Completions and Anthropic Messages, chosen per conversation | [Models and providers](manual.md#models-and-providers) | [Providers](architecture/providers.md) |
+
+## Also on board
+
+| Feature | Use it | How it is built |
+| --- | --- | --- |
+| Workspaces, folders, side chats and search | [Conversations](manual.md#conversations) | [Sessions](architecture/sessions.md) · [Web client](architecture/web-client.md) |
+| Approvals, rules, Auto review and the sandbox | [Approvals and plan mode](manual.md#approvals-and-plan-mode) | [Tools and approvals](architecture/tools.md) · [Sandbox](architecture/sandbox.md) |
+| Memory, skills and scheduled tasks | [Memory, skills and schedules](manual.md#memory-skills-and-schedules) | [Memory and schedules](architecture/memory-and-schedules.md) |
+| Artifacts: documents, decks, sheets, designs and whiteboards | [Artifacts](manual.md#artifacts) · [Supported formats](interfaces/artifact-formats.md) | [Artifact rendering and editing](architecture/artifacts.md) |
+| Sub-agents and the to-do list | [Agents and the to-do list](manual.md#agents-and-the-to-do-list) | [Turn loop](architecture/turn-loop.md) |
+| MCP servers over stdio | [Settings](manual.md#settings) | [Tools and approvals](architecture/tools.md) |
 
 [Full user manual](manual.md) · [Terminal shortcuts](manual.md#slash-commands-and-shortcuts)
 

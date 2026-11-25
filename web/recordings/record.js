@@ -1,4 +1,4 @@
-// Capture the README image and encode the terminal-and-phone recording.
+// Run the recordings and encode the terminal-and-phone film.
 // Needs ffmpeg and a built host: UAGENT_TEST_BINARY, or build/debug/uagent.
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";

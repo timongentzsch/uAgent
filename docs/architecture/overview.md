@@ -6,6 +6,8 @@ layers the source is built in. What happens inside a turn is in
 [Turn loop](turn-loop.md); the web host's routes are in
 [Web host](web-host.md) and [HTTP API](../interfaces/http-api.md).
 
+![Terminal, browser and phone attach to one host, which reaches model endpoints over HTTPS, remote machines over SSH and Chrome over pipes](../images/how-it-works.png)
+
 ## Responsibility
 
 One C++20 executable holds the agent runtime, the provider adapters, the tool

@@ -5,6 +5,8 @@ on another machine over SSH: connecting a host, installing the matching
 build, the remote processes, the RPC and recovery after a drop. What a
 remote account may do is in [Security](../../SECURITY.md).
 
+![Your host keeps the agent loop, keys and approvals and sends checked tool calls over a forwarded Unix socket to a worker in the remote folder](../images/remote-execution.png)
+
 ## Responsibility
 
 The main keeps the agent loop, providers, keys, settings, history, memory,

@@ -201,10 +201,22 @@ including action admission and management flows. A failed test is not retried.
 Four workers run locally and two in CI. Traces and screenshots of failures are
 kept in `web/test-results`.
 
-The README screenshot and the terminal-and-phone recording use Playwright
-against the fixture host. From `web/`, set `UAGENT_TEST_BINARY` to a built
-native binary. Run `npm run record -- files` for the screenshot or
-`npm run record -- terminal` for the GIF. Generating the GIF requires ffmpeg.
+The README cover, the two diagrams, the
+[slide workspace screenshot](images/workspace.png) and the
+terminal-and-phone recording use Playwright against the fixture host. From
+`web/`, set `UAGENT_TEST_BINARY` to a built native binary.
+
+| Run | Writes |
+| --- | --- |
+| `npm run record -- cover` | `docs/images/cover.png`, `how-it-works.png` and `remote-execution.png`: stills laid out by the pages in `web/recordings/figures/` |
+| `npm run record -- files` | the slide workspace screenshot |
+| `npm run record -- terminal` | the GIF; requires ffmpeg |
+
+The cover's remote host and model catalogue are scripted in the recording.
+Its Chrome frame is `docs/images/browser-sign-in.png`, since the fixture
+host has no browser service: the Browser pane of the container appliance
+after **Take over**, on GitHub's sign-in page, with one placeholder login
+saved in the profile.
 
 ## Behavioral evaluation
 

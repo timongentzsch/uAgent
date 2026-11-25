@@ -1,4 +1,4 @@
-// Capture the README workspace at the release's real chat and deck controls.
+// Capture the conversation and slide deck using the release UI.
 import {
   artboard,
   expect,

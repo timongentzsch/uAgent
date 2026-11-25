@@ -115,6 +115,10 @@ def film(done):
     )
 
 
+# The turn web/recordings/cover.rec.js stills: one command, left waiting.
+COVER = "Check the idle memory benchmark"
+
+
 def answer(handler, body):
     if "questions" in body:
         return decide(handler, body)
@@ -161,6 +165,17 @@ def answer(handler, body):
         )
     if FILM in prompt:
         return film({message.get("tool_call_id") for message in body["messages"]})
+    if COVER in prompt:
+        if any(message.get("role") == "tool" for message in body["messages"]):
+            return event({"content": "The benchmark was not run."})
+        return tool_call(
+            "run",
+            {
+                "command": "python3 benchmarks/compare_agents.py --from-report report.json",
+                "description": "Recompute the medians",
+            },
+            call_id="cover-run",
+        )
     unselected = prompt in ("Retained follow-up", "Filing probe", "File me probe")
     expected_model = "model-a" if unselected else "model-b"
     assert body.get("model") == expected_model, body.get("model")

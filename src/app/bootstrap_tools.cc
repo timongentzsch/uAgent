@@ -73,13 +73,8 @@ void PlaceSkillTool(std::vector<Tool>& tools, AppContext& context) {
     ApplyToolPolicy(made, context.tool_policy);
   }
   auto at = std::ranges::find(tools, std::string("skill"), &Tool::name);
-  if (made.empty()) {
-    if (at != tools.end()) tools.erase(at);
-  } else if (at != tools.end()) {
-    *at = std::move(made.front());
-  } else {
-    tools.push_back(std::move(made.front()));
-  }
+  if (at != tools.end()) at = tools.erase(at);
+  if (!made.empty()) tools.insert(at, std::move(made.front()));
 }
 }  // namespace
 

@@ -25,14 +25,6 @@
 
 namespace uagent {
 
-namespace {
-// "tools" for tools/list: the key its pages carry.
-std::string ListKey(const char* method) {
-  const std::string_view name = method;
-  return std::string(name.substr(0, name.find('/')));
-}
-}  // namespace
-
 bool McpPageAllowed(const std::string& name, const char* method, int64_t& pages,
                     std::set<std::string>& cursors, const std::string& cursor) {
   if (++pages <= kMcpPages &&
@@ -50,7 +42,8 @@ bool McpConsumePage(McpServer& server, const char* method, const json& response,
              std::string(method) + ": " + JsonErrorMessage(response, "failed"));
     return false;
   }
-  const std::string key = ListKey(method);
+  // "tools" for tools/list: the key its pages carry.
+  const std::string key(method, std::string_view(method).find('/'));
   json page = JsonValue(response["result"], key.c_str(), json::array());
   if (!page.is_array()) {
     McpError(server.name,

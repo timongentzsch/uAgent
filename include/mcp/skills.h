@@ -18,7 +18,7 @@ namespace uagent {
 // each other one is left out.
 void McpSetSkills(McpServer& server, const json& listed);
 
-// What a person is shown of a server's skills: [{name, server, description}].
+// What a person is shown of a server's skills: [{name, description}].
 json McpSkillRows(const McpServer& server);
 
 // The served skill `<server>:<path>` and its live server, or nulls.

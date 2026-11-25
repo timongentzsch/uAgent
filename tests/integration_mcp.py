@@ -746,12 +746,18 @@ SKILL_FILES = {
     "metadata:\n  owner: team\n---\n\nREVIEW STEPS: read references/guide.md.\n",
     "skill://acme/review/references/guide.md": "GUIDE BODY\n",
     "skill://broken/SKILL.md": "---\nname: broken\ndescription: Listed wrongly\n---\n\nX\n",
+    "skill://renamed/SKILL.md": "---\nname: other\ndescription: Renamed\n---\n\nX\n",
+    "skill://blob/SKILL.md": "---\nname: blob\ndescription: As a blob\n---\n\nX\n",
+    "skill://moved/SKILL.md": "---\nname: moved\ndescription: Elsewhere\n---\n\nX\n",
 }
 
 
 def write_skill_server(home, workspace, required=True, skills_delay=0, skills_error=False):
-    """An MCP server serving `acme/review` with a supporting file, `broken`
-    whose listed digest is wrong, and a generated `daily`; requests are logged."""
+    """An MCP server serving, over two pages, `acme/review` with a supporting
+    file; `broken` whose listed digest is wrong; `renamed` whose SKILL.md names
+    another skill; `blob` sent as a blob and `moved` under another uri; and,
+    left out, a generated `daily`, a 17 MiB `big` and a 513-file `many`.
+    Requests are logged."""
 
     def manifest(*uris, wrong=False):
         return [
@@ -786,6 +792,30 @@ def write_skill_server(home, workspace, required=True, skills_delay=0, skills_er
             "frontmatter": {"name": "daily", "description": "Generated daily"},
             "resources": "dynamic",
         },
+        *(
+            {
+                "uri": f"skill://{name}/SKILL.md",
+                "frontmatter": {"name": name, "description": description},
+                "resources": manifest(f"skill://{name}/SKILL.md"),
+            }
+            for name, description in (
+                ("renamed", "Renamed"),
+                ("blob", "As a blob"),
+                ("moved", "Elsewhere"),
+            )
+        ),
+        *(
+            {
+                "uri": f"skill://{name}/SKILL.md",
+                "frontmatter": {"name": name, "description": "Too large"},
+                "resources": [{**big, "uri": f"skill://{name}/{index}"} for index in range(count)]
+                + [{**big, "uri": f"skill://{name}/SKILL.md"}],
+            }
+            for name, count, big in (
+                ("big", 0, {"digest": "sha256:" + "0" * 64, "size": 17 << 20}),
+                ("many", 512, {"digest": "sha256:" + "0" * 64, "size": 1}),
+            )
+        ),
     ]
     fake = workspace / "server.py"
     log = workspace / "requests"
@@ -806,16 +836,24 @@ def write_skill_server(home, workspace, required=True, skills_delay=0, skills_er
         "'error': {'code': -32601, 'message': 'no skills here'}}), flush=True)\n"
         "        continue\n"
         "    elif method == 'skills/list':\n"
-        "        time.sleep(DELAY)\n"
-        "        result = {'skills': LISTED, 'ttlMs': 0, 'cacheScope': 'private'}\n"
+        "        later = 'cursor' in params\n"
+        "        time.sleep(0 if later else DELAY)\n"
+        "        result = {'skills': LISTED[2:] if later else LISTED[:2], 'ttlMs': 0, "
+        "'cacheScope': 'private'}\n"
+        "        if not later:\n"
+        "            result['nextCursor'] = 'next'\n"
         "    elif method == 'resources/read':\n"
-        "        result = {'contents': [{'uri': params['uri'], 'text': FILES[params['uri']]}]}\n"
+        "        uri, text = params['uri'], FILES[params['uri']]\n"
+        "        content = {'uri': uri + '?' if 'moved' in uri else uri, 'text': text}\n"
+        "        if 'blob' in uri:\n"
+        "            content = {'uri': uri, 'blob': base64.b64encode(text.encode()).decode()}\n"
+        "        result = {'contents': [content]}\n"
         "    else:\n"
         "        result = {}\n"
         "    result.setdefault('resultType', 'complete')\n",
         setup=f"LOG = {str(log)!r}\nLISTED = {listed!r}\nFILES = {SKILL_FILES!r}\n"
         f"DELAY = {skills_delay!r}\nERROR = {skills_error!r}\n",
-        extra_imports=("time",),
+        extra_imports=("base64", "time"),
     )
     entry = {"command": sys.executable, "args": [str(fake)], "required": required}
     (home / ".mcp.json").write_text(json.dumps({"mcpServers": {"probe": entry}}))
@@ -843,7 +881,16 @@ def test_mcp_served_skills_load_after_the_person_allows_them(root, home, *, bina
         {"name": "probe:acme/review"},
         guide,
         {"name": "probe:broken"},
+        {"name": "probe:acme/review", "file": "missing.md"},
+        {"name": "probe:acme/review", "file": "../broken/SKILL.md"},
+        {"name": "probe:renamed"},
+        {"name": "probe:blob"},
+        {"name": "probe:moved"},
+        {"name": "probe:acme/review"},
     ]
+    cards = ["broken", "renamed", "blob", "moved"]
+    answers = [("probe:acme/review", "y"), *((f"probe:{n}", "y") for n in cards)]
+    answers.append(("probe:acme/review", "n"))
     seen = {}
 
     def route(_, body):
@@ -867,11 +914,11 @@ def test_mcp_served_skills_load_after_the_person_allows_them(root, home, *, bina
         session = web.create(workspace)
         web.command("permissions", session, mode="yolo")
         web.command("submit", session, text="go")
-        for name in ("probe:acme/review", "probe:broken"):
+        for name, answer in answers:
             asked = web.until(session, lambda value: bool(value.get("pending")))
             shown = json.dumps(asked["pending"])
             assert_true(name in shown and "MCP server probe" in shown, shown)
-            web.command("reply", session, interaction_id=asked["pending"]["id"], text="y")
+            web.command("reply", session, interaction_id=asked["pending"]["id"], text=answer)
             web.until(
                 session,
                 lambda value, held=asked: (
@@ -891,7 +938,9 @@ def test_mcp_served_skills_load_after_the_person_allows_them(root, home, *, bina
     catalogue = seen["catalogue"]
     assert_true("- review: The local review" in catalogue, catalogue)
     assert_true("- probe:acme/review: Review a change" in catalogue, catalogue)
-    assert_true("probe:broken" in catalogue and "daily" not in catalogue, catalogue)
+    assert_true("probe:broken" in catalogue and "probe:moved" in catalogue, catalogue)
+    left_out = ("daily", "probe:big", "probe:many")
+    assert_true(not any(name in catalogue for name in left_out), catalogue)
     assert_true(seen["read_before"] == [], seen)
     results = seen["results"]
     assert_true("open probe:acme/review before its files" in results[0], results)
@@ -899,17 +948,16 @@ def test_mcp_served_skills_load_after_the_person_allows_them(root, home, *, bina
     assert_true("served by MCP server probe" in results[2], results)
     assert_true("REVIEW STEPS" in results[2] and "owner" not in results[2], results)
     assert_true("GUIDE BODY" in results[3], results)
-    assert_true("does not match its listed size and digest" in results[4], results)
+    unused = "does not match its listed size and digest"
+    assert_true(unused in results[4], results)
+    assert_true(all("is not a file of probe:acme/review" in r for r in results[5:7]), results)
+    assert_true("differs from probe's listing" in results[7], results)
+    assert_true(unused in results[8] and unused in results[9], results)
+    assert_true("not approved" in results[10], results)
     reads = [r[1] for r in requests() if r[0] == "resources/read"]
-    assert_true(
-        reads
-        == [
-            "skill://acme/review/SKILL.md",
-            "skill://acme/review/references/guide.md",
-            "skill://broken/SKILL.md",
-        ],
-        reads,
-    )
+    expected = ["skill://acme/review/SKILL.md", "skill://acme/review/references/guide.md"]
+    expected += [f"skill://{name}/SKILL.md" for name in cards]
+    assert_true(reads == expected, reads)
 
 
 def test_mcp_served_skill_is_refused_with_nobody_to_ask(root, home, *, binary):
@@ -935,7 +983,6 @@ def test_mcp_served_skill_is_refused_with_nobody_to_ask(root, home, *, binary):
     # The terminal's skill list names this conversation's served skills.
     listed = run_dialog(workspace, base_env(home, server.url), "/skills\n/q\n", binary=binary)
     assert_true('"name": "probe:acme/review"' in listed.stdout, listed.stdout)
-    assert_true('"server": "probe"' in listed.stdout, listed.stdout)
 
 
 def test_mcp_late_skills_join_while_another_server_works(root, home, *, binary):
@@ -953,10 +1000,11 @@ def test_mcp_late_skills_join_while_another_server_works(root, home, *, binary):
         "    elif method == 'tools/list':\n"
         "        result = {'tools': [{'name': 'wait', 'inputSchema': {'type': 'object'}}]}\n"
         "    elif method == 'tools/call':\n"
-        "        time.sleep(3)\n"
+        "        time.sleep(WAIT.pop() if WAIT else 0)\n"
         "        result = {'content': [{'type': 'text', 'text': 'waited'}]}\n"
         "    else:\n"
         "        result = {}\n",
+        setup="WAIT = [3]\n",
         extra_imports=("time",),
     )
     config = json.loads((home / ".mcp.json").read_text())
@@ -967,14 +1015,15 @@ def test_mcp_late_skills_join_while_another_server_works(root, home, *, binary):
     def route(_, body):
         names = {t["function"]["name"]: t["function"] for t in body["tools"]}
         offered.append(("probe_echo" in names, "probe:acme/review" in json.dumps(names)))
-        if tool_results(body["messages"]):
+        # Each step takes up one page of the late listing.
+        if offered[-1] == (True, True) or len(offered) > 4:
             return event({"content": "after"})
-        return tool_call("other_wait", {})
+        return tool_call("other_wait", {}, call_id=f"c{len(offered)}")
 
     with Server([route]) as server:
         result = run(workspace, base_env(home, server.url), "--yolo", "-p", "go", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-    assert_true(offered == [(False, False), (True, True)], offered)
+    assert_true(offered[0] == (False, False) and offered[-1] == (True, True), offered)
 
 
 def test_mcp_failed_skills_list_keeps_the_server(root, home, *, binary):

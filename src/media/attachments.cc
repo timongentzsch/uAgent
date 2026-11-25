@@ -7,8 +7,10 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <climits>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <list>
@@ -476,6 +478,21 @@ std::pair<json, bool> ComposeSteeredContent(const std::string& input,
   return {std::move(content), true};
 }
 
+namespace {
+// ImageMagick 7 is `magick`; distributions that ship 6 (Ubuntu 24.04) have
+// `convert` and `identify`. `tool` is "identify", or empty to convert.
+CapturedProcess Magick(const std::string& tool,
+                       std::vector<std::string> arguments) {
+  std::vector<std::string> seven{"magick"};
+  if (!tool.empty()) seven.push_back(tool);
+  seven.insert(seven.end(), arguments.begin(), arguments.end());
+  CapturedProcess run = CaptureProcess(seven);
+  if (run.error != std::strerror(ENOENT)) return run;
+  arguments.insert(arguments.begin(), tool.empty() ? "convert" : tool);
+  return CaptureProcess(arguments);
+}
+}  // namespace
+
 // Platform helpers keep image decoders out of the harness binary: no shell,
 // bounded lifetime, original retained.
 CapturedProcess ImageSize(const std::string& path, int& width, int& height) {
@@ -495,8 +512,8 @@ CapturedProcess ImageSize(const std::string& path, int& width, int& height) {
     }
   }
 #else
-  auto inspected = CaptureProcess(
-      {"magick", "identify", "-ping", "-format", "%w %h", path + "[0]"});
+  auto inspected =
+      Magick("identify", {"-ping", "-format", "%w %h", path + "[0]"});
   std::istringstream(inspected.output) >> width >> height;
 #endif
   return inspected;
@@ -510,11 +527,11 @@ CapturedProcess CropImage(const std::string& path, int x, int y, int width,
                          std::to_string(y), std::to_string(x), "-s", "format",
                          "png", path, "--out", out});
 #else
-  return CaptureProcess({"magick", "-limit", "memory", "128MiB", "-limit",
-                         "map", "256MiB", path + "[0]", "-crop",
-                         std::to_string(width) + "x" + std::to_string(height) +
-                             "+" + std::to_string(x) + "+" + std::to_string(y),
-                         "+repage", "png:" + out});
+  return Magick("", {"-limit", "memory", "128MiB", "-limit", "map", "256MiB",
+                     path + "[0]", "-crop",
+                     std::to_string(width) + "x" + std::to_string(height) +
+                         "+" + std::to_string(x) + "+" + std::to_string(y),
+                     "+repage", "png:" + out});
 #endif
 }
 
@@ -529,10 +546,10 @@ bool TextMime(const std::string& mime) {
 // coder is locked down.
 bool RasterizeVector(const std::string& path, const std::string& out,
                      std::string& error) {
-  auto raster = CaptureProcess({"magick", "-limit", "memory", "128MiB",
-                                "-limit", "map", "256MiB", "-density", "192",
-                                "-background", "none", path + "[0]", "-resize",
-                                "2048x2048>", "-strip", "png:" + out});
+  auto raster =
+      Magick("", {"-limit", "memory", "128MiB", "-limit", "map", "256MiB",
+                  "-density", "192", "-background", "none", path + "[0]",
+                  "-resize", "2048x2048>", "-strip", "png:" + out});
   if (raster.Ok()) return true;
 #ifdef __APPLE__
   const std::string dir = std::filesystem::path(out).parent_path().string();
@@ -678,10 +695,10 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
 #else
     const std::string geometry = std::to_string(MaxImageDimension()) + "x" +
                                  std::to_string(MaxImageDimension()) + ">";
-    auto resized = CaptureProcess(
-        {"magick", "-limit", "memory", "128MiB", "-limit", "map", "256MiB",
-         path + "[0]", "-auto-orient", "-resize", geometry, "-quality", "85",
-         format + ":" + temporary_file.Path()});
+    auto resized =
+        Magick("", {"-limit", "memory", "128MiB", "-limit", "map", "256MiB",
+                    path + "[0]", "-auto-orient", "-resize", geometry,
+                    "-quality", "85", format + ":" + temporary_file.Path()});
 #endif
     if (!resized.Ok()) {
       error =

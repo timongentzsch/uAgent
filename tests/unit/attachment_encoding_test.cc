@@ -3,6 +3,7 @@
 #include <unistd.h>
 
 #include <filesystem>
+#include <limits>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -215,7 +216,6 @@ TEST_CASE(TestImageRegion) {
   CHECK(region.hint.find("Region 2,1,2,1 of small.png (4x2 px)") !=
         std::string::npos);
   const std::vector<Attachment> queued = Attachments().Take();
-  CHECK(queued.size() == 2);
   CHECK(queued.size() == 2 && queued[1].mime == "image/png" &&
         ImageSize(queued[1].path, width, height).Ok() && width == 2 &&
         height == 1);
@@ -225,6 +225,26 @@ TEST_CASE(TestImageRegion) {
   CHECK(ToolWriteFile("notes.txt", "text").Ok());
   CHECK(ToolReadImageRegion("notes.txt", "0,0,1,1", "text")
             .output.find("raster image") != std::string::npos);
+  // ImageMagick 6 has convert and identify, and no magick.
+  const std::string path = getenv("PATH") ? getenv("PATH") : "";
+  const std::filesystem::path six = workspace.root / "imagemagick-6";
+  std::filesystem::create_directories(six);
+  for (const char* tool : {"convert", "identify"}) {
+    for (const std::string& dir : SplitPathList(path, ':')) {
+      if (std::filesystem::exists(dir + "/" + tool)) {
+        std::filesystem::create_symlink(dir + "/" + tool, six / tool);
+        break;
+      }
+    }
+  }
+  if (!std::filesystem::exists(six / "identify")) return;
+  setenv("PATH", six.c_str(), 1);
+  const CapturedProcess size = ImageSize("small.png", width, height);
+  const ToolResult cut = ToolReadImageRegion("small.png", "1,0,2,2", "six");
+  setenv("PATH", path.c_str(), 1);
+  CHECK(size.Ok() && width == 4 && height == 2);
+  CHECK(cut.Ok());
+  CHECK(Attachments().Take().size() == 1);
 }
 
 // A PDF reads as page text through poppler; without it the file is
@@ -268,6 +288,9 @@ TEST_CASE(TestPdfPages) {
   CHECK(last.output == "[page 2]\nPage two\n\n");
   CHECK(last.hint == "[paper.pdf pages 2-2 of 2]");
   CHECK(ToolReadFile("paper.pdf", 1, 1).hint == "[paper.pdf pages 1-1 of 2]");
+  CHECK(
+      ToolReadFile("paper.pdf", 2, std::numeric_limits<int64_t>::max()).hint ==
+      "[paper.pdf pages 2-2 of 2]");
   CHECK(!ToolReadFile("paper.pdf", 3, 0).Ok());
   const ToolResult scanned = ToolReadFile("scan.pdf", 1, 0);
   CHECK(scanned.output == "[page 1] (no text)\n[page 2] (no text)\n");

@@ -373,7 +373,8 @@ ToolResult ReadPdf(const std::string& path, int64_t offset, int64_t limit,
                            std::to_string(total) + ")");
   }
   const int64_t asked =
-      std::min(total, offset + (limit > 0 ? limit : kReadPdfPages) - 1);
+      offset - 1 +
+      std::min(total - offset + 1, limit > 0 ? limit : kReadPdfPages);
   const CapturedProcess text =
       CaptureProcess({"pdftotext", "-q", "-f", std::to_string(offset), "-l",
                       std::to_string(asked), "-enc", "UTF-8", path, "-"});

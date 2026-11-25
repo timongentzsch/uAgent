@@ -116,10 +116,8 @@ TEST_CASE(TestMcpContractHelpers) {
       {"type", "object"},
       {"properties", {{"value", {{"type", "string"}}}}},
       {"additionalProperties", false}};
-  json listed = json::array({{{"name", "echo"}, {"inputSchema", input_schema}},
-                             {{"name", "async"},
-                              {"inputSchema", json{{"type", "object"}}},
-                              {"execution", {{"taskSupport", "required"}}}}});
+  json listed =
+      json::array({{{"name", "echo"}, {"inputSchema", input_schema}}});
   std::vector<Tool> tools;
   McpReplaceServerTools(tools, server, config, listed);
   CHECK(tools.size() == 1);

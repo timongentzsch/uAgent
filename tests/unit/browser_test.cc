@@ -241,7 +241,8 @@ struct FakeBrowser {
   static std::string Install(const std::filesystem::path& bin) {
     namespace fs = std::filesystem;
     fs::create_directory(bin);
-    for (const char* name : {"xauth", "Xtigervnc", "google-chrome-stable"}) {
+    for (const char* name :
+         {"xauth", "Xtigervnc", "xcompmgr", "google-chrome-stable"}) {
       const auto path = bin / name;
       fs::copy_file(fs::path(UAGENT_TEST_SOURCE_DIR) /
                         "tests/fixtures/browser_runtime.py",
@@ -550,7 +551,14 @@ TEST_CASE(TestBrowserProfileSignIn) {
   std::ifstream launches(directory / "profile" / "launches.jsonl");
   std::string launch;
   CHECK(static_cast<bool>(std::getline(launches, launch)));
-  CHECK(json::parse(launch).value("display", "") != ":99");
+  const std::string display = json::parse(launch).value("display", "");
+  CHECK(display != ":99");
+  // The compositing manager runs on the display Chrome draws on.
+  CHECK(WaitUntil(
+      [&] {
+        return ReadFile((directory / "compositor").string(), 64) == display;
+      },
+      BudgetMs(3000)));
   CHECK(runtime.Execute({{"op", "setup_profile"}, {"device", kOther}})
             .contains("error"));
   const auto setup =

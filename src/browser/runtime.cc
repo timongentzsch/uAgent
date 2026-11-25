@@ -256,6 +256,7 @@ void Runtime::Stop(bool preserve_lease) {
   cdp_in_.Reset();
   cdp_out_.Reset();
   Terminate(chrome_pid_);
+  Terminate(compositor_pid_);
   Terminate(vnc_pid_);
   profile_lock_.Reset();
   unlink(RfbSocket().c_str());
@@ -388,6 +389,11 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     error = "Xtigervnc did not create its Unix display socket";
     Stop(true);
     return false;
+  }
+  // Chrome draws its popups' shadows on transparent windows; with no
+  // compositing manager their margins show black.
+  if (ExecutableOnPath("xcompmgr")) {
+    compositor_pid_ = Launch({"xcompmgr"}, {}, environment);
   }
   // Off: pages kept alive for Back (a renderer each) and the search for
   // casting devices on the network.

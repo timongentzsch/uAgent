@@ -27,6 +27,7 @@
 #include "include/mcp/register.h"
 #include "include/mcp/result.h"
 #include "include/mcp/rpc.h"
+#include "include/mcp/server.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
 #include "include/tools/memory.h"
@@ -778,6 +779,19 @@ TEST_CASE(TestScopedBaseAndMemory) {
 
   unsetenv("UAGENT_MODEL");
   unsetenv("UAGENT_MEMORY_MODEL");
+}
+
+// A server flooding short lines is read in one pass over its buffer.
+TEST_CASE(TestMcpTakesEveryLineOfAFullBuffer) {
+  McpServer server;
+  constexpr size_t kLines = 1 << 19;
+  for (size_t i = 0; i < kLines; ++i) server.rbuf += "{}\n";
+  server.rbuf += "{\"partial";
+  std::string line;
+  size_t taken = 0;
+  while (McpTakeLine(server, line)) taken += line == "{}";
+  CHECK(taken == kLines);
+  CHECK(server.rbuf == "{\"partial");
 }
 
 }  // namespace uagent

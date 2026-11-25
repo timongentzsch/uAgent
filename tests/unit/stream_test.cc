@@ -357,6 +357,56 @@ TEST_CASE(TestSseChunkPartitions) {
   CHECK(tolerated.tool_calls[0].args == "{}");
   CHECK(tolerated.tool_calls[0].malformed.empty());
   CHECK(tolerated.nameless_tool_calls == 1);
+  // The replay sent back next turn names the same calls by the same ids.
+  std::map<int, ToolCall> renamed = {{1, ToolCall{"a", "status", "{}"}},
+                                     {2, ToolCall{"a", "status", "{}"}},
+                                     {3, ToolCall{"", "", "{}"}},
+                                     {4, ToolCall{"", "status", "{}"}}};
+  ChatResult replayed;
+  replayed.replay = {{"wire_api", "anthropic_messages"},
+                     {"content", json::array({{{"type", "text"}}})}};
+  for (const auto& [index, call] : renamed) {
+    replayed.replay["content"].push_back(
+        {{"type", "tool_use"}, {"id", call.id}, {"name", call.name}});
+  }
+  CollectToolCalls(renamed, replayed);
+  std::vector<std::string> sent, kept;
+  for (const json& block : replayed.replay["content"]) {
+    if (block["type"] == "tool_use") sent.push_back(block["id"]);
+  }
+  for (const ToolCall& call : replayed.tool_calls) kept.push_back(call.id);
+  CHECK(kept.size() == 3);
+  CHECK(sent == kept);
+  ChatResult responses;
+  responses.replay = {
+      {"wire_api", "responses"},
+      {"items", json::array({{{"type", "function_call"}, {"call_id", "b"}},
+                             {{"type", "function_call"}, {"call_id", "b"}}})}};
+  std::map<int, ToolCall> twice = {{0, ToolCall{"b", "status", "{}"}},
+                                   {1, ToolCall{"b", "status", "{}"}}};
+  CollectToolCalls(twice, responses);
+  CHECK(responses.replay["items"][1]["call_id"] == responses.tool_calls[1].id);
+  // However many slots a stream names, the calls it opens stay bounded.
+  for (const auto& [api, shape] :
+       {std::pair{WireApi::kChatCompletions,
+                  R"({"choices":[{"delta":{"tool_calls":[{"index":%,)"
+                  R"("function":{"name":"x"}}]}}]})"},
+        {WireApi::kResponses,
+         R"({"type":"response.output_item.added","output_index":%,)"
+         R"("item":{"type":"function_call","name":"x"}})"},
+        {WireApi::kAnthropicMessages,
+         R"({"type":"content_block_start","index":%,)"
+         R"("content_block":{"type":"tool_use","name":"x"}})"}}) {
+    ChatResult flooded;
+    std::map<int, ToolCall> slots;
+    WireStreamState state;
+    for (int index = 0; index < 1000; ++index) {
+      std::string data = shape;
+      data.replace(data.find('%'), 1, std::to_string(index));
+      DecodeWireStreamEvent(api, data, flooded, slots, state);
+    }
+    CHECK(slots.size() == 256);
+  }
 
   std::map<int, ToolCall> truncated = {
       {0, {"complete", "read_path", R"({"path":"README.md"})"}},

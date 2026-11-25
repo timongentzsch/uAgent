@@ -221,16 +221,33 @@ else is declined and the result tells the model why. The person's reply is
 checked against the schema before it is sent, and no answer is `cancel`.
 Every request also declares the `io.modelcontextprotocol/tasks`
 extension, and a `tools/call` answered with a task (`resultType: "task"`)
-is followed inside the same call (`src/mcp/invoke.cc`): `tasks/get` every
+is followed inside the same call (`src/mcp/tasks.cc`): `tasks/get` every
 `pollIntervalMs` (1 s when absent, held between 250 ms and 60 s), the wait
 ending on a stop, and the task's `statusMessage` shown as the running
 call's status. Its `inputRequests` are answered as above through
 `tasks/update`, each key once; `completed` gives the result a direct call
 would, `failed` its error and `cancelled` a cancelled call. A stop, the
-turn's deadline or any other early end sends one `tasks/cancel`. Only the
-turn (`limits.maxTurnSeconds`) and stopping bound a task's whole time;
-it is not an activity, so it cannot move to the background and does not
-outlive the runtime.
+turn's deadline or any other early end sends one `tasks/cancel`. In a
+conversation the task is an activity of kind `mcp_task` with no process,
+labelled `<server>/<tool>` with its status message as progress. After a
+command's default yield (10 s), or at once on Ctrl+B, the web's background
+button or guidance, the call returns as a backgrounded `run` does. The
+session then polls it, one poll at a time through
+`ActivitySupervisor::Tick`: on the runtime's thread before each model step
+and on an idle wake the supervisor times, and inside `activity wait` and
+`poll`, never from the thread that takes a client's commands. A background
+`tasks/get` waits at most 3 s and is never stopped by a person's Stop,
+which is the turn's; a slower reply is skipped, and the wait to the next
+poll doubles, up to 60 s, until one answers. Its input requests open the
+card only on the runtime's thread, at once in an idle conversation; an
+`activity wait` on it returns so the step can end and ask. Its end delivers the result as
+a finished command's does, starting a turn when the conversation is idle;
+`activity stop` sends `tasks/cancel`, and `write` and `resize` refuse it. A
+headless run, and a conversation in a remote workspace, whose activity
+controls reach that host, keep the task in the call, bounded by the turn
+(`limits.maxTurnSeconds`) and stopping. A background task ends with its
+runtime: shutdown sends each one `tasks/cancel`, its stdio server stops,
+and the row reads cancelled when the conversation is opened again.
 A tool is named
 `<server>_<tool>`, sanitized to `[A-Za-z0-9_-]` and 64 characters; a name
 that collides is skipped. Every MCP tool is `external` and needs approval

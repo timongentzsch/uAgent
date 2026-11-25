@@ -611,6 +611,41 @@ TEST_CASE(TestActivityStateGraph) {
   CHECK(long_row.value("label", "").size() < long_command.size());
 }
 
+TEST_CASE(TestActivityWithoutAProcessIsNeverSignalled) {
+  // -1 is every process this user may signal, 0 this process's own group.
+  for (const pid_t leader : {-1, 0, 1}) {
+    CHECK(!SignalProcessGroup(leader, 0));
+    CHECK(!ProcessGroupAlive(leader));
+  }
+  ActivitySupervisor supervisor;
+  auto session = std::make_shared<ActivitySession>();
+  auto reservation = supervisor.ReserveActivity(4);
+  REQUIRE(reservation.has_value());
+  const std::optional<int64_t> id =
+      reservation->Register({.cmd = "probe/job",
+                             .kind = ActivityKind::kMcpTask,
+                             .id = reservation->Id(),
+                             .session = session,
+                             .display_label = "probe/job"});
+  REQUIRE(id.has_value());
+  REQUIRE(supervisor.MoveForegroundToBackground(*id).has_value());
+  CHECK(supervisor.ActivityViews()[0]["kind"] == "mcp_task");
+  const ToolResult write =
+      ToolActivityInput(supervisor, *id, "x", 0, ToolContext{});
+  CHECK(!write.Ok() &&
+        write.output.find("takes no input") != std::string::npos);
+  const ToolResult stop = ToolActivityStop(supervisor, *id);
+  CHECK(stop.Ok() && stop.output.find("asked the MCP server") == 0);
+  {
+    std::lock_guard lock(session->mutex);
+    CHECK(session->stop_requested);
+    CHECK(!ActivityTerminal(session->state));
+  }
+  // Shutdown leaves it to its poller and signals nothing.
+  ActivityShutdownAll(supervisor);
+  CHECK(!supervisor.Find(*id).has_value());
+}
+
 TEST_CASE(TestActivitySessions) {
   // Preserve producer failures through output filters in both pipes and PTYs.
   ActivitySupervisor pipeline;

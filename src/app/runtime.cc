@@ -10,6 +10,7 @@
 #include "include/app/execution.h"
 #include "include/core/runtime_config.h"
 #include "include/core/workspace.h"
+#include "include/mcp/tasks.h"
 
 namespace uagent {
 
@@ -28,6 +29,7 @@ AppRuntime::~AppRuntime() { Shutdown(); }
 void AppRuntime::Shutdown() {
   if (shutdown_) return;
   shutdown_ = true;
+  McpCancelTasks(mcp);
   mcp.ShutdownAll();
   if (auto remote = execution::CurrentClient()) {
     remote->Call({{"op", "shutdown"}});

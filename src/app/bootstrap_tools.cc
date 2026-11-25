@@ -24,6 +24,7 @@
 #include "include/core/workspace.h"
 #include "include/mcp/discover.h"
 #include "include/mcp/register.h"
+#include "include/mcp/tasks.h"
 #include "include/providers/providers.h"
 #include "include/tools/ask.h"
 #include "include/tools/browser.h"
@@ -207,6 +208,9 @@ std::vector<Tool> BuildTools(AppContext& context,
   // An agent's MCP servers are its first ancestor's: each agent starting
   // its own fleet would multiply them.
   if (AgentDepth() == 0) {
+    runtime.mcp.processes = &runtime.processes;
+    runtime.processes.SetTick(
+        [mcp = &runtime.mcp](bool ask) { McpPollTasks(*mcp, ask); });
     if (context.channel && InteractiveApprovalAvailable()) {
       runtime.mcp.elicit = [](const json& shown, bool* eof) {
         return ReadInteraction({.kind = "elicit",

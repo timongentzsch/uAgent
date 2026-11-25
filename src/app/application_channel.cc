@@ -75,6 +75,7 @@ int Application::RunChannel() {
   PublishChannelState();
   while (std::optional<ApplicationInput> input = channel_->NextInput()) {
     // An idle session takes background work's result up at once, as a turn.
+    runtime_.processes.Tick(true);
     agent_.DrainActivities(input->wake);
     agent_.DeliverMail();
     agent_.AccountSideUsage();

@@ -31,6 +31,7 @@
 
 #include "include/agent/file_services.h"
 #include "include/core/debug.h"
+#include "include/core/defaults.h"
 #include "include/core/env.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
@@ -244,7 +245,7 @@ int ToolLogPump(const std::string& path, int64_t max_bytes) {
 }
 
 bool ProcessGroupAlive(pid_t leader) {
-  if (leader <= 0) return false;
+  if (leader <= 1) return false;
   // Signalling a group of zombies succeeds on Linux and is refused with EPERM
   // on macOS: either way the answer is in who is left in it.
   if (kill(-leader, 0) == 0 || errno == EPERM) {
@@ -373,12 +374,12 @@ ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,
                          /*preserve_mode=*/true);
 }
 
-namespace {
 bool SignalProcessGroup(pid_t leader, int signal_number) {
+  // -1 would be every process this user may signal, 0 this group.
+  if (leader <= 1) return false;
   if (kill(-leader, signal_number) == 0 || errno == EPERM) return true;
   return errno == ESRCH;
 }
-}  // namespace
 
 namespace {
 
@@ -517,6 +518,7 @@ std::string CollectSessionOutput(const ActivitySupervisor& supervisor,
     job.session->until_window.clear();
   }
   for (;;) {
+    supervisor.Tick();
     uint64_t generation = supervisor.Generation();
     // Observe stop conditions before draining. A marker or exit arriving
     // after a drain must not end this poll without returning its new bytes.
@@ -759,6 +761,12 @@ ToolResult ToolActivityInput(const ActivitySupervisor& supervisor, int64_t id,
                              int64_t cols, int64_t max_output_chars) {
   std::optional<Activity> job = supervisor.Find(id);
   if (!job || !job->session) return ActivityNotFound(id);
+  if (job->McpTask()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "activity " + std::to_string(id) +
+                           " is an MCP server's task and takes no input; "
+                           "wait for it, poll it or stop it");
+  }
   std::shared_ptr<ActivitySession> session = job->session;
   std::lock_guard<std::mutex> interaction(session->interaction);
   const bool resize = rows > 0 || cols > 0;
@@ -850,6 +858,18 @@ ToolResult ToolActivityStop(ActivitySupervisor& supervisor, int64_t requested) {
                        "id must identify a supervised uagent activity");
   }
   std::optional<Activity> supervised = supervisor.Find(requested);
+  // Its poller asks the server to cancel, at once or at its next poll.
+  if (supervised && supervised->McpTask()) {
+    {
+      std::lock_guard lock(supervised->session->mutex);
+      if (ActivityTerminal(supervised->session->state)) {
+        return ToolSuccess("activity already complete");
+      }
+      supervised->session->stop_requested = true;
+    }
+    supervisor.Wake();
+    return ToolSuccess("asked the MCP server to cancel its task");
+  }
   if (!supervised && requested > std::numeric_limits<pid_t>::max()) {
     return ActivityNotFound(requested);
   }
@@ -917,9 +937,27 @@ ToolResult ToolActivityStop(ActivitySupervisor& supervisor, int64_t requested) {
       std::to_string(pid));
 }
 
+ToolResult RunningActivityResult(const ActivitySupervisor& supervisor,
+                                 int64_t id, bool handed_off) {
+  ToolResult running = ToolSuccess("");
+  running.hint =
+      kRunningActivityMarker + std::to_string(id) +
+      (handed_off ? " moved to background; " : "; ") +
+      (supervisor.WakesSession()
+           ? "it keeps running while you work, and its result reaches you "
+             "when it ends, even after this turn"
+           : "it keeps running while you work; poll or wait on it for output");
+  running.body_kind = "link";
+  running.parts = json::array({LinkPart("activity", id, "Open activity")});
+  running.background = id;
+  return running;
+}
+
 void ActivityShutdownAll(ActivitySupervisor& supervisor) {
   std::vector<Activity> jobs = supervisor.TakeAllForShutdown();
-  std::erase_if(jobs, [](const Activity& job) { return job.Detached(); });
+  std::erase_if(jobs, [](const Activity& job) {
+    return job.Detached() || job.McpTask();
+  });
   for (const Activity& job : jobs) SignalProcessGroup(job.pid, SIGTERM);
   auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
@@ -1180,6 +1218,7 @@ ToolResult ToolActivityWait(ActivitySupervisor& supervisor,
   const WaitWindow window(wait_ms, context.deadline);
   std::vector<ActivityCompletion> taken;
   for (;;) {
+    supervisor.Tick();
     uint64_t generation = supervisor.Generation();
     std::vector<ActivityCompletion> completed =
         TakeCompleted(supervisor, {}, &ids, cap);
@@ -1189,6 +1228,19 @@ ToolResult ToolActivityWait(ActivitySupervisor& supervisor,
     size_t running = static_cast<size_t>(
         std::count_if(ids.begin(), ids.end(),
                       [&](int64_t id) { return supervisor.IsLive(id); }));
+    // Its card opens only once this step ends.
+    for (const int64_t id : ids) {
+      const std::optional<Activity> job = supervisor.Find(id);
+      if (!job || !job->session) continue;
+      std::lock_guard lock(job->session->mutex);
+      if (job->session->waiting_for_person) {
+        return WaitResult(taken,
+                          "[activity " + std::to_string(id) +
+                              " waits for the person's answer, asked when "
+                              "this step ends]",
+                          cap);
+      }
+    }
     if ((mode == "any" && !completed.empty()) || running == 0) {
       return WaitResult(taken, {}, cap);
     }

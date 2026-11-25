@@ -97,6 +97,7 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kToolTracePruneMinChars` | `32 KiB` |  |
 | `kSessionArchiveBytes` | `16 MiB` |  |
 | `kReadFileMaxLines` | `10000` |  |
+| `kReadPdfPages` | `20` | Pages of a PDF one read converts when no limit is given. |
 | `kListDirScanEntries` | `100000` |  |
 | `kFileViewBytes` | `1 MiB` | The web file browser: bytes of a file shown as text, paths a search answers. |
 | `kFileFindMatches` | `200` |  |

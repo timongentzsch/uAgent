@@ -10,6 +10,7 @@
 
 #include "include/agent/activity.h"
 #include "include/app/present.h"
+#include "include/core/capture.h"
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/limits.h"
@@ -224,6 +225,54 @@ TEST_CASE(TestImageRegion) {
   CHECK(ToolWriteFile("notes.txt", "text").Ok());
   CHECK(ToolReadImageRegion("notes.txt", "0,0,1,1", "text")
             .output.find("raster image") != std::string::npos);
+}
+
+// A PDF reads as page text through poppler; without it the file is
+// attached as before and the result says what to install.
+TEST_CASE(TestPdfPages) {
+  TestWorkspace workspace("pdf-pages");
+  const auto pdf = [](const std::string& first, const std::string& second) {
+    std::string out =
+        "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+        "2 0 obj<</Type/Pages/Kids[3 0 R 5 0 R]/Count 2>>endobj\n";
+    int object = 3;
+    for (const std::string& text : {first, second}) {
+      const std::string stream =
+          text.empty() ? "" : "BT /F1 12 Tf 10 50 Td (" + text + ") Tj ET";
+      out += std::to_string(object) +
+             " 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 100]"
+             "/Resources<</Font<</F1 7 0 R>>>>/Contents " +
+             std::to_string(object + 1) + " 0 R>>endobj\n" +
+             std::to_string(object + 1) + " 0 obj<</Length " +
+             std::to_string(stream.size()) + ">>stream\n" + stream +
+             "\nendstream endobj\n";
+      object += 2;
+    }
+    return out +
+           "7 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+           "trailer<</Root 1 0 R>>\n%%EOF\n";
+  };
+  CHECK(ToolWriteFile("paper.pdf", pdf("Page one", "Page two")).Ok());
+  CHECK(ToolWriteFile("scan.pdf", pdf("", "")).Ok());
+  const std::string path = getenv("PATH") ? getenv("PATH") : "";
+  setenv("PATH", workspace.root.c_str(), 1);
+  const ToolResult missing = ToolReadFile("paper.pdf", 1, 1, "missing");
+  setenv("PATH", path.c_str(), 1);
+  CHECK(missing.output.find("install poppler") != std::string::npos);
+  CHECK(Attachments().Take().size() == 1);
+  if (!CaptureProcess({"pdfinfo", "-v"}).error.empty()) return;
+  const ToolResult pages = ToolReadFile("paper.pdf", 1, 0);
+  CHECK(pages.output == "[page 1]\nPage one\n\n[page 2]\nPage two\n\n");
+  CHECK(pages.hint == "[paper.pdf pages 1-2 of 2]");
+  const ToolResult last = ToolReadFile("paper.pdf", -1, 0);
+  CHECK(last.output == "[page 2]\nPage two\n\n");
+  CHECK(last.hint == "[paper.pdf pages 2-2 of 2]");
+  CHECK(ToolReadFile("paper.pdf", 1, 1).hint == "[paper.pdf pages 1-1 of 2]");
+  CHECK(!ToolReadFile("paper.pdf", 3, 0).Ok());
+  const ToolResult scanned = ToolReadFile("scan.pdf", 1, 0);
+  CHECK(scanned.output == "[page 1] (no text)\n[page 2] (no text)\n");
+  CHECK(scanned.hint ==
+        "[scan.pdf pages 1-2 of 2; no text layer, likely scanned]");
 }
 
 TEST_CASE(TestVectorAndHeicAttachments) {

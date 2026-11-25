@@ -161,6 +161,8 @@ inline constexpr size_t kToolTraceProtectChars = KiB(64);
 inline constexpr size_t kToolTracePruneMinChars = KiB(32);
 inline constexpr int64_t kSessionArchiveBytes = MiB(16);
 inline constexpr int64_t kReadFileMaxLines = 10000;
+// Pages of a PDF one read converts when no limit is given.
+inline constexpr int64_t kReadPdfPages = 20;
 inline constexpr int64_t kListDirScanEntries = 100000;
 // The web file browser: bytes of a file shown as text, paths a search answers.
 inline constexpr size_t kFileViewBytes = MiB(1);

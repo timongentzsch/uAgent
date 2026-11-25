@@ -345,6 +345,79 @@ std::optional<ToolResult> ReadNotebook(const std::string& path, int64_t offset,
   return result;
 }
 
+// A PDF's text by page through poppler; today's attachment when that is not
+// installed or cannot read the file.
+ToolResult ReadPdf(const std::string& path, int64_t offset, int64_t limit,
+                   const std::string& call_id) {
+  const CapturedProcess info = CaptureProcess({"pdfinfo", path});
+  int64_t total = 0;
+  if (size_t at = info.output.find("\nPages:"); at != std::string::npos) {
+    std::istringstream(info.output.substr(at + 8)) >> total;
+  }
+  if (!info.Ok() || total <= 0) {
+    ToolResult attached = Attachments().Add(path, call_id);
+    if (attached.Ok()) {
+      attached.output += info.error.empty()
+                             ? "; its text could not be read"
+                             : "; install poppler (poppler-utils on "
+                               "Debian/Ubuntu) to read its pages as text";
+    }
+    return attached;
+  }
+  if (offset < 0) offset = std::max<int64_t>(1, total + offset + 1);
+  if (offset < 1) offset = 1;
+  if (offset > total) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "offset " + std::to_string(offset) +
+                           " is beyond the last page (" +
+                           std::to_string(total) + ")");
+  }
+  const int64_t asked =
+      std::min(total, offset + (limit > 0 ? limit : kReadPdfPages) - 1);
+  const CapturedProcess text =
+      CaptureProcess({"pdftotext", "-q", "-f", std::to_string(offset), "-l",
+                      std::to_string(asked), "-enc", "UTF-8", path, "-"});
+  if (!text.Ok()) {
+    return ToolFailure(ToolErrorCode::kInternal,
+                       "pdftotext failed; ask for fewer pages");
+  }
+  const size_t budget = ReadFileBytes();
+  std::string out;
+  int64_t last = offset - 1;
+  bool cut = false, any_text = false;
+  for (size_t begin = 0; last < asked && begin < text.output.size();) {
+    size_t end = text.output.find('\f', begin);
+    if (end == std::string::npos) end = text.output.size();
+    const std::string_view words =
+        std::string_view(text.output).substr(begin, end - begin);
+    begin = end + 1;
+    const bool blank = Trim(std::string(words)).empty();
+    any_text |= !blank;
+    std::string page = "[page " + std::to_string(last + 1) + "]" +
+                       (blank ? " (no text)\n" : "\n" + std::string(words));
+    if (page.back() != '\n') page += '\n';
+    if (page.size() > budget - out.size()) {
+      if (out.empty()) {
+        out = Utf8Prefix(std::move(page), budget);
+        ++last;
+        cut = true;
+      }
+      break;
+    }
+    out += page;
+    ++last;
+  }
+  if (last < offset) {
+    return ToolFailure(ToolErrorCode::kInternal, "pdftotext returned no pages");
+  }
+  ToolResult result = ListResult(std::move(out), last - offset + 1, "page");
+  result.hint = "[" + path + " pages " + std::to_string(offset) + "-" +
+                std::to_string(last) + " of " + std::to_string(total) +
+                (cut ? "; page cut at the output byte limit" : "") +
+                (any_text ? "" : "; no text layer, likely scanned") + "]";
+  return result;
+}
+
 }  // namespace
 
 ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
@@ -356,6 +429,9 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
     if (auto notebook = ReadNotebook(path, offset, limit)) {
       return std::move(*notebook);
     }
+  }
+  if (AttachmentMime(path) == "application/pdf") {
+    return ReadPdf(path, offset, limit, call_id);
   }
   errno = 0;
   std::ifstream f(path);

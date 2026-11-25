@@ -697,7 +697,7 @@ test("a merged side chat stays inline and opens its side conversation", async ({
   await expect.poll(() => new URL(page.url()).hash).toBe("#session=side");
 });
 
-test("a legacy decision is a child message while identical human text remains intact", async ({
+test("a decision is a child message while identical human text remains intact", async ({
   page,
 }) => {
   const text =
@@ -705,10 +705,20 @@ test("a legacy decision is a child message while identical human text remains in
   const mail = {
     ...arrivals[0],
     origin: "message",
-    agent: undefined,
+    agent: {
+      session: "1234567890abcdef",
+      title: "Flights",
+      outcome: "needs decision",
+    },
     body: { kind: "markdown", text },
   };
-  const human = { ...mail, id: "m-99", sequence: 99, origin: undefined };
+  const human = {
+    ...mail,
+    id: "m-99",
+    sequence: 99,
+    origin: undefined,
+    agent: undefined,
+  };
   await open(
     page,
     "default",

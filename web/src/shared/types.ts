@@ -83,7 +83,7 @@ export interface Exchange {
   generation_id?: string;
 }
 // One state vocabulary for every call and receipt.
-type RowState = "running" | "ok" | "failed" | "cancelled" | "recorded";
+type RowState = "running" | "ok" | "failed" | "cancelled";
 // What a finished call's result was. The host words it: `word` is the
 // whole subtitle ("exit 1 · 2.3s"), absent when there is none; the facts
 // behind it are for reading.

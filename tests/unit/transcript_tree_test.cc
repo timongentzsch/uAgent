@@ -177,7 +177,8 @@ class Recorder {
   }
 
   // What a step's calls added to their work: its counts.
-  void Step(const json& counts) {
+  void Step(json counts) {
+    counts["kinds"] = {{"step", counts["items"]}};
     conversation_.RecordDisplay(WorkId(message_), counts);
     Changed(WorkNode(message_, counts));
   }
@@ -305,37 +306,36 @@ TEST_CASE(TestGoldenChainOfCalls) {
   turn.Reply("r-1-2-1", "Fixed.");
   turn.Footer(124000, "complete");
   const auto page = Lines(ConversationView(turn.History())["nodes"]);
-  CHECK((
-      page ==
-      std::vector<std::string>{
-          "turn m-2 < - \"fix it\"",
-          "work w-m-2 < m-2 [ok] Worked 3 steps · edited 1 file · 2m 4s",
-          "thinking r-1-1-1:thinking < w-m-2 \"look first\"",
-          "call " + a + " < w-m-2 [ok] Read a.txt · 1 line · 5ms " +
-              "\"alpha\"",
-          "call " + b + " < w-m-2 [ok] Read b.txt · 1 line · 5ms " + "\"beta\"",
-          "call " + c + " < w-m-2 [ok] Edited b.txt · +1 −1 · 5ms " +
-              "\"edited b.txt\"",
-          "message r-1-2-1 < m-2 \"Fixed.\"",
-          "footer m-8 < m-2",
-      }));
+  CHECK((page == std::vector<std::string>{
+                     "turn m-2 < - \"fix it\"",
+                     "work w-m-2 < m-2 [ok] Worked 3 steps · 2m 4s",
+                     "thinking r-1-1-1:thinking < w-m-2 \"look first\"",
+                     "call " + a + " < w-m-2 [ok] Read a.txt · 1 line · 5ms " +
+                         "\"alpha\"",
+                     "call " + b + " < w-m-2 [ok] Read b.txt · 1 line · 5ms " +
+                         "\"beta\"",
+                     "call " + c + " < w-m-2 [ok] Edited b.txt · +1 −1 · 5ms " +
+                         "\"edited b.txt\"",
+                     "message r-1-2-1 < m-2 \"Fixed.\"",
+                     "footer m-8 < m-2",
+                 }));
   CHECK(Lines(turn.Live()) == page);
   // The terminal opens the work at depth 1 and everything at depth all; an
   // open node adds its body's tail, and a thought is text among the steps.
   CHECK((Drawings(ConversationView(turn.History())["nodes"]) ==
          std::vector<std::string>{
              "> fix it\n"
-             "  · Worked 3 steps · edited 1 file · 2m 4s\n"
+             "  · Worked 3 steps · 2m 4s\n"
              "uagent\nFixed.\n0 in · 0 out · 2m 4s\n",
              "> fix it\n"
-             "  · Worked 3 steps · edited 1 file · 2m 4s\n"
+             "  · Worked 3 steps · 2m 4s\n"
              "    look first\n"
              "    · Read a.txt · 1 line · 5ms\n"
              "    · Read b.txt · 1 line · 5ms\n"
              "    · Edited b.txt · +1 −1 · 5ms\n"
              "uagent\nFixed.\n0 in · 0 out · 2m 4s\n",
              "> fix it\n"
-             "  · Worked 3 steps · edited 1 file · 2m 4s\n"
+             "  · Worked 3 steps · 2m 4s\n"
              "    look first\n"
              "    · Read a.txt · 1 line · 5ms\n"
              "      │ alpha\n"
@@ -384,7 +384,7 @@ TEST_CASE(TestGoldenChainOfCalls) {
         "    · Read b.txt · 1 line · 5ms\n"
         "    · Edited b.txt · +1 −1 · 5ms\n"
         "uagent\nFixed.\n"
-        "  · Worked 3 steps · edited 1 file · 2m 4s\n"
+        "  · Worked 3 steps · 2m 4s\n"
         "0 in · 0 out · 2m 4s\n");
 }
 
@@ -712,40 +712,8 @@ TEST_CASE(TestExpandedPatchRestoresItsChildrenAndTheirOutcomes) {
   }
 }
 
-TEST_CASE(TestLegacyExpandedPatchUsesRecordedChildren) {
-  Recorder turn;
-  turn.Say("Patch two files");
-  const std::string parent = DetailId("response", "patch");
-  turn.Reply("response", "", "", {{"patch", "apply_patch"}});
-  turn.Result("patch", parent);
-  Conversation saved = turn.History();
-  saved.RecordDisplay(saved.LastDisplayId(), {{"response_id", "response"}});
-  for (int part : {2, 10}) {
-    const std::string call = "patch:" + std::to_string(part);
-    const std::string id = DetailId("response", call);
-    saved.RecordDisplay(id,
-                        {{"detail_id", id},
-                         {"call_id", call},
-                         {"response_id", "response"},
-                         {"name", "edit_file"},
-                         {"state", part == 2 ? "ok" : "failed"},
-                         {"view", {{"target", "same.txt"}}},
-                         {"output", part == 2 ? "saved" : "context missing"}});
-  }
-  for (const auto& nodes :
-       {LastNodes(saved),
-        TranscriptView(saved).Page()["nodes"].get<std::vector<json>>()}) {
-    const auto row = std::ranges::find_if(
-        nodes, [&](const json& n) { return n["id"] == parent; });
-    REQUIRE(std::distance(row, nodes.end()) >= 3);
-    CHECK((*row)["headline"]["verb"] == "Patch");
-    CHECK((*row)["state"] == "failed");
-    CHECK((*row)["result"]["word"] == "2 recorded changes");
-    CHECK(!row->contains("body"));
-    CHECK((row + 1)->at("id") == DetailId("response", "patch:2"));
-    CHECK((row + 1)->at("parent") == parent);
-    CHECK((row + 2)->at("body")["text"] == "context missing");
-  }
+// A saved call whose receipt is missing shows no body.
+TEST_CASE(TestUnrecordedCallHasNoBody) {
   Recorder ordinary;
   ordinary.Say("Read the file");
   ordinary.Reply("response", "", "", {{"unrecorded", "read_path"}});
@@ -880,11 +848,6 @@ TEST_CASE(TestWorkCountsByKindAndLooksGroup) {
   // Thoughts are counted beside the words: a client says them only where it
   // shows thinking.
   CHECK(work["result"]["thoughts"] == 1);
-  // A conversation saved before kinds were counted says how many steps.
-  CHECK(WorkNode("m-1", {{"items", 2},
-                         {"edited", 1},
-                         {"outcome", "complete"}})["headline"]["target"] ==
-        "2 steps · edited 1 file");
 
   json facts = {{"work", "w-m-1"},
                 {"kinds", {{"read", 3}, {"search", 2}, {"fetch", 1}}}};

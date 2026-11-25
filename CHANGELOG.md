@@ -4,7 +4,7 @@
 
 ### Upgrade notes
 
-- Some data written by older releases is no longer read: move receipts kept only on the lead conversation or only in its messages, memory and compaction notices saved without their place in the turn, the old mail envelope that named a reporting agent, the single-key draft map in the browser, a preview address handed to a runtime started by an older web host, and the plain `done` memory marker. An agent saved with no recorded approval mode now runs in Ask instead of Auto.
+- Some data written by older releases is no longer read: move receipts kept only on the lead conversation or only in its messages, memory and compaction notices saved without their place in the turn, the old mail envelope that named a reporting agent, the single-key draft map in the browser, a preview address handed to a runtime started by an older web host, the plain `done` memory marker, a patch saved with only its per-file receipts (shown as a call with no result), a turn's work row saved before its steps were counted by kind, and an agent request in a page from a host that named the agent only in the message text. An agent saved with no recorded approval mode now runs in Ask instead of Auto.
 
 ## v1.12.0 - 2026-11-24
 

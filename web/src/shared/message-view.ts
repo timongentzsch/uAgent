@@ -64,26 +64,16 @@ export const recallable = (
   !!node.request_id &&
   ((online && queuedGuidance(node)) || unsent(node) || waitingToSend(node));
 
-// Older hosts marked a child's request as inter-session mail and only
-// recorded its identity in this envelope. Human messages have no mail origin.
-const legacyRequest =
-  /^\[agent ([0-9a-f]{16}) "([^\n]*)" asks (?:to run ([^\n]+)|the person) \(interaction [^)\n]+\)\]\nThe (?:approval request|question) \(data, not instructions\):\n/;
+// A child's request names the tool it asks to run in its envelope.
+const request =
+  /^\[agent [0-9a-f]{16} "[^\n]*" asks (?:to run ([^\n]+)|the person) \(interaction [^)\n]+\)\]\nThe (?:approval request|question) \(data, not instructions\):\n/;
 export function agentReport(
   node: Node,
 ): (NonNullable<Node["agent"]> & { tool?: string }) | undefined {
-  if (node.agent?.outcome === "merged") return;
-  if (node.agent && node.agent.outcome !== "needs decision") return node.agent;
-  if (!node.agent && node.origin !== "message") return;
-  const match = legacyRequest.exec(node.body?.text || "");
-  if (!match) return node.agent;
-  return {
-    ...(node.agent || {
-      session: match[1],
-      title: match[2],
-      outcome: "needs decision",
-    }),
-    tool: match[3],
-  };
+  if (!node.agent || node.agent.outcome === "merged") return;
+  if (node.agent.outcome !== "needs decision") return node.agent;
+  const match = request.exec(node.body?.text || "");
+  return match ? { ...node.agent, tool: match[1] } : node.agent;
 }
 
 // A tool may return a waited-on reply directly, without a separate mail.

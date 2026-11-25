@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 
+#include "include/core/strings.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -219,6 +220,14 @@ TEST_CASE(TestApprovalInvariants) {
       }
     }
   }
+}
+
+// A web_fetch rule is keyed by the host the fetch goes to.
+TEST_CASE(TestSiteRuleHost) {
+  CHECK(UrlHost("https://evil.example?x@good.example") == "evil.example");
+  CHECK(UrlHost("https://evil.example#x@good.example") == "evil.example");
+  CHECK(UrlHost("https://user:pw@Good.Example:8443/a@b") == "good.example");
+  CHECK(UrlHost("http://[::1]:8080/") == "[::1]");
 }
 
 }  // namespace uagent

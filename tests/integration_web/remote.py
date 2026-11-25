@@ -339,7 +339,6 @@ def test_file_operations_match_local_http_and_execution_gateway(root, home, *, b
                 ("read", "large.txt", {}),
                 ("find", "nt", {}),
                 ("changes", "", {}),
-                ("changes", "split", {}),
                 ("diff", "note.txt", {}),
                 ("diff", "note.txt", {"scope": "working"}),
                 ("diff", "note.txt", {"scope": "staged"}),

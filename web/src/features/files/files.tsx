@@ -411,7 +411,7 @@ export default function Files({
   const search = query.trim();
   const found = useFileSearch(id, search || undefined);
   const changed = useResource(
-    () => api<Changed>(routes.files(id, "changes", "split")),
+    () => api<Changed>(routes.files(id, "changes", "")),
     [id, turn, written, edition],
   );
   const changes = changed.value?.changes ?? [];

@@ -408,7 +408,7 @@ TEST_CASE(TestCommandAndDisplayRegistries) {
   CHECK(ValidEffort("xhigh"));
   CHECK(!ValidEffort("extreme"));
   CHECK(DisplayTrunc("abcdef", 4) == "abc…");
-  CHECK(DisplayTail("abcdef", 4) == "cdef");
+  CHECK(StatusLabel("abcdef", 4) == "cdef");
   CHECK(StatusLabel("thinking · abcdef", 15) == "thinking · cdef");
   CHECK(StatusLabel("thinking · abcdef", 15).find("…") == std::string::npos);
   CHECK(DisplayWidth(DisplayTrunc("abcdef", 4)) <= 4);

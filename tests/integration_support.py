@@ -494,6 +494,10 @@ def tool_results(messages):
     return [str(m.get("content", "")) for m in messages if m.get("role") == "tool"]
 
 
+def text_of(body):
+    return json.dumps(body["messages"])
+
+
 def has_message(messages, role, content):
     return any(
         message.get("role") == role and message.get("content") == content for message in messages

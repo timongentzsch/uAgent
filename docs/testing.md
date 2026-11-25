@@ -214,7 +214,7 @@ provider and the checks that define a good run (answer, files read, forbidden
 tools, model rounds, batch width, deduplication, cumulative request and result
 size, folder immutability). Results are compared with
 `benchmarks/baselines/hermetic.json`. `benchmarks/run_trace.py` holds the run
-timing and trace aggregation the eval and the audit share.
+timing and trace aggregation the eval and `memory_quality.py` share.
 The [benchmark snapshot](../benchmarks/README.md#current-measurements) records
 dated package sizes and local CPU samples.
 
@@ -238,18 +238,12 @@ quality.
 
 ## Measurement tools
 
-`benchmarks/audit.py` reports request and schema sizes from a fresh HOME;
-`behavior_eval` gates their growth per scenario. `--profile`, `--host` and
-`--history` add local observations.
-
 `benchmarks/session_metrics.py` summarizes real sessions from their journals
 without retaining prompts or tool values: cohorts by `session.ready`
 provenance (a journal without it is not reported), failed-call recovery, repeats,
 argument issues, activity polls and turn outcomes.
 
 ```sh
-python3 benchmarks/audit.py build/debug/uagent
-python3 benchmarks/audit.py build/debug/uagent --profile --host --history ~/.uagent/history
 python3 benchmarks/session_metrics.py --since 2026-08-01
 python3 benchmarks/session_metrics.py --cohort ID --json /tmp/sessions.json
 ```

@@ -362,7 +362,7 @@ def test_web_files_show_what_changed_in_a_repository(root, home, *, binary):
             (project / "staged.txt").write_text("staged.txt one\n")
 
             def split(folder):
-                status, value = answer(folder, changes="split")
+                status, value = answer(folder, changes="")
                 assert_true(status == 200, value)
                 return value["changes"]
 
@@ -420,7 +420,9 @@ def test_web_files_show_what_changed_in_a_repository(root, home, *, binary):
             assert_true(not marker.exists(), "a configured program ran")
 
             status, value = answer(inner, changes="")
-            assert_true(value["changes"] == [{"path": "within.txt", "state": "M"}], value)
+            assert_true(
+                value["changes"] == [{"path": "within.txt", "state": "M", "working": "M"}], value
+            )
             status, value = answer(inner, diff="within.txt")
             assert_true(status == 200 and "+within two" in value["text"], value)
             for path in ("../beside.txt", "beside.txt", "inner/within.txt"):
@@ -445,7 +447,9 @@ def test_web_files_show_what_changed_in_a_repository(root, home, *, binary):
             status, value = answer(plain, changes="")
             assert_true(status == 200 and value["changes"] == [] and not value["repository"], value)
             status, value = answer(fresh, changes="")
-            assert_true(value["changes"] == [{"path": "first.txt", "state": "A"}], value)
+            assert_true(
+                value["changes"] == [{"path": "first.txt", "state": "A", "working": "A"}], value
+            )
             status, value = answer(fresh, diff="first.txt")
             assert_true(status == 200 and "+first" in value["text"], value)
             git(fresh, "add", "first.txt")

@@ -1,4 +1,9 @@
-import { devServerTest as test, expect, DEV_SERVER_URL } from "./fixtures.js";
+import {
+  devServerTest as test,
+  expect,
+  DEV_SERVER_URL,
+  fakeStream,
+} from "./fixtures.js";
 
 // The footer shows ongoing work. In the sidebar only the selected working
 // row pulses; background conversations keep a quiet, static mark.
@@ -77,6 +82,7 @@ async function open(page) {
       });
     return route.fulfill({ status: 404, json: { v: 2, error: "no" } });
   });
+  await page.addInitScript(fakeStream, { epoch: EPOCH, cursor: 10 });
   await page.addInitScript(
     ({ epoch, open }) => {
       // No worker here: its failed registration's banner covers the page.
@@ -90,21 +96,6 @@ async function open(page) {
           removeEventListener() {},
         },
       });
-      globalThis.EventSource = class extends EventTarget {
-        readyState = 1;
-        constructor() {
-          super();
-          globalThis.testStream = this;
-          setTimeout(() =>
-            this.dispatchEvent(
-              new MessageEvent("ready", {
-                data: JSON.stringify({ epoch, cursor: 10 }),
-              }),
-            ),
-          );
-        }
-        close() {}
-      };
       let sequence = 11;
       globalThis.testSend = (fields) =>
         globalThis.testStream.dispatchEvent(

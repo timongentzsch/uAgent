@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- Signing out, or a host that no longer knows the device, now also removes the saved hosts, read and unread marks, side-chat tabs, scroll bookmarks, Files' last folder, folded places and unsent Library and scheduled-task drafts from the browser. Appearance and layout settings stay.
+
 ## v1.12.0 - 2026-11-24
 
 ### Changes

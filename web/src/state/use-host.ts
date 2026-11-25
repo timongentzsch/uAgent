@@ -1,5 +1,10 @@
-import { stored, tabStorage, useStored } from "../shared/storage.ts";
-import { storageKeys } from "../shared/storage-keys.ts";
+import {
+  deviceStorage,
+  stored,
+  tabStorage,
+  useStored,
+} from "../shared/storage.ts";
+import { hostDataKeys, storageKeys } from "../shared/storage-keys.ts";
 import type {
   JSONValue,
   Snapshot,
@@ -242,6 +247,14 @@ export function useHost(
     kept.display.write({});
     drafts.clear();
     setOutgoing([]);
+    setUnread(new Set());
+    readCounts.current = {};
+    for (const where of [deviceStorage, tabStorage])
+      for (let at = where.length - 1; at >= 0; at--) {
+        const name = where.key(at) ?? "";
+        if (hostDataKeys.some((key) => name.startsWith(key)))
+          where.removeItem(name);
+      }
     setAuthenticated(false);
     live.current = {};
     snapshots.set({});

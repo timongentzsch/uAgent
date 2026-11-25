@@ -110,6 +110,49 @@ test("a host that cannot be reached keeps the app, not the pairing form", async 
   });
 });
 
+test("a device the host no longer knows keeps none of its data", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  await expect(page.getByLabel("Message or guidance")).toBeEnabled();
+  const hostData = [
+    "uagent-hosts",
+    "uagent-read",
+    "uagent-unread",
+    "uagent-side-tabs",
+    "uagent-files-at",
+    "uagent-library-design-/project",
+    "uagent.sidebar.folded",
+  ];
+  await page.evaluate((names) => {
+    for (const name of names) localStorage.setItem(name, '["x"]');
+    sessionStorage.setItem("uagent-scheduled-draft", "{}");
+    localStorage.setItem("uagent-theme", "dark");
+  }, hostData);
+  await page.route(/\/api\/sessions(\?refresh=1)?$/, (route) =>
+    route.fulfill({ status: 401, json: { error: "unpaired" } }),
+  );
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Connect device" }),
+  ).toBeVisible();
+  // The kept list is written once a short delay has passed.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        ({ names, id }) => [
+          ...names.filter((name) => localStorage.getItem(name) !== null),
+          sessionStorage.getItem("uagent-scheduled-draft"),
+          (localStorage.getItem("uagent-catalogue") ?? "").includes(id),
+          localStorage.getItem("uagent-theme"),
+        ],
+        { names: hostData, id: session.id },
+      ),
+    )
+    .toEqual([null, false, "dark"]);
+});
+
 test("a reload comes back to the page it left", async ({ page, session }) => {
   await page.goto(`/#session=${session.id}`);
   await page.getByRole("button", { name: "Library", exact: true }).click();

@@ -160,7 +160,9 @@ void McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
       }
       return Headline{"Calling " + label, "Called " + label, std::move(target)};
     };
-    tool.timeout_s = config.mcp_timeout_s;
+    // McpInvokeRemote bounds each request: a person filling in the server's
+    // form is not the server's time.
+    tool.timeout_s = 0;
 
     size_t tool_schema_bytes =
         tool.description.size() + JsonDump(tool.parameters).size();

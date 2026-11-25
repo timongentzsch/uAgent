@@ -36,6 +36,7 @@
 #include "include/core/time.h"
 #include "include/core/turn_status.h"
 #include "include/core/workspace.h"
+#include "include/mcp/elicit.h"
 
 namespace uagent::session {
 namespace {
@@ -278,6 +279,13 @@ class WorkerChannel final : public ApplicationChannel {
                    JsonDump(request.questions),
                    JsonValue(state_, "title", title_));
       }
+    }
+    // Only a top-level session has MCP servers, so elicitations are not
+    // routed.
+    if (request.kind == "elicit") {
+      decision_["elicitation"] = request.elicitation;
+    }
+    if (request.kind == "ask" || request.kind == "elicit") {
       Send({{"kind", "event"},
             {"type", "ask.requested"},
             {"data",
@@ -693,6 +701,12 @@ class WorkerChannel final : public ApplicationChannel {
     const bool ask = JsonValue(decision_, "kind", "") == "ask";
     std::string answer =
         ask ? AskAnswers(parsed.raw, parsed.text, error) : parsed.text;
+    if (JsonValue(decision_, "kind", "") == "elicit" && !answer.empty()) {
+      const json reply = json::parse(answer, nullptr, false);
+      if (auto issue = ElicitReplyIssue(decision_["elicitation"], reply)) {
+        error = *issue;
+      }
+    }
     if (!error.empty()) return;
     reply_ = std::move(answer);
     reply_cancelled_ = parsed.cancelled;

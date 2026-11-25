@@ -558,7 +558,7 @@ std::string UrlAuthority(std::string url) {
   if (auto pos = url.find("://"); pos != std::string::npos) {
     url = url.substr(pos + 3);
   }
-  if (auto pos = url.find('/'); pos != std::string::npos) {
+  if (auto pos = url.find_first_of("/?#"); pos != std::string::npos) {
     url.resize(pos);
   }
   if (auto pos = url.rfind('@'); pos != std::string::npos) {
@@ -571,7 +571,8 @@ std::string UrlAuthority(std::string url) {
 
 std::string UrlHost(std::string url) {
   std::string host = UrlAuthority(std::move(url));
-  if (auto p = host.find(':'); p != std::string::npos) {
+  // past a bracketed IPv6 address; rfind's npos + 1 wraps to 0
+  if (auto p = host.find(':', host.rfind(']') + 1); p != std::string::npos) {
     host.resize(p);
   }
   return host;

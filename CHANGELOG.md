@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- Up to eight open pages keep their live connection. With a fifth page open, the oldest connection was ended, reconnected and ended the next, so the pages took turns going offline.
+
 ## v1.12.0 - 2026-11-24
 
 ### Changes

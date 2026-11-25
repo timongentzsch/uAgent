@@ -21,7 +21,7 @@ conversation's runtime over the session protocol ([Overview](overview.md)).
 ## Processes and threads
 
 The listener is cpp-httplib with a pool that idles at 4 workers and grows
-to 37: 4 event streams (`kWebSseConnections`), 5 browser viewers
+to 41: 8 event streams (`kWebSseConnections`), 5 browser viewers
 (`kViewerInstances`), 16 terminal sockets (`kWebTerminalSockets`) and 12
 request workers; the queue holds 24. Read timeout 5 s, write timeout 2 s.
 Beside the pool, `Master::Run` starts three threads:

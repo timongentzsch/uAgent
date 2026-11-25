@@ -11,7 +11,6 @@
 #include <utility>
 
 #include "include/agent/conversation.h"
-#include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/app/workspace_files.h"
 #include "include/core/fs.h"
@@ -166,31 +165,6 @@ void Master::FileOrigin(const Request& request, Response& response) {
   }
   if (at && sequence >= first_move) return Reply(response, location(folder));
   if (at) folders = {folder};
-  // Old releases recorded family moves on the lead only. A child's sequence
-  // belongs to its own transcript, so use a unique matching file when needed.
-  std::set<std::string> visited{id};
-  for (;;) {
-    const auto parent = JsonValue(AgentOf(header), "parent", "");
-    if (parent.empty() || !visited.insert(parent).second) break;
-    const auto parent_path = host_.AssetPath(parent);
-    if (parent_path.empty()) break;
-    header = SessionHeader(parent_path);
-    if (JsonValue(header, kSessionHeaderCwd, "") != current.path) break;
-    if (!AgentOf(header).empty()) continue;
-    json parent_moves;
-    if (!ReadFileMoves(parent_path, header, parent_moves)) {
-      return Error(response, "cannot read parent file history", 409);
-    }
-    for (const auto& move : parent_moves) {
-      if (!JsonValue(move, "lead_only", false)) continue;
-      const auto from = JsonValue(move, "from", "");
-      if (from.empty()) continue;
-      if (by_id && WorkspaceId(from, current.host) == origin) {
-        return Reply(response, location(from));
-      }
-      folders.insert(from);
-    }
-  }
   if (by_id) return Error(response, "unknown file origin", 404);
   if (folders.size() == 1) return Reply(response, location(folder));
   if (at && path.empty()) {

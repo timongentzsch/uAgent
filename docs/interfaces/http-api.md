@@ -35,8 +35,7 @@ agent) with its `pending_prompt`, `updated` (ms), and
 display fields that are not contract. A child whose header records its delegated
 write scope includes `agent_edits` (`none`, `folder`, or `worktree`).
 Snapshot `permissions.source` identifies the effective setting's layer. In a
-child, `parent` means inherited at launch and `agent_default` denotes the
-compatibility default for a role saved before inheritance. A live
+child, `parent` means inherited at launch. A live
 `permissions` command with `inspect: true` also returns the execution
 host's command sandbox summary and network setting when available.
 

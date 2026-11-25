@@ -190,7 +190,7 @@ def assert_whole(home, alpha, beta, *, notes=1):
     return ids
 
 
-def test_web_file_origin_survives_repeated_moves_and_legacy_receipts(root, home, *, binary):
+def test_web_file_origin_survives_repeated_moves(root, home, *, binary):
     old, middle, latest = (root / name for name in ("old", "middle", "latest"))
     for folder in (old, middle, latest):
         folder.mkdir()
@@ -244,31 +244,6 @@ def test_web_file_origin_survives_repeated_moves_and_legacy_receipts(root, home,
             child = "/api/sessions/" + session_id(directory / "agent-0001.json")
             assert_true(
                 client.json(child + "/file-origin?sequence=2")[1]["origin"] == original, child
-            )
-
-        # A previously moved lead has only structured move receipts in its saved display.
-        saved = directory / "lead.json"
-        head, body = read_session(saved)
-        head.pop("has_file_moves")
-        body["display"].pop("file_moves")
-        saved.write_text(json.dumps(head) + "\n" + json.dumps(body))
-        legacy_child = directory / "agent-0001.json"
-        child_head, child_body = read_session(legacy_child)
-        child_head.pop("has_file_moves")
-        child_body["display"].pop("file_moves")
-        child_body["display"]["facts"] = {}
-        legacy_child.write_text(json.dumps(child_head) + "\n" + json.dumps(child_body))
-        with web_host(binary, root, home, provider.url) as (again, code, _, _):
-            again.pair(code)
-            listed(again, LEAD)
-            assert_true(again.json(route + "sequence=2")[1]["origin"] == original, "old receipt")
-            assert_true(again.json(route + "path=same.html")[0] == 409, "legacy collision")
-            query = child + "/file-origin?sequence=2&path="
-            assert_true(again.json(query + "only-old.md")[1]["origin"] == original, "old child")
-            assert_true(again.json(query + "same.html")[0] == 409, "ambiguous old child")
-            assert_true(
-                again.json(query + str(old.resolve() / "same.html"))[1]["origin"] == original,
-                "absolute reference in old child",
             )
 
 

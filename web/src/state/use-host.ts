@@ -302,6 +302,7 @@ export function useHost(
       loads.current.delete(id);
       delete live.current[id];
       delete readCounts.current[id];
+      kept.read.write(readCounts.current);
       setLoadErrors((prior) => {
         const next = { ...prior };
         delete next[id];
@@ -526,15 +527,10 @@ export function useHost(
       revoked.current = false;
       catalogueRef.current = list;
       setCatalogue(list);
-      const listed = new Set(list.sessions.map((item) => item.id));
-      readCounts.current = Object.fromEntries(
-        Object.entries(readCounts.current).filter(([id]) => listed.has(id)),
-      );
-      kept.read.write(readCounts.current);
       setUnread(
         (prior) =>
           new Set([
-            ...[...prior].filter((id) => listed.has(id)),
+            ...prior,
             ...list.sessions
               .filter(
                 (item) =>

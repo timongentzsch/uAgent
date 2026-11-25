@@ -10,6 +10,7 @@ import {
   viewerOf,
   writeFiles,
 } from "../tests/fixtures.js";
+import { markPath } from "../src/shared/mark.ts";
 
 test.use({
   viewport: { width: 1480, height: 860 },
@@ -49,10 +50,10 @@ const swatch = (name, value) =>
 const bookStyle = `
 body { font-size: 11px }
 main { display: grid; gap: 4.5mm }
-.cover { display: flex; align-items: flex-end; gap: 14px; padding: 18px; background: var(--accent); color: var(--on-accent) }
-.cover .mark { display: grid; place-items: center; width: 64px; height: 64px; background: var(--on-accent); color: var(--accent); font-size: 44px; font-weight: 700; line-height: 1 }
-.cover h1 { font-size: 34px; line-height: 1; margin-bottom: 6px }
-.cover p { margin-left: auto; text-align: right; opacity: 0.8 }
+.cover { display: flex; align-items: flex-end; gap: 18px; padding-bottom: 5mm }
+.cover svg { width: 96px; height: 96px; margin: -18px 0 -12px -24px }
+.cover h1 { font-size: 40px; line-height: 1; margin-bottom: 6px }
+.cover p { margin-left: auto; text-align: right; color: var(--muted) }
 section { display: grid; grid-template-columns: 24mm minmax(0, 1fr); gap: 5mm; padding-top: 3mm; border-top: 1px solid var(--text) }
 section > h2 { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase }
 section > h2 small { display: block; color: var(--muted); font-weight: 400; letter-spacing: 0; text-transform: none }
@@ -70,21 +71,21 @@ section > h2 small { display: block; color: var(--muted); font-weight: 400; lett
 .field { display: inline-flex; align-items: center; height: var(--control); padding: 0 var(--space-4); width: 118px; border: 1px solid var(--field-border); background: var(--raised); color: var(--muted) }
 .tabs { display: inline-flex } .tabs .button { background: var(--raised) } .tabs .on { background: var(--accent); color: var(--on-accent) }
 pre { margin: 0; padding: 10px; background: var(--raised); font: inherit; white-space: pre-wrap }
-.dark { padding: 10px; display: flex; gap: 8px; align-items: center; background: var(--bg); color: var(--text) }
+.other { padding: 10px; display: flex; gap: 8px; align-items: center; background: var(--bg); color: var(--text) }
 .rules { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px }
 .rules b { display: block }
 `;
 const bar = (px, label = px) =>
   `<div><i style="width:${px}px;height:${px}px"></i>${label}</div>`;
 const controls = `<span class="button primary">Send</span><span class="button">Merge</span><span class="button quiet">Cancel</span><span class="tabs"><span class="button on">Recent</span><span class="button">Places</span></span>`;
-const book = paper(
-  "µAgent design system",
-  `<main>
-  <header class="cover"><span class="mark">µ</span><div><h1>µAgent</h1>Design system</div><p>tokens.css<br>light and dark</p></header>
+// The app's own mark, as its sidebar draws it. Dark is the theme it opens in.
+const book = `<!doctype html><html data-theme="dark"><head><title>µAgent design system</title>
+<meta name="print" content="flow a4">${linked("tokens.css")}<style>${bookStyle}</style></head><body><main>
+  <header class="cover"><svg viewBox="0 0 16 16" role="img" aria-label="µAgent"><path fill="currentColor" d="${markPath}"/></svg><div><h1>µAgent</h1>Design system</div><p>tokens.css<br>dark and light</p></header>
   <section><h2>Colour<small>surfaces, ink, signals</small></h2><div class="swatches">
-    ${swatch("bg", "#fff")}${swatch("surface", "#fafafa")}${swatch("raised", "#eee")}${swatch("hover", "#e2e2e2")}${swatch("press", "#d4d4d4")}
-    ${swatch("text", "#111")}${swatch("muted", "#555")}${swatch("line", "#ccc")}${swatch("field-border", "#767676")}${swatch("accent", "#000")}
-    ${swatch("live", "#1a7f37")}${swatch("added", "#116329")}${swatch("removed", "#b31d28")}${swatch("warning", "#855600")}
+    ${swatch("bg", "#000")}${swatch("surface", "#0a0a0a")}${swatch("raised", "#171717")}${swatch("hover", "#232323")}${swatch("press", "#2e2e2e")}
+    ${swatch("text", "#f5f5f5")}${swatch("muted", "#a3a3a3")}${swatch("line", "#404040")}${swatch("field-border", "#8a8a8a")}${swatch("accent", "#fff")}
+    ${swatch("live", "#22a35a")}${swatch("added", "#3fb950")}${swatch("removed", "#f85149")}${swatch("warning", "#e3b341")}
   </div></section>
   <section><h2>Type<small>one monospace</small></h2><div class="type">
     <b class="glyphs">Aaµ</b><b style="font-size:17px">Display 1.2rem</b>
@@ -95,7 +96,7 @@ const book = paper(
   <section><h2>Space<small>steps of 2</small></h2><div class="scale">${[2, 4, 6, 8, 12, 24, 48].map((px) => bar(px)).join("")}</div></section>
   <section><h2>Controls<small>32 tall, 44 on touch</small></h2><div style="display:grid;gap:10px">
     <div class="controls">${controls}<span class="field">Ask µAgent…</span></div>
-    <div class="dark" data-theme="dark">${controls}<span class="field">Ask µAgent…</span></div>
+    <div class="other" data-theme="light">${controls}<span class="field">Ask µAgent…</span></div>
   </div></section>
   <section><h2>Rules</h2><div class="rules">
     <p><b>Square and flat.</b>No radius, no shadow, one line weight.</p>
@@ -104,10 +105,7 @@ const book = paper(
   </div></section>
   <section><h2>Use<small>a page links the tokens</small></h2><pre>&lt;link rel="stylesheet" href="../system/tokens.css"&gt;
 &lt;span class="button primary"&gt;Send&lt;/span&gt;</pre></section>
-</main>`,
-  "a4",
-  `${linked("tokens.css")}<style>${bookStyle}</style>`,
-);
+</main></body></html>`;
 
 const frame = (title, size, body) =>
   artboard(

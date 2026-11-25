@@ -157,8 +157,7 @@ Under `/api/sessions/<id>/`; an unknown conversation, or a path outside the fold
 | `GET files?stamps=<dir>` | | `stamps`: each file's name and its size, inode and modification time as one string |
 | `GET files?read=<path>` | | `text` (at most 1 MiB, `kFileViewBytes`), `bytes`, `more`, `revision` |
 | `GET files?find=<q>` | | `paths`, `more` |
-| `GET files?changes=` / `?diff=<path>` | | `changes` (`path`, `state`), `more`, `repository` / `text`, `more` |
-| `GET files?changes=split` | | Adds optional `working` and `staged` Git status letters to each row. Untracked files are working-tree additions, unresolved merges are working-tree conflicts (`U`). |
+| `GET files?changes=` / `?diff=<path>` | | `changes` (`path`, `state`, optional `working` and `staged` Git status letters), `more`, `repository` / `text`, `more`. Untracked files are working-tree additions, unresolved merges are working-tree conflicts (`U`). |
 | `GET files?diff=<path>&scope=working` / `&scope=staged` | | `text`, `more`. Working compares the index with the working tree, staged compares HEAD with the index (empty tree before the first commit). A path without a change in that scope is 404. |
 | `GET files?raw=<path>[&download]` | | the bytes; only images are inline |
 | `GET files?png=<path>` / `?pdf=<path>` | `w`, `h`, `scale`, `part` | a page drawn by the agent's browser; 503 without one |

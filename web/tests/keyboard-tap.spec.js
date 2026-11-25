@@ -1,4 +1,9 @@
-import { devServerTest as test, expect, DEV_SERVER_URL } from "./fixtures.js";
+import {
+  devServerTest as test,
+  expect,
+  DEV_SERVER_URL,
+  fakeStream,
+} from "./fixtures.js";
 
 // A tap into a field focuses it without scrolling, so a phone's keyboard
 // cannot pan the page, top bar and all; the app's own resize brings the
@@ -39,7 +44,8 @@ async function open(page) {
       });
     return route.fulfill({ status: 404, json: { v: 2, error: "no" } });
   });
-  await page.addInitScript((epoch) => {
+  await page.addInitScript(fakeStream, { epoch: EPOCH, cursor: 1 });
+  await page.addInitScript(() => {
     // No worker here: its failed registration's banner covers the page.
     Object.defineProperty(navigator, "serviceWorker", {
       value: {
@@ -51,25 +57,11 @@ async function open(page) {
         removeEventListener() {},
       },
     });
-    globalThis.EventSource = class extends EventTarget {
-      readyState = 1;
-      constructor() {
-        super();
-        setTimeout(() =>
-          this.dispatchEvent(
-            new MessageEvent("ready", {
-              data: JSON.stringify({ epoch, cursor: 1 }),
-            }),
-          ),
-        );
-      }
-      close() {}
-    };
     // Whether the last touchend's default was prevented, seen after ours.
     addEventListener("touchend", (event) => {
       globalThis.tapTaken = event.defaultPrevented;
     });
-  }, EPOCH);
+  });
   await page.goto(new URL(`/#session=${SESSION.id}`, DEV_SERVER_URL).href);
   await expect(page.getByLabel("Message or guidance")).toBeEnabled();
 }

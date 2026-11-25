@@ -12,7 +12,8 @@ import { APART, itemLayer, rectOf } from "./items.js";
 const ITEMS =
   "h1, h2, h3, h4, h5, h6, p, ul, ol, dl, table, blockquote, pre, figure, img, svg, [data-shape]";
 
-const squash = (text) => text.replace(/\s+/g, "");
+// A text as two readings of it are compared: without its white space.
+export const squash = (text) => String(text ?? "").replace(/\s+/g, "");
 const px = (value) => Math.round(Number.parseFloat(value));
 const shaped = (item) => item.matches("[data-shape]");
 // Put in by hand: placed by its own style, not by the flow.

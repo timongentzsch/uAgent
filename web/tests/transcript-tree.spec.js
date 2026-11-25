@@ -3,6 +3,7 @@ import {
   expect,
   DEV_SERVER_URL,
   chooseDetail,
+  fakeStream,
   openView,
 } from "./fixtures.js";
 import { agents, arrivals, conversation, pondering } from "./golden-turns.js";
@@ -23,26 +24,10 @@ const SESSION = {
 };
 
 async function open(page, level, nodes = conversation, children = []) {
+  await page.addInitScript(fakeStream, { epoch: "e", cursor: 1 });
   await page.addInitScript((detail) => {
     localStorage.setItem("uagent-detail", detail);
     localStorage.setItem("uagent-thinking", "show");
-    globalThis.EventSource = class extends EventTarget {
-      readyState = 1;
-      constructor() {
-        super();
-        globalThis.transcriptStream = this;
-        setTimeout(() =>
-          this.dispatchEvent(
-            new MessageEvent("ready", {
-              data: JSON.stringify({ epoch: "e", cursor: 1 }),
-            }),
-          ),
-        );
-      }
-      close() {
-        this.readyState = 2;
-      }
-    };
   }, level);
   await page.route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -405,7 +390,7 @@ for (const width of [390, 1280]) {
     ]);
     await page.evaluate(
       (child) =>
-        globalThis.transcriptStream.dispatchEvent(
+        globalThis.testStream.dispatchEvent(
           new MessageEvent("update", {
             data: JSON.stringify({
               v: 2,
@@ -473,7 +458,7 @@ test("active agents share one moving band until only waiting agents remain", asy
   await expect.poll(pixels).not.toBe(initial);
   await page.evaluate((sessions) => {
     sessions.forEach((child, i) =>
-      globalThis.transcriptStream.dispatchEvent(
+      globalThis.testStream.dispatchEvent(
         new MessageEvent("update", {
           data: JSON.stringify({
             v: 2,

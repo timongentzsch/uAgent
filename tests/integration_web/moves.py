@@ -13,11 +13,12 @@ from integration_support import (
     event,
     run,
     session_id,
+    text_of,
     tool_call,
     wait_until,
     write_session,
 )
-from web_support import WebClient, web_host
+from web_support import WebClient, idle, web_host
 
 LEAD = "lead"
 AGENTS = ("agent-0001", "agent-0002", "agent-0003")
@@ -159,14 +160,6 @@ def watch(client):
 
     threading.Thread(target=read, daemon=True).start()
     return frames
-
-
-def idle(value):
-    return value["metadata"]["status"] == "idle"
-
-
-def text_of(body):
-    return json.dumps(body["messages"])
 
 
 def assert_whole(home, alpha, beta, *, notes=1):

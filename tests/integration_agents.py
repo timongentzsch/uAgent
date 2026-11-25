@@ -17,6 +17,7 @@ from integration_support import (
     run,
     save_settings,
     session_id,
+    text_of,
     tool_call,
     tool_calls,
     tool_results,
@@ -48,10 +49,6 @@ def brief_of(body):
 
 def results_of(body):
     return tool_results(body["messages"])
-
-
-def text_of(body):
-    return json.dumps(body["messages"])
 
 
 def socket_of(home, path):

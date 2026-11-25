@@ -170,7 +170,7 @@ void Master::FileOrigin(const Request& request, Response& response) {
   if (at && path.empty()) {
     return Error(response, "original workspace is uncertain", 409);
   }
-  // Old shared URLs contain only a relative path. Resolve an exact, unique
+  // A link with only a relative path (no origin): resolve an exact, unique
   // match; a same-named file in two workspaces needs an explicit choice.
   json matches = json::array();
   for (const auto& candidate : folders) {
@@ -394,11 +394,12 @@ void Master::Preview(const Request& request, Response& response) {
     return;
   }
   if (relative.starts_with(kSheetPrefix)) {
-    const std::filesystem::path file =
-        SheetDir() / relative.substr(kSheetPrefix.size());
+    const std::filesystem::path rest = relative.substr(kSheetPrefix.size());
+    const std::filesystem::path file = SheetDir() / rest;
     const std::string mime = SheetMime(file);
     std::string bytes, error;
-    if (mime.empty() || relative.find("..") != std::string::npos ||
+    if (mime.empty() || !rest.is_relative() ||
+        relative.find("..") != std::string::npos ||
         !ReadRegularFile(file.string(), kUploadBytes, bytes, error)) {
       Error(response, "not found", 404);
       return;

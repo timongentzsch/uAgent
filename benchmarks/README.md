@@ -6,7 +6,6 @@ not correctness gates, except the hermetic evaluation, which CTest runs as
 
 ```sh
 python3 benchmarks/eval.py build/debug/uagent --check    # scenarios against the baseline
-python3 benchmarks/audit.py build/debug/uagent           # request and schema sizes
 cmake -B build/bench -DCMAKE_BUILD_TYPE=Release -DUAGENT_BUILD_BENCHMARKS=ON
 cmake --build build/bench --target uagent_bench && build/bench/uagent_bench
 ```
@@ -17,7 +16,7 @@ the other options.
 | Path | Contents |
 | --- | --- |
 | `eval.py`, `run_trace.py` | Scenario evaluation and the shared run timing |
-| `audit.py`, `session_metrics.py` | Request-size report and a summary of real sessions from their journals |
+| `session_metrics.py` | A summary of real sessions from their journals |
 | `compare_agents.py` | Footprint of µAgent beside other coding-agent CLIs: a JSON report and, with `--chart`, an SVG chart |
 | `dns_sink.py`, `egress_record.py` | A loopback DNS sink that logs lookups, and the scenarios that exercise µAgent under it |
 | `first_request.py`, `release_probe.py` | Count tools and instructions in captured requests, and measure an installed µAgent release against a scripted loopback reply |
@@ -118,7 +117,6 @@ cmake -S . -B build/bench -DCMAKE_BUILD_TYPE=Release \
   -DUAGENT_BUILD_BENCHMARKS=ON
 cmake --build build/bench --target uagent uagent_bench --parallel 4
 python3 benchmarks/eval.py build/bench/uagent --check --report /tmp/eval.json
-python3 benchmarks/audit.py build/bench/uagent --json /tmp/audit.json
 for run in 1 2 3 4 5; do build/bench/uagent_bench > "/tmp/core-$run.txt"; done
 (cd web && npm run size)
 ```

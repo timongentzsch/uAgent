@@ -3,11 +3,7 @@
 import json
 
 from integration_support import Server, assert_true, event, session_id, wait_until, write_session
-from web_support import web_host
-
-
-def idle(value):
-    return value["metadata"]["status"] == "idle"
+from web_support import idle, web_host
 
 
 def listing(client):

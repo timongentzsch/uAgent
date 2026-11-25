@@ -18,35 +18,95 @@ test.use({
   video: "off",
 });
 
-const tokens = `:root {
-  --page: #ffffff; --surface: #fafafa; --ink: #111111; --muted: #555555;
-  --line: #cccccc; --accent: #000000; --good: #1a7f37; --bad: #b91c1c;
+const tokens = `:root, [data-theme="light"] {
+  --bg: #fff; --surface: #fafafa; --raised: #eee; --hover: #e2e2e2; --press: #d4d4d4;
+  --text: #111; --muted: #555; --line: #ccc; --field-border: #767676;
+  --accent: #000; --on-accent: #fff;
+  --live: #1a7f37; --added: #116329; --removed: #b31d28; --warning: #855600;
+}
+[data-theme="dark"] {
+  --bg: #000; --surface: #0a0a0a; --raised: #171717; --hover: #232323; --press: #2e2e2e;
+  --text: #f5f5f5; --muted: #a3a3a3; --line: #404040; --field-border: #8a8a8a;
+  --accent: #fff; --on-accent: #000;
+  --live: #22a35a; --added: #3fb950; --removed: #f85149; --warning: #e3b341;
+}
+:root {
   --font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --space: 8px; --control: 32px;
+  --space-2: 4px; --space-4: 8px; --space-6: 12px; --space-12: 24px;
+  --control: 32px; --touch: 44px;
 }
 * { box-sizing: border-box }
-body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.5 var(--font) }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--font) }
 h1, h2, p { margin: 0 }
-.button { display: inline-flex; align-items: center; height: var(--control); padding: 0 12px; background: #ededed }
-.button.primary { background: var(--accent); color: var(--page) }
+.button { display: inline-flex; align-items: center; gap: 6px; height: var(--control); padding: 0 var(--space-6); background: var(--raised); color: var(--text) }
+.button.primary { background: var(--accent); color: var(--on-accent) }
+.button.quiet { background: none }
 .line { border: 1px solid var(--line) }
 `;
 const linked = (path) => `<link rel="stylesheet" href="${path}">`;
 const swatch = (name, value) =>
-  `<div><div class="line" style="height:64px;background:var(${name})"></div><b>${name}</b><br>${value}</div>`;
+  `<div><i style="background:var(--${name})"></i><b>--${name}</b><span>${value}</span></div>`;
+const bookStyle = `
+body { font-size: 11px }
+main { display: grid; gap: 4.5mm }
+.cover { display: flex; align-items: flex-end; gap: 14px; padding: 18px; background: var(--accent); color: var(--on-accent) }
+.cover .mark { display: grid; place-items: center; width: 64px; height: 64px; background: var(--on-accent); color: var(--accent); font-size: 44px; font-weight: 700; line-height: 1 }
+.cover h1 { font-size: 34px; line-height: 1; margin-bottom: 6px }
+.cover p { margin-left: auto; text-align: right; opacity: 0.8 }
+section { display: grid; grid-template-columns: 24mm minmax(0, 1fr); gap: 5mm; padding-top: 3mm; border-top: 1px solid var(--text) }
+section > h2 { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase }
+section > h2 small { display: block; color: var(--muted); font-weight: 400; letter-spacing: 0; text-transform: none }
+.swatches { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px 8px }
+.swatches i { display: block; height: 28px; border: 1px solid var(--line) }
+.swatches b, .swatches span { display: block; font-size: 9.5px; line-height: 1.35 }
+.swatches span { color: var(--muted) }
+.type { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 14px; align-items: baseline }
+.type span { color: var(--muted) }
+.glyphs { grid-row: span 4; font-size: 64px; font-weight: 700; line-height: 0.9; letter-spacing: -0.04em }
+.scale { display: flex; align-items: flex-end; gap: 10px }
+.scale div { display: grid; gap: 4px; justify-items: center; color: var(--muted); font-size: 9.5px }
+.scale i { display: block; background: var(--text) }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.field { display: inline-flex; align-items: center; height: var(--control); padding: 0 var(--space-4); width: 118px; border: 1px solid var(--field-border); background: var(--raised); color: var(--muted) }
+.tabs { display: inline-flex } .tabs .button { background: var(--raised) } .tabs .on { background: var(--accent); color: var(--on-accent) }
+pre { margin: 0; padding: 10px; background: var(--raised); font: inherit; white-space: pre-wrap }
+.dark { padding: 10px; display: flex; gap: 8px; align-items: center; background: var(--bg); color: var(--text) }
+.rules { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px }
+.rules b { display: block }
+`;
+const bar = (px, label = px) =>
+  `<div><i style="width:${px}px;height:${px}px"></i>${label}</div>`;
+const controls = `<span class="button primary">Send</span><span class="button">Merge</span><span class="button quiet">Cancel</span><span class="tabs"><span class="button on">Recent</span><span class="button">Places</span></span>`;
 const book = paper(
   "µAgent design system",
-  `<section style="padding:18mm;display:grid;gap:10mm">
-  <header><h1 style="font-size:34px">µAgent design system</h1><p style="color:var(--muted)">One set of tokens in tokens.css. Every page links it.</p></header>
-  <div><h2>Colour</h2><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:10px">
-    ${swatch("--page", "#ffffff")}${swatch("--surface", "#fafafa")}${swatch("--ink", "#111111")}${swatch("--muted", "#555555")}
-    ${swatch("--line", "#cccccc")}${swatch("--accent", "#000000")}${swatch("--good", "#1a7f37")}${swatch("--bad", "#b91c1c")}
-  </div></div>
-  <div><h2>Type</h2><p style="font-size:28px;font-weight:700">Heading 28</p><p style="font-size:18px;font-weight:700">Title 18</p><p>Body 14, the size of every control and message.</p><p style="font-size:12px;color:var(--muted)">Detail 12</p></div>
-  <div><h2>Controls</h2><p style="display:flex;gap:8px;margin-top:10px"><span class="button primary">Send</span><span class="button">Merge</span><span class="button line" style="background:none">Ask</span></p></div>
-</section>`,
+  `<main>
+  <header class="cover"><span class="mark">µ</span><div><h1>µAgent</h1>Design system</div><p>tokens.css<br>light and dark</p></header>
+  <section><h2>Colour<small>surfaces, ink, signals</small></h2><div class="swatches">
+    ${swatch("bg", "#fff")}${swatch("surface", "#fafafa")}${swatch("raised", "#eee")}${swatch("hover", "#e2e2e2")}${swatch("press", "#d4d4d4")}
+    ${swatch("text", "#111")}${swatch("muted", "#555")}${swatch("line", "#ccc")}${swatch("field-border", "#767676")}${swatch("accent", "#000")}
+    ${swatch("live", "#1a7f37")}${swatch("added", "#116329")}${swatch("removed", "#b31d28")}${swatch("warning", "#855600")}
+  </div></section>
+  <section><h2>Type<small>one monospace</small></h2><div class="type">
+    <b class="glyphs">Aaµ</b><b style="font-size:17px">Display 1.2rem</b>
+    <b style="font-size:15.4px">Title 1.1rem</b>
+    <span style="font-size:14px;color:var(--text)">Body 1rem, messages and controls</span>
+    <span style="font-size:12px">Small 12px, times and totals</span>
+  </div></section>
+  <section><h2>Space<small>steps of 2</small></h2><div class="scale">${[2, 4, 6, 8, 12, 24, 48].map((px) => bar(px)).join("")}</div></section>
+  <section><h2>Controls<small>32 tall, 44 on touch</small></h2><div style="display:grid;gap:10px">
+    <div class="controls">${controls}<span class="field">Ask µAgent…</span></div>
+    <div class="dark" data-theme="dark">${controls}<span class="field">Ask µAgent…</span></div>
+  </div></section>
+  <section><h2>Rules</h2><div class="rules">
+    <p><b>Square and flat.</b>No radius, no shadow, one line weight.</p>
+    <p><b>Even insets.</b>A control is as far from its box sideways as up and down.</p>
+    <p><b>Two buttons.</b>One primary per view; the rest are secondary or quiet.</p>
+  </div></section>
+  <section><h2>Use<small>a page links the tokens</small></h2><pre>&lt;link rel="stylesheet" href="../system/tokens.css"&gt;
+&lt;span class="button primary"&gt;Send&lt;/span&gt;</pre></section>
+</main>`,
   "a4",
-  linked("tokens.css"),
+  `${linked("tokens.css")}<style>${bookStyle}</style>`,
 );
 
 const frame = (title, size, body) =>
@@ -57,8 +117,8 @@ const frame = (title, size, body) =>
   );
 const header = (count) =>
   `<header class="line" style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-width:0 0 1px"><b style="flex:1">Verify the footprint numbers</b><span class="button primary">Side chats ${count}</span><span class="button">Terminal</span><span class="button">Files</span></header>`;
-const column = `<aside class="line" style="width:36%;border-width:0 0 0 1px;padding:8px;display:grid;gap:8px;align-content:start"><p style="display:flex;gap:6px"><span class="button primary">Why streamed?</span><span class="button">Merge</span></p><p style="background:var(--ink);color:var(--page);padding:8px">Why streamed?</p><p>Each reply arrives as it is written.</p></aside>`;
-const talk = `<main style="flex:1;padding:12px;display:grid;gap:8px;align-content:start"><p style="background:var(--ink);color:var(--page);padding:8px">Check the idle memory against the raw samples.</p><p><b>The published median holds: 27.4 MiB idle.</b></p></main>`;
+const column = `<aside class="line" style="width:36%;border-width:0 0 0 1px;padding:8px;display:grid;gap:8px;align-content:start"><p style="display:flex;gap:6px"><span class="button primary">Why streamed?</span><span class="button">Merge</span></p><p style="background:var(--text);color:var(--bg);padding:8px">Why streamed?</p><p>Each reply arrives as it is written.</p></aside>`;
+const talk = `<main style="flex:1;padding:12px;display:grid;gap:8px;align-content:start"><p style="background:var(--text);color:var(--bg);padding:8px">Check the idle memory against the raw samples.</p><p><b>The published median holds: 27.4 MiB idle.</b></p></main>`;
 
 const plan = sheet("Release 1.13", {
   "Pull requests": [
@@ -86,7 +146,7 @@ body { width: 1280px; height: 720px; padding: 64px; display: flex; flex-directio
 h1 { font-size: 72px; line-height: 1.05 }
 h2 { font-size: 44px }
 li { font-size: 28px; margin: 12px 0 }
-.bar { height: 44px; background: var(--ink) }
+.bar { height: 44px; background: var(--text) }
 `;
 const page = (title, body, notes = "") =>
   artboard(title, `${body}<aside>${notes}</aside>`, "1280x720 slide").replace(
@@ -176,7 +236,7 @@ test("artifacts", async ({ page: app, session, host }) => {
     });
   };
   await shot("design-system", "design/system/book.html", (_, stage) =>
-    expect(stage.getByText("µAgent design system").first()).toBeVisible(),
+    expect(stage.getByText("Even insets.")).toBeVisible(),
   );
   await shot("design", "design/side-chats/", (files) =>
     expect(

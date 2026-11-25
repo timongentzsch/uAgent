@@ -28,6 +28,14 @@ namespace uagent {
 // False for loopback, private, link-local, multicast and reserved space.
 bool PublicSocketAddress(const sockaddr* address, socklen_t length);
 
+// What a fetch does with a redirect to `next` (absolute, as libcurl resolves
+// a Location) on its `hop`th: follows it on the first address's host, never
+// to http from https nor with credentials in it, at most five times. Any
+// other address is the model's to fetch, under its own approval.
+enum class RedirectHop : uint8_t { kFollow, kElsewhere, kTooMany };
+RedirectHop NextRedirectHop(const std::string& first, const std::string& next,
+                            int hop);
+
 struct StreamCtx;
 class HttpExchange;
 
@@ -78,7 +86,9 @@ class Api : public ApiSettings {
   JsonResponse Get(const std::string& path, bool abortable = false,
                    int64_t timeout_s = 15);
   // GET of an absolute public URL: no credentials, no environment proxy, and
-  // every address resolved across redirects must be public.
+  // every address resolved across redirects must be public. A redirect off
+  // the first address's host ends the fetch with that address in
+  // `redirect`.
   WebResponse GetUrl(const std::string& url, int64_t timeout_s, size_t cap);
 
  private:

@@ -321,6 +321,13 @@ ToolResult ReadFetchedPage(const std::string& url, WebResponse page,
                                       "web_search instead of guessing a path"
                                     : ""));
   }
+  // Another host is another approval: the model fetches it itself.
+  if (!page.redirect.empty()) {
+    return ToolSuccess(TerminalSafe(url) + " redirects to " +
+                       TerminalSafe(page.redirect) +
+                       " on another host or scheme; fetch that address to "
+                       "read it.");
+  }
   // A PDF goes to the model as a document, as an attached file does;
   // a route that cannot read one gets its path.
   if (!page.truncated && page.body.starts_with("%PDF-")) {

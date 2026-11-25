@@ -3,6 +3,24 @@
    unlayered too, above all of them. */
 @layer vendor, tokens, base, primitives;
 
+/* The Latin subset only: other scripts fall back to the system face. */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: block;
+  src: url("@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2")
+    format("woff2-variations");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: italic;
+  font-weight: 100 800;
+  font-display: block;
+  src: url("@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-italic.woff2")
+    format("woff2-variations");
+}
+
 @layer tokens {
   :root {
     /* Image markup: one colour that reads on any screenshot, in any theme. */
@@ -98,6 +116,8 @@
        from the edge of the screen. */
     --inset-x: var(--space-4);
     /* 12px, so no text is smaller. */
+    /* The terminal's grid keeps the system face: its box-drawing joins. */
+    --font-system: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     --font-small: calc(12rem / 14);
     --font-code: 0.92em;
     /* 16px: a smaller field makes iOS zoom the page when it is focused. */

@@ -53,6 +53,7 @@
 .terminal-view {
   flex: 1;
   min-height: 0;
+  font-family: var(--font-system);
   font-size: var(--font-small);
 }
 .terminal-view .xterm {

@@ -88,9 +88,7 @@ repository path in a code span is tracked. Generated pages are skipped.
 `tests/fixtures/` holds the provider route contract, saved sessions, the
 stand-in Chrome and Xvnc (`browser_runtime.py`) and an SSH relay;
 `tests/package_contents.py` validates a release archive and its bundled skill
-tree; `tests/reviewer_eval/` holds labelled tool calls for the approval
-reviewer (`run.py` checks a model by hand with an API key, with the questions
-the build embeds from `src/app/`).
+tree.
 
 ### Selecting cases
 
@@ -201,10 +199,22 @@ including action admission and management flows. A failed test is not retried.
 Four workers run locally and two in CI. Traces and screenshots of failures are
 kept in `web/test-results`.
 
-The GIFs under `docs/images/` come from `web/recordings/*.rec.js`,
-Playwright scripts against the same fixture host: `npm run record` (with
-`UAGENT_TEST_BINARY` and ffmpeg) films them all, `npm run record -- files`
-one.
+The README cover, the two diagrams, the
+[slide workspace screenshot](images/workspace.png) and the
+terminal-and-phone recording use Playwright against the fixture host. From
+`web/`, set `UAGENT_TEST_BINARY` to a built native binary.
+
+| Run | Writes |
+| --- | --- |
+| `npm run record -- cover` | `docs/images/cover.png`, `how-it-works.png` and `remote-execution.png`: stills laid out by the pages in `web/recordings/figures/` |
+| `npm run record -- files` | the slide workspace screenshot |
+| `npm run record -- terminal` | the GIF; requires ffmpeg |
+
+The cover's remote host and model catalogue are scripted in the recording.
+Its Chrome frame is `docs/images/browser-sign-in.png`, since the fixture
+host has no browser service: the Browser pane of the container appliance
+after **Take over**, on GitHub's sign-in page, with one placeholder login
+saved in the profile.
 
 ## Behavioral evaluation
 
@@ -214,9 +224,7 @@ provider and the checks that define a good run (answer, files read, forbidden
 tools, model rounds, batch width, deduplication, cumulative request and result
 size, folder immutability). Results are compared with
 `benchmarks/baselines/hermetic.json`. `benchmarks/run_trace.py` holds the run
-timing and trace aggregation the eval and `memory_quality.py` share.
-The [benchmark snapshot](../benchmarks/README.md#current-measurements) records
-dated package sizes and local CPU samples.
+timing and trace aggregation.
 
 ```sh
 python3 benchmarks/eval.py build/debug/uagent --check

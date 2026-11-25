@@ -86,7 +86,8 @@ and stops agent actions (`acquire` answers `Waiting for browser handback`).
 until the person sends `done`; only the controlling device can. Closing the
 viewer hands control back unless a request or a profile sign-in is
 pending. `setup_profile` restarts Chrome without the debugging pipe for a
-manual sign-in; `done` restarts it with the pipe. Profile changes need
+manual sign-in to Chrome itself, after which Chrome's own sync can fill the
+profile with the account's saved logins; `done` restarts it with the pipe. Profile changes need
 control or a stopped Chrome.
 
 **Viewer.** `/api/browser/viewer?instance_id=N` ([Web host](web-host.md))

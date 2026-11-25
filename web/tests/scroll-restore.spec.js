@@ -1,12 +1,16 @@
 // Returning to a session restores the saved position unfollowed. Seeded
 // histories keep this deterministic: no streaming or backend timing.
-import { connected, test, expect, leaveEnd, saveHistory } from "./fixtures.js";
+import {
+  connected,
+  fillerHistory,
+  test,
+  expect,
+  leaveEnd,
+  saveHistory,
+} from "./fixtures.js";
 
 function seed(host, file, id, title) {
-  const messages = Array.from({ length: 60 }, (_, index) => ({
-    role: index % 2 ? "assistant" : "user",
-    content: `Seeded ${id} message ${index}. ` + "Filler text here. ".repeat(8),
-  }));
+  const messages = fillerHistory(`Seeded ${id}`);
   return saveHistory(host, file, { id, title, turns: 30, messages });
 }
 

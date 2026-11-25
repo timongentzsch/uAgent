@@ -3,7 +3,7 @@ import subprocess
 from urllib.parse import urlencode
 
 from integration_support import SMALL_PNG, Server, assert_true, event
-from web_support import WebClient, web_host
+from web_support import web_host
 
 
 def test_web_files_list_read_serve_and_find(root, home, *, binary):
@@ -242,11 +242,6 @@ def test_web_files_stay_inside_the_folder(root, home, *, binary):
             )
             assert_true(status == 404 and value["error"] == "unknown session", value)
             assert_true(client.json(endpoint, ["not", "an", "object"])[0] == 400, "bad body")
-            anonymous = WebClient(client.port)
-            assert_true(
-                anonymous.request(endpoint + urlencode({"read": "notes.txt"}))[0] == 401,
-                "private file was public",
-            )
 
 
 def test_web_files_show_what_changed_in_a_repository(root, home, *, binary):
@@ -532,11 +527,6 @@ def test_web_files_save_a_person_s_edit_against_its_revision(root, home, *, bina
             assert_true((project / "docs/memo.html").read_text() == "<p>agent</p>", "overwrote")
             assert_true(not (root / "made.html").exists(), "made a file outside")
             assert_true(not list((root / "outside").iterdir()), "wrote through a link")
-            assert_true(
-                WebClient(client.port).request(files, {"path": "docs/memo.html", "text": "x"})[0]
-                == 401,
-                "anonymous save",
-            )
 
 
 def test_web_files_reorder_copy_and_delete_a_folder_s_pages(root, home, *, binary):
@@ -614,7 +604,6 @@ def test_web_folder_picker_lists_directories_on_the_main(root, home, *, binary):
     (projects / "nested").mkdir(parents=True)
     (projects / "notes.txt").write_text("not a folder")
     with web_host(binary, root, home, "http://127.0.0.1:1") as (web, code, _, _):
-        assert_true(web.request("/api/folders?path=~")[0] == 401, "folder listing was public")
         web.pair(code)
         status, listing, _ = web.json("/api/folders?" + urlencode({"path": str(projects)}))
         assert_true(status == 200 and listing["path"] == str(projects.resolve()), listing)

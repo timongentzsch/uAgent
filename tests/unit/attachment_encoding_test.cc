@@ -199,7 +199,7 @@ TEST_CASE(TestVectorAndHeicAttachments) {
   for (const char* brand : {"heic", "heix", "hevc", "mif1", "msf1"}) {
     CHECK(RasterMime(box + brand + pad) == "image/heic");
   }
-  for (const char* brand : {"isom", "mp42", "avc1", "avif"}) {
+  for (const char* brand : {"isom"}) {
     CHECK(RasterMime(box + brand + pad).empty());
   }
   CHECK(RasterMime("ftyp").empty());

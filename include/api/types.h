@@ -94,6 +94,7 @@ struct WebResponse {
   bool truncated = false;  // the byte cap stopped the transfer
   std::string error;
   std::string effective_url;
+  std::string redirect;
 };
 
 struct ToolCall {

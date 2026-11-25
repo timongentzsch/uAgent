@@ -121,6 +121,3 @@
   max-height: var(--pane-s);
   overflow: auto;
 }
-.mcp-detail > .row {
-  padding-inline: 0;
-}

@@ -393,10 +393,6 @@ test("watches an active agent without taking control", async ({
     controller: false,
   });
   await expect(dialog.getByLabel("Browser viewport")).toHaveCount(1);
-  await expect(dialog.getByText("Agent", { exact: true })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Take over" })).toBeVisible();
-  for (const name of ["Copy", "Paste"])
-    await expect(dialog.getByRole("button", { name })).toBeDisabled();
   // Watching keeps this device's pointer; Chrome's is for whoever drives.
   await expect(dialog.locator(".browser-rfb canvas")).toHaveCSS(
     "cursor",

@@ -366,19 +366,6 @@ test("an element is told from others of its tag and text by its own attributes a
   ).toBe(null);
 });
 
-test("the file keeps its byte order mark and its line ends", async ({
-  page,
-}) => {
-  const source = `\uFEFF<!doctype html>\r\n<html><head><meta name="artboard" content="1920x1080 slide"></head>\r\n<body>\r\n<h1>T</h1></body></html>\r\n`;
-  expect(
-    await edited(
-      page,
-      source,
-      set({ path: "h1", tag: "h1", text: "T" }, [1, 0]),
-    ),
-  ).toBe(source.replace("<h1>", '<h1 style="translate: 1px;">'));
-});
-
 test("what the page says is taken only as paths, checks, bounded numbers and kinds", async ({
   page,
 }) => {

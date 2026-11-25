@@ -1,6 +1,7 @@
 // Screens that move: sliding conversations, pull-to-close sheets and the edge
 // drawer. Touches are dispatched through Chromium's input protocol.
 import {
+  fillerHistory,
   test,
   expect,
   headerAction,
@@ -39,11 +40,6 @@ const spyOnTransitions = () => {
     };
 };
 
-const messages = (id) =>
-  Array.from({ length: 60 }, (_, index) => ({
-    role: index % 2 ? "assistant" : "user",
-    content: `${id} message ${index}. ` + "Filler text here. ".repeat(8),
-  }));
 // Saves conversations by title and returns their ids once the host lists them.
 async function seed(host, request, titles) {
   for (const [title, content] of Object.entries(titles))
@@ -51,7 +47,7 @@ async function seed(host, request, titles) {
       id: title,
       title,
       turns: 30,
-      messages: content || messages(title),
+      messages: content || fillerHistory(title),
     });
   const { sessions } = await (
     await request.get("/api/sessions?refresh=1")

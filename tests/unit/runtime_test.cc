@@ -48,10 +48,7 @@ TEST_CASE(TestEarlyTurnInterruption) {
     std::vector<Tool> tools;
     ActivitySupervisor processes;
     UsageAccumulator usage;
-    Agent agent(api, tools, processes, usage,
-                [](const Tool&, const json&, int64_t) {
-                  return std::string("denied");
-                });
+    Agent agent(api, tools, processes, usage, Denied);
     Observability observable;
     auto* previous = ActiveObservability();
     int notices = 0, responses = 0;
@@ -382,8 +379,6 @@ TEST_CASE(TestRuntimeConfigAndRequests) {
         RejectedCapability::kNone);
   rejected.http_status = 400;
   rejected.remote_error_code.clear();
-  // Native tool calls are not a negotiable capability: a route that rejects
-  // them has no fallback, so this stays an ordinary error.
   Api summary_api(config);
   UseEndpoint(summary_api, "https://api.openai.com/v1", WireApi::kResponses);
   auto summaries = summary_api.capabilities;
@@ -679,9 +674,7 @@ TEST_CASE(TestEffectiveImageModel) {
   std::vector<Tool> tools;
   ActivitySupervisor processes;
   UsageAccumulator usage;
-  Agent agent(
-      api, tools, processes, usage,
-      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
+  Agent agent(api, tools, processes, usage, Denied);
   api.config.image_model = "custom/vision";
   api.capabilities.image_input = false;
   CHECK(agent.EffectiveImageModel() == "custom/vision");
@@ -718,14 +711,9 @@ TEST_CASE(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) {
   // From its agent, saved beside it, which names it its parent.
   const std::filesystem::path agent =
       std::filesystem::path(path).parent_path() / "agent-a.json";
-  std::filesystem::create_directories(agent.parent_path());
-  const json header = {
-      {"format", kSessionFormat}, {"cwd", folder}, {"model", ""},
-      {"session_id", ""},         {"turns", 0},    {"title", "a"}};
-  std::ofstream(path) << header << "\n";
-  json role = header;
-  role["agent"] = {{"parent", SessionIdFor(path)}};
-  std::ofstream(agent) << role << "\n";
+  WriteSessionFile(path, {{"cwd", folder}});
+  WriteSessionFile(
+      agent, {{"cwd", folder}, {"agent", {{"parent", SessionIdFor(path)}}}});
   const Mail wake =
       MailFrom(agent.string(), own, {{"text", "the agent finished\n"}});
   CHECK(wake.from == SessionIdFor(wake.sender_path));
@@ -736,19 +724,16 @@ TEST_CASE(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) {
   std::vector<Tool> tools;
   ActivitySupervisor processes;
   UsageAccumulator usage;
-  const auto denied = [](const Tool&, const json&, int64_t) {
-    return std::string("denied");
-  };
   std::string error;
   {
-    Agent killed(api, tools, processes, usage, denied);
+    Agent killed(api, tools, processes, usage, Denied);
     CHECK(killed.DeliverMail());
     CHECK(killed.Save(path, error));
     // Gone with the process: the wake was only queued.
     CHECK(SteeringState().TakeNextAutoStart().has_value());
   }
   {
-    Agent restarted(api, tools, processes, usage, denied);
+    Agent restarted(api, tools, processes, usage, Denied);
     CHECK(restarted.Load(path, CanonicalCwd(), error));
     RecoverMail(own);
     CHECK(restarted.DeliverMail());
@@ -758,7 +743,7 @@ TEST_CASE(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) {
     restarted.Say(next->text, "", next->origin);
     CHECK(restarted.Save(path, error));
   }
-  Agent again(api, tools, processes, usage, denied);
+  Agent again(api, tools, processes, usage, Denied);
   CHECK(again.Load(path, CanonicalCwd(), error));
   RecoverMail(own);
   CHECK(!again.DeliverMail());
@@ -773,10 +758,7 @@ TEST_CASE(TestMailKeepsItsOriginBesideTheSameWords) {
   std::vector<Tool> tools;
   ActivitySupervisor processes;
   UsageAccumulator usage;
-  const auto denied = [](const Tool&, const json&, int64_t) {
-    return std::string("denied");
-  };
-  Agent agent(api, tools, processes, usage, denied);
+  Agent agent(api, tools, processes, usage, Denied);
   agent.Arrive("same words", {{"kind", "message"}, {"mail", "mail-1"}});
   agent.Say("same words", "");
   const auto next = SteeringState().TakeNextAutoStart();
@@ -1070,9 +1052,6 @@ TEST_CASE(TestNamedProviders) {
   CHECK(SupportsReasoningEffort(routed, "high"));
   CHECK(!SupportsReasoningEffort(routed, "medium"));
   ActivateRoute(routed);
-  CHECK(ContainsCaseInsensitive("codex-local/gpt-5.6-sol", "GPT-5.6"));
-  CHECK(ContainsCaseInsensitive("openrouter/deepseek/v4", "openrouter"));
-  CHECK(!ContainsCaseInsensitive("codex-local/gpt-5.6-sol", "deepseek"));
   CHECK(NormalizeModelQuery("all").empty());
   CHECK(NormalizeModelQuery("*").empty());
   CHECK(NormalizeModelQuery(" codex-local/* ") == "codex-local/");

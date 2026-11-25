@@ -11,9 +11,11 @@
 #include "include/agent/activity.h"
 #include "include/agent/edit_journal.h"
 #include "include/agent/path_policy.h"
+#include "include/app/workspace_files.h"
 #include "include/cli/options.h"
 #include "include/core/config.h"
 #include "include/core/env.h"
+#include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"
@@ -334,12 +336,10 @@ TEST_CASE(TestFileTools) {
   CHECK(ToolEditFile(batch.string(), {{"same", "other", false}})
             .output.find("matches 2 times") != std::string::npos);
   CHECK(contents(batch) == "same same\n");
-  CHECK(ToolEditFile(batch.string(), {{"same", "changed", true},
-                                      {"missing", "never written", false}})
-            .output.find("edit 2 `old` not found") != std::string::npos);
-  CHECK(contents(batch) == "same same\n");
   ToolResult rolled_back = ToolEditFile(
       batch.string(), {{"same", "changed", true}, {"missing", "never", false}});
+  CHECK(rolled_back.output.find("edit 2 `old` not found") != std::string::npos);
+  CHECK(contents(batch) == "same same\n");
   CHECK(rolled_back.output.find("applied=false") != std::string::npos);
   CHECK(rolled_back.output.find("1: same same") != std::string::npos);
   CHECK(rolled_back.output.find("1: changed changed") == std::string::npos);
@@ -607,7 +607,6 @@ TEST_CASE(TestFileTools) {
   fs::remove_all(root, ec);
   fs::remove_all(external, ec);
 
-  // A directory is refused by the path policy, not by remove().
   fs::path doomed = root / "doomed.txt";
   CHECK(ToolWriteFile(doomed.string(), "alpha\nbeta\n").Ok());
   ToolResult deleted = ToolDeleteFileWithDisplay(doomed.string());
@@ -619,6 +618,7 @@ TEST_CASE(TestFileTools) {
   ToolResult twice = ToolDeleteFileWithDisplay(doomed.string());
   CHECK(!twice.Ok());
   CHECK(twice.error == ToolErrorCode::kNotFound);
+  // A directory is refused by the path policy, not by remove().
   fs::path guarded = root / "not-a-file";
   fs::create_directories(guarded);
   CHECK(!ToolDeleteFileWithDisplay(guarded.string()).Ok());
@@ -637,8 +637,6 @@ TEST_CASE(TestFileTools) {
   CHECK(FileIdentity(binary.string()) != first);
 }
 
-// Two changes to one file in a turn keep the bytes from before the first; an
-// undo restores them only while the file still holds what the turn left.
 TEST_CASE(TestPatch) {
   std::string error;
   const std::vector<ToolPart> calls = ParsePatch(
@@ -859,6 +857,44 @@ TEST_CASE(TestTerminalSafety) {
   CHECK(SafeFileComponent("../../escape") == "______escape");
   CHECK(FirstLine(std::string(200, 'x')).size() == 200);
   CHECK(FirstLine("first\nsecond") == "first");
+}
+
+// A writer between its read and its replace holds the folder: a save made
+// meanwhile reads what it wrote, and is refused rather than written over it.
+TEST_CASE(TestSaveWaitsForAWriterInItsWindow) {
+  TestWorkspace workspace("save-lock");
+  const std::filesystem::path file = workspace.workspace / "notes.txt";
+  WriteFile(file, "base\n");
+  const std::string revision = DocumentRevision(file.string(), "base\n");
+  int ready[2], go[2];
+  REQUIRE(pipe(ready) == 0 && pipe(go) == 0);
+  const pid_t writer = fork();
+  if (writer == 0) {
+    const FolderLock lock(file);
+    char byte = 0;
+    if (write(ready[1], "r", 1) != 1 || read(go[0], &byte, 1) != 1) _exit(1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::string error;
+    _exit(AtomicWriteFile(file.string(), "agent\n", 0644, true, error) ? 0 : 1);
+  }
+  char byte = 0;
+  REQUIRE(read(ready[0], &byte, 1) == 1);
+  json saved;
+  std::thread person([&] {
+    saved =
+        workspace_files::Request(workspace.workspace, {{"mode", "write"},
+                                                       {"path", "notes.txt"},
+                                                       {"text", "person\n"},
+                                                       {"revision", revision}});
+  });
+  REQUIRE(write(go[1], "g", 1) == 1);
+  person.join();
+  int status = 0;
+  waitpid(writer, &status, 0);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+  CHECK(JsonValue(saved, "conflict", false));
+  CHECK(ReadFile(file.string(), 64).value_or("") == "agent\n");
+  for (int fd : {ready[0], ready[1], go[0], go[1]}) close(fd);
 }
 
 }  // namespace uagent

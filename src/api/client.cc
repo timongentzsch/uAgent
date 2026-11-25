@@ -514,57 +514,85 @@ JsonResponse Api::Get(const std::string& path, bool abortable,
   return Fetch(path, nullptr, timeout_s, abortable);
 }
 
+RedirectHop NextRedirectHop(const std::string& first, const std::string& next,
+                            int hop) {
+  if (hop > 5) return RedirectHop::kTooMany;
+  const auto scheme = [](const std::string& url) {
+    return AsciiLower(url.substr(0, url.find("://")));
+  };
+  const size_t authority = next.find("://") + 3;
+  const std::string host =
+      next.substr(authority, next.find_first_of("/?#", authority) - authority);
+  const bool downgrade = scheme(first) == "https" && scheme(next) == "http";
+  return downgrade || host.find('@') != std::string::npos ||
+                 UrlHost(next) != UrlHost(first)
+             ? RedirectHop::kElsewhere
+             : RedirectHop::kFollow;
+}
+
 WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
   WebResponse result;
-  CURL* h = Prepare(url);
-  if (!h) {
-    result.error = kCurlInitFailed;
-    return result;
+  std::string at = url;
+  for (int hop = 1;; ++hop) {
+    result = {};
+    CURL* h = Prepare(at);
+    if (!h) {
+      result.error = kCurlInitFailed;
+      return result;
+    }
+    SizedBuffer out;
+    out.cap = cap;
+    CurlHeaders headers;
+    // Identify honestly; many origins reject libcurl's default agent outright.
+    if (!headers.Add(std::string("User-Agent: uagent/") + kVersion)) {
+      result.error = kHeaderAllocationFailed;
+      return result;
+    }
+    SetAbortable(h);
+    // The callback validates every address libcurl connects to, so DNS
+    // rebinding cannot leave the public network. Proxies are off: one could
+    // connect where this process never gets to inspect.
+    PublicSocketPolicy socket_policy;
+    curl_easy_setopt(h, CURLOPT_PROXY, "");
+    curl_easy_setopt(h, CURLOPT_OPENSOCKETFUNCTION, OpenPublicSocket);
+    curl_easy_setopt(h, CURLOPT_OPENSOCKETDATA, &socket_policy);
+    CURLcode rc = RunTransfer(multi_, h, headers.Get(), out, timeout_s,
+                              /*abortable=*/true, result.http_status);
+    char* type = nullptr;
+    if (curl_easy_getinfo(h, CURLINFO_CONTENT_TYPE, &type) == CURLE_OK &&
+        type) {
+      result.content_type = AsciiLower(type);
+    }
+    result.effective_url = at;
+    result.body = std::move(out.data);
+    result.truncated = out.exceeded;
+    // Hitting the cap aborts the transfer, so libcurl reports a write error;
+    // the bytes stand as a partial answer unless a real HTTP failure wins.
+    if (rc != CURLE_OK && socket_policy.denied) {
+      result.error = "refused non-public network destination";
+    } else if (rc != CURLE_OK && !out.exceeded) {
+      result.error = ConnectionError(rc);
+    } else if (result.http_status >= 400) {
+      result.error = HttpStatusError(result.http_status);
+    }
+    char* location = nullptr;
+    if (!result.error.empty() ||
+        curl_easy_getinfo(h, CURLINFO_REDIRECT_URL, &location) != CURLE_OK ||
+        !location) {
+      return result;
+    }
+    switch (NextRedirectHop(url, location, hop)) {
+      case RedirectHop::kFollow:
+        at = location;
+        continue;
+      case RedirectHop::kElsewhere:
+        result.redirect = location;
+        return result;
+      case RedirectHop::kTooMany:
+        result.error = "followed 5 redirects without reaching a page";
+        return result;
+    }
   }
-  SizedBuffer out;
-  out.cap = cap;
-  CurlHeaders headers;
-  // Identify honestly; many origins reject libcurl's default agent outright.
-  if (!headers.Add(std::string("User-Agent: uagent/") + kVersion)) {
-    result.error = kHeaderAllocationFailed;
-    return result;
-  }
-  SetAbortable(h);
-  // The callback validates every address libcurl connects to, redirects
-  // included, so DNS rebinding cannot leave the public network. Proxies are
-  // off: one could connect where this process never gets to inspect.
-  PublicSocketPolicy socket_policy;
-  curl_easy_setopt(h, CURLOPT_PROXY, "");
-  curl_easy_setopt(h, CURLOPT_OPENSOCKETFUNCTION, OpenPublicSocket);
-  curl_easy_setopt(h, CURLOPT_OPENSOCKETDATA, &socket_policy);
-  // Unlike an API call, this request carries no credential to leak, and a
-  // canonical URL is usually a redirect away.
-  curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
-  curl_easy_setopt(h, CURLOPT_MAXREDIRS, 5L);
-  CURLcode rc = RunTransfer(multi_, h, headers.Get(), out, timeout_s,
-                            /*abortable=*/true, result.http_status);
-  char* type = nullptr;
-  if (curl_easy_getinfo(h, CURLINFO_CONTENT_TYPE, &type) == CURLE_OK && type) {
-    result.content_type = AsciiLower(type);
-  }
-  char* effective_url = nullptr;
-  if (curl_easy_getinfo(h, CURLINFO_EFFECTIVE_URL, &effective_url) ==
-          CURLE_OK &&
-      effective_url) {
-    result.effective_url = effective_url;
-  }
-  result.body = std::move(out.data);
-  result.truncated = out.exceeded;
-  // Hitting the cap aborts the transfer, so libcurl reports a write error;
-  // the bytes stand as a partial answer unless a real HTTP failure wins.
-  if (rc != CURLE_OK && socket_policy.denied) {
-    result.error = "refused non-public network destination";
-  } else if (rc != CURLE_OK && !out.exceeded) {
-    result.error = ConnectionError(rc);
-  } else if (result.http_status >= 400) {
-    result.error = HttpStatusError(result.http_status);
-  }
-  return result;
 }
 
 ChatResult Api::PerformChat(const std::string& payload, int64_t timeout_s,

@@ -42,28 +42,11 @@ std::string RenderMarkdown(const std::string& markdown) {
   return RenderMarkdownChunks({markdown});
 }
 
-// Render at a known width. Both standard descriptors are redirected so the
-// TIOCGWINSZ probe fails and COLUMNS decides the layout.
+// Render at a known width.
 std::string RenderMarkdownColumns(const std::string& markdown,
                                   int64_t columns) {
-  const char* prior = getenv("COLUMNS");
-  const std::string saved_columns = prior ? prior : "";
-  setenv("COLUMNS", std::to_string(columns).c_str(), 1);
-  int saved_stdin = dup(STDIN_FILENO);
-  FILE* empty = tmpfile();
-  if (empty) dup2(fileno(empty), STDIN_FILENO);
-  std::string output = RenderMarkdown(markdown);
-  if (saved_stdin >= 0) {
-    dup2(saved_stdin, STDIN_FILENO);
-    close(saved_stdin);
-  }
-  if (empty) fclose(empty);
-  if (prior) {
-    setenv("COLUMNS", saved_columns.c_str(), 1);
-  } else {
-    unsetenv("COLUMNS");
-  }
-  return output;
+  FixedWidth width(static_cast<int>(columns));
+  return RenderMarkdown(markdown);
 }
 
 // A table header is reprinted by erasing the rendered rows it occupies:
@@ -397,15 +380,11 @@ TEST_CASE(TestCommandAndDisplayRegistries) {
   ParsedSlashCommand command = ParseSlashCommand("/model vendor/model");
   CHECK(command.spec && command.spec->id == SlashCommandId::kModel);
   CHECK(command.argument == "vendor/model");
-  command = ParseSlashCommand("/variant nitro");
-  CHECK(!command.spec);
   command = ParseSlashCommand("/detail full");
   CHECK(command.spec && command.spec->id == SlashCommandId::kDetail);
   CHECK(command.argument == "full");
   command = ParseSlashCommand("/context");
   CHECK(command.spec && command.spec->id == SlashCommandId::kContext);
-  CHECK(!ParseSlashCommand("/ctx").spec);
-  CHECK(!ParseSlashCommand("/recap").spec);
   command = ParseSlashCommand("/memory");
   CHECK(command.spec && command.spec->id == SlashCommandId::kMemory);
   command = ParseSlashCommand("/ps");
@@ -415,7 +394,6 @@ TEST_CASE(TestCommandAndDisplayRegistries) {
   // A local view, not a turn: /agents answers without asking the model.
   CHECK(SlashCommandPrompt(command).empty());
   CHECK(!ParseSlashCommand("/unknown").spec);
-  CHECK(!ParseSlashCommand("/resume").spec);
 
   CHECK(SlashCommandPrompt(ParseSlashCommand("/init")).find("AGENTS.md") !=
         std::string::npos);

@@ -1391,15 +1391,9 @@ TEST_CASE(TestChildSessionsStayOutOfTheCatalogue) {
   TestWorkspace workspace("child-sessions");
   const fs::path dir = fs::path(UagentDir(kHistoryDir));
   fs::create_directories(dir);
-  auto write = [&](const std::string& id, const json& extra) {
-    json header = {{"format", kSessionFormat},
-                   {"cwd", CanonicalCwd()},
-                   {"model", "m"},
-                   {"session_id", id},
-                   {"turns", 1},
-                   {"title", id}};
-    header.update(extra);
-    std::ofstream(dir / (id + ".json")) << JsonDump(header) << "\n{}\n";
+  auto write = [&](const std::string& id, json extra) {
+    extra["cwd"] = CanonicalCwd();
+    WriteSessionFile(dir / (id + ".json"), extra);
   };
   write("ordinary", json::object());
   write("agent-aaaa1111",
@@ -1432,12 +1426,7 @@ TEST_CASE(TestAFolderHoldsWhatWorksInItAndTheAgentsUnderIt) {
   const fs::path dir = fs::path(UagentDir(kHistoryDir));
   fs::create_directories(dir);
   auto write = [&](const std::string& name, const json& extra) {
-    json header = {
-        {"format", kSessionFormat}, {"cwd", "/project"}, {"model", "m"},
-        {"session_id", name},       {"turns", 1},        {"title", name}};
-    header.update(extra);
-    std::ofstream(dir / (name + ".json")) << JsonDump(header) << "\n{}\n";
-    return (dir / (name + ".json")).string();
+    return WriteSessionFile(dir / (name + ".json"), extra);
   };
   // The id is the file's name: the folder it is kept in does not count.
   CHECK(SessionIdFor("/a/lead.json") == SessionIdFor("/b/lead.json"));
@@ -1493,17 +1482,8 @@ TEST_CASE(TestAParentChainThatLoopsEnds) {
   const fs::path dir = fs::path(UagentDir(kHistoryDir));
   fs::create_directories(dir);
   auto write = [&](const std::string& name, const std::string& parent) {
-    const std::string path = (dir / (name + ".json")).string();
-    std::ofstream(path) << JsonDump(
-                               {{"format", kSessionFormat},
-                                {"cwd", "/project"},
-                                {"model", "m"},
-                                {"session_id", name},
-                                {"turns", 1},
-                                {"title", name},
-                                {kSessionHeaderAgent, {{"parent", parent}}}})
-                        << "\n{}\n";
-    return path;
+    return WriteSessionFile(dir / (name + ".json"),
+                            {{kSessionHeaderAgent, {{"parent", parent}}}});
   };
   const std::string self =
       write("agent-self", SessionIdFor((dir / "agent-self.json").string()));
@@ -1528,17 +1508,8 @@ TEST_CASE(TestAnAgentUnderAnUnreadableParentIsItsOwnTop) {
   const std::string broken = (dir / "broken.json").string();
   std::ofstream(broken) << "{not a header\n{}\n";
   auto write = [&](const std::string& name, const std::string& parent) {
-    const std::string path = (dir / (name + ".json")).string();
-    std::ofstream(path) << JsonDump(
-                               {{"format", kSessionFormat},
-                                {"cwd", "/project"},
-                                {"model", "m"},
-                                {"session_id", name},
-                                {"turns", 1},
-                                {"title", name},
-                                {kSessionHeaderAgent, {{"parent", parent}}}})
-                        << "\n{}\n";
-    return path;
+    return WriteSessionFile(dir / (name + ".json"),
+                            {{kSessionHeaderAgent, {{"parent", parent}}}});
   };
   const std::string agent = write("agent-orphan", SessionIdFor(broken));
   const std::string child = write("agent-child", SessionIdFor(agent));
@@ -1645,17 +1616,11 @@ TEST_CASE(TestSessionMail) {
   TestWorkspace workspace("session-mail");
   const fs::path dir = workspace.workspace;
   auto save = [&](const fs::path& file, const std::string& parent = "") {
-    json header = {{"format", kSessionFormat},
-                   {"cwd", CanonicalCwd()},
-                   {"model", ""},
-                   {"session_id", ""},
-                   {"turns", 0},
-                   {"title", "T"}};
+    json fields = {{"cwd", CanonicalCwd()}, {"title", "T"}};
     if (!parent.empty()) {
-      header[kSessionHeaderAgent] = {{"parent", SessionIdFor(parent)}};
+      fields[kSessionHeaderAgent] = {{"parent", SessionIdFor(parent)}};
     }
-    std::ofstream(file) << header << "\n";
-    return file.string();
+    return WriteSessionFile(file, fields);
   };
   const std::string parent = save(dir / "parent.json");
   const std::string child = save(dir / "child.json", parent);
@@ -1682,16 +1647,9 @@ TEST_CASE(TestSessionMail) {
   // A fork reports to the conversation it branched from, and writes it
   // nothing else; nobody else's report goes there.
   auto named = [&](const char* file, const char* id, const char* source) {
-    const std::string path = (dir / file).string();
-    std::ofstream(path) << json{{"format", kSessionFormat},
-                                {"cwd", CanonicalCwd()},
-                                {"model", ""},
-                                {"session_id", id},
-                                {"turns", 0},
-                                {"title", "T"},
-                                {kSessionHeaderParent, source}}
-                        << "\n";
-    return path;
+    return WriteSessionFile(dir / file, {{"cwd", CanonicalCwd()},
+                                         {"session_id", id},
+                                         {kSessionHeaderParent, source}});
   };
   const std::string origin = named("origin.json", "origin-id", "");
   const std::string fork = named("fork.json", "fork-id", "origin-id");

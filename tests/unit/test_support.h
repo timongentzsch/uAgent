@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_store.h"
 #include "include/api/client.h"
 #include "include/core/fs.h"
 #include "include/core/settings_store.h"
@@ -77,6 +78,24 @@ inline void WriteFile(const std::filesystem::path& path,
                       const std::string& text) {
   std::filesystem::create_directories(path.parent_path());
   std::ofstream(path, std::ios::binary) << text;
+}
+
+// An approval answer that refuses every call.
+inline std::string Denied(const Tool&, const json&, int64_t) {
+  return "denied";
+}
+
+// Saves a conversation: `fields` over the least header one has, and an empty
+// state. Returns its path.
+inline std::string WriteSessionFile(const std::filesystem::path& path,
+                                    const json& fields = json::object()) {
+  const std::string name = path.stem().string();
+  json header = {
+      {"format", kSessionFormat}, {"cwd", "/project"}, {"model", "m"},
+      {"session_id", name},       {"turns", 1},        {"title", name}};
+  header.update(fields);
+  WriteFile(path, JsonDump(header) + "\n{}\n");
+  return path.string();
 }
 
 class TestWorkspace {

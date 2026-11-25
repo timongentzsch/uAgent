@@ -119,6 +119,7 @@ struct InteractionRequest {
   std::string description = "";
   json options = json::array();
   json questions = nullptr;    // kind "ask": what the ask tool puts to them
+  json elicitation = nullptr;  // kind "elicit": what an MCP server asks
   json files = json::array();  // shared files it is about (FilePart)
 };
 

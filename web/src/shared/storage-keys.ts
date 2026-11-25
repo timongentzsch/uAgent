@@ -10,7 +10,6 @@ export const storageKeys = {
   // The remote hosts last listed, shown disconnected until the host answers.
   hosts: "uagent-hosts",
   page: "uagent-page",
-  drafts: "uagent-drafts", // Legacy map; each chat now has its own key below.
   draftPrefix: "uagent-drafts:",
   outgoing: "uagent-outgoing",
   read: "uagent-read",
@@ -37,6 +36,22 @@ export const storageKeys = {
   // Places of the sidebar's list remembered by path, e.g. folded ones.
   places: (name: string) => `uagent.sidebar.${name}`,
 };
+
+// The keys holding the host's data besides the catalogue, drafts and
+// outgoing rows: signing out removes every key they start. Appearance and
+// layout stay.
+export const hostDataKeys = [
+  storageKeys.hosts,
+  storageKeys.read,
+  storageKeys.unread,
+  storageKeys.browser,
+  storageKeys.sideTabs,
+  storageKeys.bookmarks,
+  storageKeys.scheduledDraft,
+  storageKeys.filesAt,
+  "uagent-library-",
+  storageKeys.places(""),
+];
 
 // Local keeps its existing keys; remote content is qualified by its owner.
 export const hostStorageKey = (key: string, host: string) =>

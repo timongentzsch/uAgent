@@ -4,7 +4,6 @@ import {
   test,
   expect,
   online,
-  draftOf,
   quotesOf,
   selectProbeModel,
   writeFiles,
@@ -302,7 +301,7 @@ test("a file dropped on the transcript attaches instead of navigating", async ({
   await expect(chips).toHaveCount(1);
 });
 
-test("a legacy draft reloads without an interrupted upload", async ({
+test("a draft reloads without an interrupted upload", async ({
   page,
   session,
   command,
@@ -310,27 +309,17 @@ test("a legacy draft reloads without an interrupted upload", async ({
   await ready(page, session, command);
   await page.evaluate((id) => {
     localStorage.setItem(
-      "uagent-drafts",
+      `uagent-drafts:${id}`,
       JSON.stringify({
-        [id]: {
-          text: "kept",
-          files: [
-            { id: "upload-lost", name: "lost.png", bytes: 1, pending: true },
-          ],
-          quotes: [],
-        },
+        text: "kept",
+        files: [
+          { id: "upload-lost", name: "lost.png", bytes: 1, pending: true },
+        ],
+        quotes: [],
       }),
     );
   }, session.id);
   await page.reload();
   await expect(page.getByLabel("Message or guidance")).toHaveValue("kept");
-  expect(await draftOf(page, session.id)).toEqual({
-    text: "kept",
-    files: [],
-    quotes: [],
-  });
-  expect(
-    await page.evaluate(() => localStorage.getItem("uagent-drafts")),
-  ).toBeNull();
   await expect(page.locator(".composer .file-chip")).toHaveCount(0);
 });

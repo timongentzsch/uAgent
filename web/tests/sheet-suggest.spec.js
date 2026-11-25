@@ -91,7 +91,7 @@ test("letters typed after = in a cell list the functions they name; the keys wal
   await app.keyboard.type("B2:B4),");
   await expect(hint).toHaveText("ROUND(number, num_digits)");
   await expect(hint.locator("b")).toHaveText("num_digits");
-  // With no list open Tab writes the cell and moves right, as it did.
+  // With no list open Tab writes the cell and moves right.
   await app.keyboard.type("-2)");
   await app.keyboard.press("Tab");
   await expect(cell("Costs", "D3")).toHaveText("1201");

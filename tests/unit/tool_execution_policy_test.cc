@@ -461,16 +461,9 @@ TEST_CASE(TestRemoteAgentDiffIsQuotedData) {
   const std::filesystem::path own = HistoryPath("parent");
   const std::filesystem::path agent = own.parent_path() / "agent-a.json";
   ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH", own.c_str());
-  std::filesystem::create_directories(own.parent_path());
-  const json header = {{"format", kSessionFormat},
-                       {"cwd", folder},
-                       {"host", "host"},
-                       {"model", ""},
-                       {"session_id", ""},
-                       {"turns", 0},
-                       {"title", "a"}};
-  std::ofstream(own) << header << "\n";
-  std::ofstream(agent) << header << "\n";
+  for (const auto& path : {own, agent}) {
+    WriteSessionFile(path, {{"cwd", folder}, {"host", "host"}});
+  }
   std::vector<Tool> tools;
   const Api api(RuntimeConfig{});
   AddAgentTools(tools, api, [] { return std::string(); }, {});

@@ -6,6 +6,8 @@ layers the source is built in. What happens inside a turn is in
 [Turn loop](turn-loop.md); the web host's routes are in
 [Web host](web-host.md) and [HTTP API](../interfaces/http-api.md).
 
+![Terminal, browser and phone attach to one host, which reaches model endpoints over HTTPS, remote machines over SSH and Chrome over pipes](../images/how-it-works.png)
+
 ## Responsibility
 
 One C++20 executable holds the agent runtime, the provider adapters, the tool
@@ -45,7 +47,7 @@ socket, and a `TransientBatcher` coalesces stream deltas and usage before
 they are published.
 
 The web host runs cpp-httplib with a pool that idles at 4 threads and grows
-to 37: 4 event streams (`kWebSseConnections`), 5 browser viewers
+to 41: 8 event streams (`kWebSseConnections`), 5 browser viewers
 (`kViewerInstances`), 16 terminal sockets (`kWebTerminalSockets`) and 12
 request workers. Beside the pool it runs a file-watch thread (settings,
 catalogue, presence), the scheduler thread and the notification thread, and

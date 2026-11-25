@@ -1,5 +1,10 @@
-import { stored, tabStorage, useStored } from "../shared/storage.ts";
-import { storageKeys } from "../shared/storage-keys.ts";
+import {
+  deviceStorage,
+  stored,
+  tabStorage,
+  useStored,
+} from "../shared/storage.ts";
+import { hostDataKeys, storageKeys } from "../shared/storage-keys.ts";
 import type {
   JSONValue,
   Snapshot,
@@ -171,6 +176,7 @@ export function useHost(
   const subscribed = useRef(false);
   const reading = useRef(false);
   const readCounts = useRef(kept.read.read());
+  const busy = useRef<Record<string, boolean>>({});
   const outgoingRef = useRef(outgoing);
   const localRequests = useRef(new Set<string>());
   subscribed.current = !!catalogue.capabilities.subscribed;
@@ -242,6 +248,14 @@ export function useHost(
     kept.display.write({});
     drafts.clear();
     setOutgoing([]);
+    setUnread(new Set());
+    readCounts.current = {};
+    for (const where of [deviceStorage, tabStorage])
+      for (let at = where.length - 1; at >= 0; at--) {
+        const name = where.key(at) ?? "";
+        if (hostDataKeys.some((key) => name.startsWith(key)))
+          where.removeItem(name);
+      }
     setAuthenticated(false);
     live.current = {};
     snapshots.set({});
@@ -301,6 +315,7 @@ export function useHost(
       loads.current.delete(id);
       delete live.current[id];
       delete readCounts.current[id];
+      kept.read.write(readCounts.current);
       setLoadErrors((prior) => {
         const next = { ...prior };
         delete next[id];
@@ -472,7 +487,14 @@ export function useHost(
           return;
         }
         applyEvent(event);
-        if (event.kind === "turn_status") refreshUserStyle();
+        const active = !!event.metadata?.turn_active;
+        if (
+          event.kind === "turn_status" &&
+          busy.current[event.session_id] !== active
+        ) {
+          busy.current[event.session_id] = active;
+          refreshUserStyle();
+        }
         resume.current = message.lastEventId || resume.current;
       });
     };

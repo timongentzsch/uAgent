@@ -49,7 +49,7 @@ foreach(_input IN LISTS _runtime_inputs)
 endforeach()
 string(SHA256 UAGENT_BUILD_ID "${_runtime_hashes}")
 configure_file(cmake/build_identity.cc.in build_identity.cc @ONLY)
-# The reviewer's questions are data: tests/reviewer_eval measures with them.
+# The reviewer's questions are data.
 file(READ src/app/review_questions.json UAGENT_REVIEW_QUESTIONS)
 file(READ src/app/report_questions.json UAGENT_REPORT_QUESTIONS)
 configure_file(cmake/review_questions.cc.in review_questions.cc @ONLY)
@@ -247,6 +247,7 @@ target_link_libraries(uagent_agent PUBLIC uagent_toolcore)
 add_library(
   uagent_tools
   src/mcp/discover.cc
+  src/mcp/elicit.cc
   src/mcp/invoke.cc
   src/mcp/register.cc
   src/mcp/rpc.cc

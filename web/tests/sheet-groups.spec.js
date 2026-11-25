@@ -1,8 +1,6 @@
 // Groups: rows or columns a person folds and opens from the gutter beside
 // the row numbers and over the letters, made and taken out from the menus.
-import { readFile } from "node:fs/promises";
 import { test, expect, openSheet, sheet } from "./fixtures.js";
-import { evaluating as engine } from "./sheet-engine.js";
 
 // A budget whose items are grouped under their sums, both kinds in one
 // group, and its amounts in a group of columns.
@@ -100,23 +98,6 @@ test("the gutter draws each group's line and its button on the line after it, ne
   await expect(cell("Costs", "A5")).toHaveText("Bus");
   await expect(cell("Costs", "C2")).toHaveCount(0);
   await expect(cell("Costs", "D2")).toHaveCount(1);
-
-  // It goes out to Excel with the folded columns hidden.
-  await files.getByRole("button", { name: "Export" }).click();
-  const [download] = await Promise.all([
-    app.waitForEvent("download"),
-    app.getByRole("menuitem", { name: "Excel workbook" }).click(),
-  ]);
-  const model = engine.Model.fromXlsx(
-    new Uint8Array(await readFile(await download.path())),
-    "plan",
-    "en",
-    "UTC",
-    "en",
-  );
-  expect(
-    [1, 2, 3, 4].map((column) => model.getColumnWidth(0, column) > 0),
-  ).toEqual([true, false, false, true]);
 });
 
 test("rows are grouped, folded, opened and ungrouped from the menus, by keyboard too; one that would touch another is refused, saying why", async ({

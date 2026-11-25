@@ -74,17 +74,7 @@ test("a provider is added, edited, renamed and removed in its sheet", async ({
   await expect(file).toContainText('"base_url": "https://lab.example/v1"');
   await expect(file).toContainText('"api_key": "<redacted>"');
   await expect(file).not.toContainText("sk-lab-secret");
-  if (process.env.UAGENT_SCREENSHOTS) {
-    await page.screenshot({
-      path: `${process.env.UAGENT_SCREENSHOTS}/settings-file.png`,
-    });
-  }
   await page.getByRole("button", { name: "Show the form" }).click();
-  if (process.env.UAGENT_SCREENSHOTS) {
-    await page.screenshot({
-      path: `${process.env.UAGENT_SCREENSHOTS}/settings-providers.png`,
-    });
-  }
 
   await form.getByRole("button", { name: "Edit lab", exact: true }).click();
   await sheet.getByLabel(/^Name/).fill("lab2");

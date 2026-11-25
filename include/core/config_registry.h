@@ -638,9 +638,11 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Instructions size"),
 
     registry::Named(
-        registry::Int("mcp.timeout", "UAGENT_MCP_TIMEOUT", "mcp_timeout_s", 60,
-                      1, kConfigAnyMax, ReloadPolicy::kRestartRequired, "mcp",
-                      "seconds allowed for one MCP call"),
+        registry::Int(
+            "mcp.timeout", "UAGENT_MCP_TIMEOUT", "mcp_timeout_s", 60, 1,
+            kConfigAnyMax, ReloadPolicy::kRestartRequired, "mcp",
+            "seconds an MCP server has for each request, except the retry "
+            "after an accepted link"),
         "MCP call timeout"),
     registry::Named(
         registry::Int("mcp.maxServers", "UAGENT_MCP_MAX_SERVERS", {}, 32, 1,

@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <set>
 #include <string>
@@ -33,6 +34,11 @@ enum class McpStartupState : uint8_t {
 struct McpServer;
 void McpShutdown(McpServer& server);
 
+// Puts an elicitation to the person; empty where nobody can answer, and then
+// elicitation is not declared.
+using McpElicitPerson =
+    std::function<std::string(const json& shown, bool* eof)>;
+
 struct McpServer {
   std::string name;
   pid_t pid = -1;
@@ -40,10 +46,12 @@ struct McpServer {
   Fd in, out;
   bool alive = false;
   // Protocol 2026-07-28 is stateless: no initialize lifecycle is kept here.
-  std::string rbuf;  // partial line from the server
+  std::string rbuf;  // lines from the server, read up to `rstart`
+  size_t rstart = 0;
   int64_t next_id = 1;
   json config;
   json roots = json::array();
+  McpElicitPerson elicit;
   bool tools_changed = false;
   int64_t subscription_id = -1;
   bool tools_subscribed = false;
@@ -109,6 +117,9 @@ class McpRuntime {
 
   // A control between turns changed the registry; the next refresh reports it.
   bool registry_changed = false;
+
+  // What each server's `elicit` is.
+  McpElicitPerson elicit;
 
  private:
   std::vector<std::unique_ptr<McpServer>> servers_;

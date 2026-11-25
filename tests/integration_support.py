@@ -289,6 +289,15 @@ def write_mcp_server(path, body, *, setup="", extra_imports=()):
     path.write_text(source, encoding="utf-8")
 
 
+def mcp_servers(workspace, scripts, **fields):
+    """The folder's .mcp.json: each named server runs its script."""
+    servers = {
+        name: {"command": sys.executable, "args": [str(script)], **fields}
+        for name, script in scripts.items()
+    }
+    (workspace / ".mcp.json").write_text(json.dumps({"mcpServers": servers}))
+
+
 def run_dialog(cwd, env, text, *args, timeout=10, binary):
     return subprocess.run(
         [str(binary), *args],
@@ -479,6 +488,14 @@ def assert_token_budget_stop(root, home, server, *args, binary):
     assert_true(result.returncode == 1, envelope)
     assert_true(envelope["stop"]["reason"] == "session_token_budget", envelope)
     return envelope
+
+
+def last_user(body):
+    return next(
+        message.get("content")
+        for message in reversed(body["messages"])
+        if message.get("role") == "user"
+    )
 
 
 def tool_results(messages):
@@ -780,14 +797,9 @@ def midturn_compaction_env(home, url):
     return env
 
 
-def saved_json_files(folder, pattern="*.json", *, recursive=False):
-    base = pathlib.Path(folder)
-    return list(base.rglob(pattern) if recursive else base.glob(pattern))
-
-
 def session_files(home):
     """Saved session files, excluding live mirror sidecars and inbox queues."""
-    return saved_json_files(pathlib.Path(home) / ".uagent" / "history", recursive=True)
+    return list((pathlib.Path(home) / ".uagent" / "history").rglob("*.json"))
 
 
 def wait_until_stopped(pid, timeout=10):

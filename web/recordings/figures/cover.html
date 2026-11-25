@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="{root}/web/recordings/figures/figure.css" />
+<main class="cover">
+  <header>
+    <div>
+      <p class="brand">
+        <img src="{root}/web/public/icon-192.png" alt="" />µAgent
+      </p>
+      <h1>Your agent, always on.</h1>
+    </div>
+    <p>
+      One native binary runs the agent on your host. It executes on your
+      machines over SSH and in your Chrome, and every device attaches to the
+      same turn.
+    </p>
+  </header>
+  <section>
+    <figure>
+      <figcaption>
+        <b>Native remote</b>
+        Each conversation gets a worker on the remote machine. File, Git,
+        shell and terminal calls execute there over one SSH connection. The
+        agent loop, API keys and history stay on the host.
+      </figcaption>
+      <img class="shot" src="desk.png" alt="" />
+    </figure>
+    <figure>
+      <figcaption>
+        <b>Chrome with your profile</b>
+        The agent drives a real Chrome on a persistent, synced profile over
+        a pipe, with no debugging port. Chrome fills saved logins; the agent
+        reads back only their length.
+      </figcaption>
+      <img class="shot" src="{root}/docs/images/browser-sign-in.png" alt="" />
+    </figure>
+  </section>
+  <section class="more">
+    <p class="note">
+      <b>Any model</b>
+      OpenAI Responses, Chat Completions and Anthropic Messages, spoken
+      natively. OpenAI, Anthropic, OpenRouter or a local endpoint, chosen per
+      conversation.
+    </p>
+    <p class="note">
+      <b>Every device</b>
+      Terminal, browser and phone attach to one session runtime. Replies,
+      tool calls and approvals stream to all of them, and the runtime
+      outlives its clients.
+    </p>
+    <img src="terminal.png" alt="" />
+    <img class="phone" src="phone.png" alt="" />
+  </section>
+  <footer>
+    <b>ALSO ON BOARD</b>
+    workspaces · memory · scheduled tasks · artifacts · skills · sub-agents ·
+    MCP servers
+  </footer>
+</main>

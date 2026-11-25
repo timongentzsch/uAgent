@@ -5,11 +5,11 @@ import {
   chooseDetail,
   fakeStream,
   openView,
+  mockHost,
 } from "./fixtures.js";
 import { agents, arrivals, conversation, pondering } from "./golden-turns.js";
 
-// The transcript tree on the dev page with a mocked host, at each detail
-// level. Set UAGENT_SHOTS to a folder to keep a screenshot of each.
+// The transcript tree on the dev page with a mocked host, at each detail level.
 test.use({ serviceWorkers: "block" });
 
 const ID = "a".repeat(32);
@@ -29,28 +29,11 @@ async function open(page, level, nodes = conversation, children = []) {
     localStorage.setItem("uagent-detail", detail);
     localStorage.setItem("uagent-thinking", "show");
   }, level);
-  await page.route("**/api/**", (route) => {
-    const path = new URL(route.request().url()).pathname;
-    const json = (body, status = 200) =>
-      route.fulfill({ status, json: { v: 2, ...body } });
-    if (path === "/api/sessions")
-      return json({
-        epoch: "e",
-        cursor: 1,
-        sessions: [SESSION, ...children],
-        capabilities: {},
-        devices: [],
-        commands: [],
-      });
-    if (path === `/api/sessions/${ID}`)
-      return json({
-        epoch: "e",
-        cursor: 1,
-        metadata: SESSION,
-        state: { phase: "idle", view: { nodes } },
-        pending: null,
-      });
-    return json({ error: "Not in this mock" }, 404);
+  await mockHost(page, {
+    epoch: "e",
+    cursor: 1,
+    sessions: [SESSION, ...children],
+    state: { phase: "idle", view: { nodes } },
   });
   await page.goto(new URL(`/#session=${ID}`, DEV_SERVER_URL).href);
   await expect(
@@ -146,13 +129,6 @@ for (const [device, viewport] of [
         items.map((row) => Math.round(row.getBoundingClientRect().height)),
       );
       expect(new Set(heights).size, JSON.stringify(heights)).toBe(1);
-      if (process.env.UAGENT_SHOTS) {
-        // The mock has no service worker, which the page reports.
-        await page.getByRole("button", { name: "Dismiss" }).click();
-        await page.locator(".transcript").screenshot({
-          path: `${process.env.UAGENT_SHOTS}/${device}-${level}.png`,
-        });
-      }
     });
 
 test("a long result word gives way to the headline on a phone", async ({
@@ -682,7 +658,7 @@ test("a merged side chat stays inline and opens its side conversation", async ({
   await expect.poll(() => new URL(page.url()).hash).toBe("#session=side");
 });
 
-test("a legacy decision is a child message while identical human text remains intact", async ({
+test("a decision is a child message while identical human text remains intact", async ({
   page,
 }) => {
   const text =
@@ -690,10 +666,20 @@ test("a legacy decision is a child message while identical human text remains in
   const mail = {
     ...arrivals[0],
     origin: "message",
-    agent: undefined,
+    agent: {
+      session: "1234567890abcdef",
+      title: "Flights",
+      outcome: "needs decision",
+    },
     body: { kind: "markdown", text },
   };
-  const human = { ...mail, id: "m-99", sequence: 99, origin: undefined };
+  const human = {
+    ...mail,
+    id: "m-99",
+    sequence: 99,
+    origin: undefined,
+    agent: undefined,
+  };
   await open(
     page,
     "default",

@@ -1,11 +1,79 @@
 # Manual
 
-What each control of the terminal client (`uagent`) and the web client
-(`uagent --web`) does and what state it changes. Both are clients of the
-same conversation runtimes: a conversation open in a terminal is the same
-one in the browser. Flags and slash commands are listed in
-[Command line](interfaces/cli.md), every setting in
-[Settings](interfaces/settings.md).
+One host process runs every conversation; the terminal and web clients
+attach to it. This page covers attaching a second client, the two places a
+conversation works beyond the local folder (a remote host and the agent's
+browser), then models, conversations and the features built on them. The
+[command reference](interfaces/cli.md) and [settings reference](interfaces/settings.md)
+list every option; the [documentation index](README.md) maps each feature to
+its design page.
+
+## Join a running conversation
+
+1. Run `uagent` in a project folder and start a task.
+2. On the same host, run `uagent --web` in another terminal. Open the pairing
+   link in your browser. To join from a phone, first give the host an address
+   the phone can reach. [Pairing and remote access](operations/remote-access.md)
+3. Open the conversation in the list. Both clients receive streamed replies,
+   tool activity and approval requests. Approve a tool call from either
+   device and watch the turn continue on both. You can close a client and
+   rejoin while the host keeps working.
+
+[Watch a terminal session and phone approve an edit and test run](images/terminal.gif)
+
+## Remote hosts
+
+A conversation's execution host is chosen when it starts, in the **Host**
+field of a new conversation or folder: Local, or a host added with **Add
+host** in the sidebar's Remote hosts panel, which shows each host's state
+and round trip with **Reconnect** and **Disconnect**.
+
+The agent loop does not move. Model requests, provider keys, settings,
+history, memory and approval decisions stay on the µAgent host. On the
+remote, a worker of the same build runs in the conversation's folder under
+its sandbox preset and executes the file, search, edit, patch, Git, shell
+and terminal calls there. To the agent the remote folder is its working
+folder: it calls the same tools with the same arguments, and nothing is
+mounted or synced. **Files** and the terminal dock show the remote folder.
+
+![Your host keeps the agent loop, keys and approvals and sends checked tool calls over a forwarded Unix socket to a worker in the remote folder](images/remote-execution.png)
+
+Adding a host needs an SSH name that works without a prompt; the host
+copies its own build there. When the link drops, remote commands and
+terminals keep running and their results are read once it returns. A
+remote conversation has no browser tool and no project MCP servers, and
+cannot be moved. See [Remote access](operations/remote-access.md#connect-an-ssh-execution-host)
+and [Execution gateway](architecture/execution-gateway.md).
+
+## The agent's browser
+
+On a Linux web host with `web.browserData` set (the container sets it),
+the agent drives a real Chrome that every paired device can watch. The
+globe button in a conversation's header opens the live screen, read-only.
+**Take over** gives this device the input and pauses the agent's actions
+until **Done** hands back. When the agent asks for a person (a sign-in,
+MFA, a captcha, a payment), the card's **Open browser** opens the viewer
+already in control, and only that device can finish it.
+
+The active Chrome profile keeps its cookies and saved logins, so the agent
+works in the accounts the profile is signed in to. To bring your own
+logins, take control and choose **Sign in to profile**: Chrome restarts
+without the agent's control channel, you sign Chrome itself in to your
+Google account and turn on sync, and **Done** hands the browser back.
+
+The agent uses a saved login without reading it. On a sign-in page it asks
+Chrome to autofill a field; the tool reports the length of the filled value
+and the password stays in Chrome. For a new login or MFA, take control and
+enter the secret in the browser.
+[Browser automation and password handling](../SECURITY.md#browser-automation)
+
+The status menu holds **Page size**, **Browser scheduling** (the shared
+browser, or 1, 2 or 4 research browsers whose profiles are reset between
+conversations), **Viewing**, **Chrome profile**, **New profile** and
+**Stop browser**. **Copy** and
+**Paste** move the clipboard between device and Chrome. See
+[Browser](architecture/browser.md) and
+[Security](../SECURITY.md#browser-automation).
 
 ## Models and providers
 
@@ -211,6 +279,19 @@ the rest of the conversation (or **Rules…** when a rule refused it). After
 3 refusals in a row, or 20 in a conversation, Auto asks you until you
 answer one.
 
+An MCP server can ask you for input while one of its tools runs. Its card
+names the server and shows its message with either a form (text, numbers,
+yes/no and choices; Enter keeps a field's default in the terminal) or a
+link. **Accept** sends the form, **Decline** refuses and **Cancel** leaves
+without an answer; in the terminal `/decline` declines at any field and Esc
+cancels. A link is shown whole with its host in bold, with a warning when
+the host is a punycode name, and is never opened for you: open it in your
+own browser, then **Continue** (`a` in the terminal). A run nobody can
+answer, such as `uagent -p`, does not offer servers this. `mcp.timeout`
+bounds each request to the server, so time spent answering is not counted;
+after you continue from a link, the server may wait for you until the turn
+ends or you stop it.
+
 **Plan mode** only reads: commands run in the `readonly` sandbox and the
 only file it writes is a plan kept beside the conversation's history, never
 in the folder. A turn ends with the plan shared and three answers: **Approve
@@ -264,11 +345,12 @@ recent output to a device that opens it; one device types at a time, and
 
 ## Artifacts
 
-An artifact is an HTML file the agent writes in the folder; its `meta` tags
-make it a deck, a document, a design, a design system or a sheet
-([Artifact formats](interfaces/artifact-formats.md)). Files opens it in a
-viewer with a legend of its pages; how pages are framed, saved and
-exported is in [Artifacts](architecture/artifacts.md).
+![A conversation with a SQL example beside an editable two-slide deck](images/workspace.png)
+
+Ask the agent to make a deck, document, sheet, whiteboard or design. Open
+its artifact card to see the result beside the conversation. Edits are saved
+in the workspace file, and the preview follows changes made by the agent.
+[File formats](interfaces/artifact-formats.md) · [How previews work](architecture/artifacts.md)
 
 - **Every kind.** **Find** searches all pages; **Select** turns a clicked
   element into a line in your message; **Tweaks** tries the levers a page
@@ -287,32 +369,12 @@ exported is in [Artifacts](architecture/artifacts.md).
   overwritten. Export adds Markdown.
 - **Designs** open as a canvas of every page, image and video at real
   size; a design system opens as its brand book.
+- **Whiteboards** let you move shapes, notes and connectors directly on the canvas.
 - **Sheets** are grids computed by IronCalc in the page's own worker.
   Edits, formats, merges, groups, rules, charts and tabs are written into
   that tab's table in the file; **Comment** adds the selected range to your
   message. `.xlsx` and `.csv` open read-only until **Save as sheet**;
   Export gives an Excel workbook or the open tab as CSV.
-
-A file handed over with `present` shows as a card; **Open** opens it.
-
-## The agent's browser
-
-On a Linux web host with `web.browserData` set (the container sets it),
-the agent drives a real Chrome that every paired device can watch. The
-globe button in a conversation's header opens the live screen, read-only.
-**Take over** gives this device the input and pauses the agent's actions
-until **Done** hands back. When the agent asks for a person (a sign-in,
-MFA, a captcha, a payment), the card's **Open browser** opens the viewer
-already in control, and only that device can finish it.
-
-The status menu holds **Page size**, **Browser scheduling** (the shared
-browser, or 1, 2 or 4 research browsers whose profiles are reset between
-conversations), **Viewing**, **Chrome profile**, **New profile** and
-**Stop browser**. **Sign in to profile**, while in control, restarts
-Chrome without the agent's control channel until **Done**. **Copy** and
-**Paste** move the clipboard between device and Chrome. See
-[Browser](architecture/browser.md) and
-[Security](../SECURITY.md#browser-automation).
 
 ## Agents and the to-do list
 
@@ -380,17 +442,6 @@ paired device and may override the tokens of
 `web/src/shared/styles/tokens.css`; class names are not a stable
 interface. Pages fetch it on connect and when a turn starts or ends. The
 agent changes it only through the `uagent` tool, with your approval.
-
-## Remote hosts
-
-A conversation's execution host is chosen when it starts, in the **Host**
-field of a new conversation or folder: Local, or a host added with **Add
-host** in the sidebar's Remote hosts panel, which shows each host's state
-and round trip with **Reconnect** and **Disconnect**. Keys, settings and
-history stay on the main; file, command and terminal work crosses SSH. A
-remote conversation has no browser and cannot be moved. See
-[Remote access](operations/remote-access.md) and
-[Execution gateway](architecture/execution-gateway.md).
 
 ## Accessibility
 

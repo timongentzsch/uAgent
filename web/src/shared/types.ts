@@ -83,7 +83,7 @@ export interface Exchange {
   generation_id?: string;
 }
 // One state vocabulary for every call and receipt.
-type RowState = "running" | "ok" | "failed" | "cancelled" | "recorded";
+type RowState = "running" | "ok" | "failed" | "cancelled";
 // What a finished call's result was. The host words it: `word` is the
 // whole subtitle ("exit 1 · 2.3s"), absent when there is none; the facts
 // behind it are for reading.
@@ -370,7 +370,42 @@ interface InputPending extends PendingBase {
     | "project.trust"
     | "model.select";
 }
-export type Pending = AskPending | ApprovalPending | InputPending;
+// What an MCP server asks of the person: a flat form, or a page to open.
+interface ElicitPending extends PendingBase {
+  kind: "elicit";
+  elicitation: Elicitation;
+}
+export type Pending =
+  | AskPending
+  | ApprovalPending
+  | ElicitPending
+  | InputPending;
+// As the host sends it: a choice field's options are normalized in `choices`.
+export interface ElicitField {
+  type: "string" | "number" | "integer" | "boolean" | "array";
+  title?: string;
+  description?: string;
+  format?: "email" | "uri" | "date" | "date-time";
+  minLength?: number;
+  maxLength?: number;
+  minimum?: number;
+  maximum?: number;
+  choices: { value: string; label: string }[];
+  default?: string | number | boolean | string[];
+}
+// Its reply text is the ElicitResult: {action, content?}.
+export interface Elicitation {
+  server: string;
+  mode: "form" | "url";
+  message: string;
+  requestedSchema?: {
+    properties: Record<string, ElicitField>;
+    required?: string[];
+  };
+  url?: string;
+  host?: string;
+  punycode?: boolean;
+}
 // Each question also takes a free-text "Other" answer.
 export interface AskQuestion {
   question: string;

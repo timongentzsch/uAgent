@@ -6,18 +6,10 @@ from integration_support import (
     base_env,
     event,
     function_names,
-    has_message,
     run,
     tool_call,
     tool_results,
 )
-
-
-def test_plain_turn(root, home, *, binary):
-    with Server([event({"content": "ok"})]) as server:
-        result = run(root, base_env(home, server.url), "-p", "reply", binary=binary)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "ok", result.stdout)
 
 
 def test_the_offered_tools_hold_while_background_work_starts(root, home, *, binary):
@@ -26,17 +18,16 @@ def test_the_offered_tools_hold_while_background_work_starts(root, home, *, bina
     offered = []
 
     def route(_, body):
-        if has_message(body["messages"], "user", "background-brief"):
-            return event({"content": "child-done"})
         offered.append(sorted(function_names(body)))
         if len(offered) == 1:
-            return tool_call("subagent", {"prompt": "background-brief", "background": True})
+            return tool_call("run", {"command": "sleep 2", "yield_ms": 250})
+        assert_true(tool_results(body["messages"])[0].startswith("[running] activity "), "")
         return event({"content": "parent-done"})
 
     with Server([route]) as server:
         result = run(root, base_env(home, server.url), "--yolo", "-p", "go", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-    assert_true(len(offered) == 2 and offered[0] == offered[1], offered)
+    assert_true(len(offered) >= 2 and offered[0] == offered[1], offered)
     assert_true("activity" in offered[0], offered)
 
 

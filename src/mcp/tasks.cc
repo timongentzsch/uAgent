@@ -308,7 +308,8 @@ ToolResult McpFollowTask(McpServer& server, const json& created,
   if (t.session && processes) (void)processes->RemoveForeground(t.activity);
   if (!TaskEnded(ended)) CancelTask(server, t.id);
   if (stopped || person_stopped || moved) {
-    return ToolCancelled("error: call cancelled by user");
+    return ToolCancelled(person_stopped ? "error: its activity was stopped"
+                                        : "error: call cancelled by user");
   }
   return EndedResult(server, ended, context.call_id);
 }
@@ -361,8 +362,16 @@ void McpPollTasks(McpRuntime& runtime, bool ask) {
     }
     // Input is asked only where a person can be waited for: the runtime's
     // own step and idle paths, never a tool's wait.
-    const bool asks =
+    // Answered keys stay listed until the next tasks/get.
+    bool asks =
         !ended && server && JsonValue(t.task, "status", "") == "input_required";
+    if (asks) {
+      const json requested = JsonValue(t.task, "inputRequests", json());
+      asks = false;
+      for (const auto& [key, _] : requested.items()) {
+        asks = asks || !t.answered.contains(key);
+      }
+    }
     if (asks && ask) {
       ended = Answer(*server, t, DeadlineAfter(t.timeout), true, t.note);
     }

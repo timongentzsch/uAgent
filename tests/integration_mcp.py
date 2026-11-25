@@ -225,7 +225,7 @@ def test_mcp_elicitation_ends_with_a_stopped_turn(root, home, *, binary):
 
 TASK_SERVER = """
 INTERVAL = {'done': 300, 'fail': 1, 'ask': 300, 'hang': 300, 'slow': 300, 'later': 300,
-            'stall': 300}
+            'stall': 300, 'later2': 300}
 polls, answered = {}, {}
 
 
@@ -251,8 +251,8 @@ def step(case, n):
         return task(case, status='working', statusMessage='stall step %d' % n)
     if case == 'stall':
         return task(case, status='completed', result={'content': [{'type': 'text', 'text': 'stall done'}]})
-    if case == 'later' and n < 3:
-        return task(case, status='working', statusMessage='later step %d' % n)
+    if case.startswith('later') and n < 3:
+        return task(case, status='working', statusMessage='%s step %d' % (case, n))
     if case == 'slow' and n < 10:
         return task(case, status='working', statusMessage='slow step %d' % n)
     if case == 'slow':
@@ -463,13 +463,28 @@ def test_mcp_task_stops_asks_and_recovers_in_the_background(root, home, *, binar
         text = json.dumps(body["messages"])
         results = tool_results(body["messages"])
         phase = state["phase"]
-        if phase == "hang" and results and "cancelled" in results[-1]:
+        if phase == "hang" and results and "its activity was stopped" in results[-1]:
             state["phase"] = "later"
             return tool_call("probe_job", {"case": "later"}, call_id="c1")
         if phase == "later" and running(results):
             state["phase"] = "asking"
             return event({"content": "waiting"})
         if phase == "asking" and "got {" in text:
+            state["phase"] = "later2"
+            return tool_call("probe_job", {"case": "later2"}, call_id="c5")
+        # In a turn: a wait returns for the card, which the next step asks;
+        # once answered, a wait waits for the result again.
+        if phase == "later2" and running(results):
+            state["later2"] = running(results)
+            state["phase"] = "card"
+            wait = {"operation": "wait", "ids": [state["later2"]], "wait_ms": 60000}
+            return tool_call("activity", wait, call_id="c6")
+        if phase == "card" and "waits for the person's answer" in results[-1]:
+            state["phase"] = "answered"
+            wait = {"operation": "wait", "ids": [state["later2"]], "wait_ms": 60000}
+            return tool_call("activity", wait, call_id="c7")
+        if phase == "answered":
+            state["after_answer"] = results[-1]
             state["phase"] = "stall"
             return tool_call("probe_job", {"case": "stall"}, call_id="c2")
         if phase == "stall" and running(results):
@@ -501,10 +516,10 @@ def test_mcp_task_stops_asks_and_recovers_in_the_background(root, home, *, binar
         web.command("submit", session, text="go")
         row = foreground(web.until(session, foreground))
         web.command("activity", session, operation="stop", activity_id=row["id"])
-        for case in ("later", "stall", "slow"):
+        for case in ("later", "later2", "stall", "slow"):
             web.until(session, lambda value, case=case: foreground(value, case))
             web.command("activity", session, operation="background")
-            if case == "later":
+            if case.startswith("later"):
                 asked = web.until(session, lambda value: bool(value.get("pending")))
                 answer = json.dumps({"action": "accept", "content": {"name": "Ada"}})
                 web.command("reply", session, interaction_id=asked["pending"]["id"], text=answer)
@@ -514,10 +529,14 @@ def test_mcp_task_stops_asks_and_recovers_in_the_background(root, home, *, binar
         state["phase"] = "stopped"
         web.until(session, lambda _: state["phase"] == "end")
     methods = {case: [r["method"] for r in requests(case)] for case in ("hang", "later", "stall")}
+    methods["later2"] = [r["method"] for r in requests("later2")]
     methods["slow"] = [r["method"] for r in requests("slow")]
     assert_true(methods["hang"].count("tasks/cancel") == 1, methods)
     assert_true(methods["later"].count("tasks/update") == 1, methods)
-    assert_true(all("tasks/cancel" not in methods[c] for c in ("later", "stall", "slow")), methods)
+    after = state["after_answer"]
+    assert_true("got {" in after and "waits for the person" not in after, after)
+    quiet = ("later", "later2", "stall", "slow")
+    assert_true(all("tasks/cancel" not in methods[c] for c in quiet), methods)
     stalled = [r["at"] for r in requests("stall") if r["method"] == "tasks/get"]
     assert_true(len(stalled) >= 5, stalled)
 

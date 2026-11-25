@@ -384,6 +384,13 @@ for (const width of [390, 1280]) {
     await expect(stack.getByRole("button")).toHaveCount(4);
     await expect(fstab).toContainText("Reading /etc/fstab");
     await expect(fstab).toContainText("3 calls");
+    // The phase word is not part of the step; the stack's figures take no unit.
+    await expect(fstab).not.toContainText("Running");
+    await expect(fstab).not.toContainText("tokens");
+    await expect(fstab.locator(".agent-step .truncate")).toHaveCSS(
+      "text-overflow",
+      "ellipsis",
+    );
     // What does not fit goes: the elapsed time first, then the tokens.
     for (const figure of [".agent-tokens", ".agent-time"])
       if (width > 600) await expect(fstab.locator(figure)).toBeVisible();
@@ -397,7 +404,7 @@ for (const width of [390, 1280]) {
     expect(rows.y + rows.height).toBeLessThanOrEqual(box.y + 1);
     // The step column starts at one x in every row.
     const steps = await stack
-      .locator(".activity-open > span.truncate")
+      .locator(".agent-step")
       .evaluateAll((cells) =>
         cells.map((cell) => cell.getBoundingClientRect().x),
       );
@@ -424,7 +431,12 @@ for (const width of [390, 1280]) {
     await expect(groups.nth(1)).toContainText("1 agent");
     const named = groups.nth(0).getByRole("listitem");
     await expect(named.nth(0)).toContainText("Working");
-    await expect(named.nth(0)).toContainText("Reading /etc/fstab");
+    await expect(named.nth(0).locator("small").nth(0)).toContainText(
+      "3 calls · 1.2k tokens",
+    );
+    await expect(named.nth(0).locator("small").nth(1)).toHaveText(
+      "Reading /etc/fstab",
+    );
     await expect(named.nth(1)).toContainText("Finished");
     await expect(named.nth(1)).toContainText("5 calls · 800 tokens");
     await expect(named.nth(1)).toContainText("May edit its own Git worktree");

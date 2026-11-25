@@ -1,7 +1,7 @@
 import "./activity.css";
 import { ConnectionStatus, StatusLed } from "./connection-status.tsx";
 import { WorkBand } from "./work-band.tsx";
-import { plural } from "./quantities.ts";
+import { count, plural } from "./quantities.ts";
 import type {
   Activity,
   ConnectionPhase,
@@ -447,7 +447,7 @@ const sideOrder = (list: Session[], online: boolean) =>
 // The step a turn is at, where it says more than that it works.
 const stepOf = (item: Session) =>
   item.turn_status && !["Working", "Ready"].includes(item.turn_status)
-    ? cleanText(item.turn_status)
+    ? cleanText(item.turn_status).replace(/^(?:Running|Preparing) · /, "")
     : "";
 
 // An agent's row (in the stack or the panel) and a side chat's in the
@@ -500,13 +500,15 @@ function AgentRow({
         >
           <Bot />
           <strong class="truncate">{name}</strong>
-          <span class="muted truncate">
+          <span class="agent-step muted">
             {agent.needs_you && <CircleAlert aria-hidden="true" />}
-            {step || word}
+            <span class="truncate">{step || word}</span>
           </span>
           <span class="agent-facts small muted">
             {calls && <span>{calls}</span>}
-            {tokens && <span class="agent-tokens">{tokens}</span>}
+            {agent.tokens ? (
+              <span class="agent-tokens">{count(agent.tokens)}</span>
+            ) : null}
             {elapsed && <span class="agent-time">{elapsed}</span>}
           </span>
         </Button>
@@ -525,11 +527,10 @@ function AgentRow({
           <Bot />
           <span class="activity-text">
             <strong>{name}</strong>
-            <small>
-              {[step, calls, tokens, elapsed, scope]
-                .filter(Boolean)
-                .join(" · ")}
+            <small class="agent-figures">
+              {[calls, tokens, elapsed, scope].filter(Boolean).join(" · ")}
             </small>
+            {step && <small>{step}</small>}
           </span>
           <span class="agent-status small muted">{word}</span>
         </Button>

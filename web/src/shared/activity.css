@@ -161,10 +161,16 @@
 .agent-rows .activity-open {
   grid-column: 1 / 5;
 }
-.agent-rows .activity-open > .truncate {
+.agent-step {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+/* Figures are short and never cut. */
+.activity-text > small.agent-figures {
+  white-space: normal;
+  overflow: visible;
 }
 .agent-facts {
   display: flex;

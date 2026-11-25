@@ -476,6 +476,48 @@ std::pair<json, bool> ComposeSteeredContent(const std::string& input,
   return {std::move(content), true};
 }
 
+// Platform helpers keep image decoders out of the harness binary: no shell,
+// bounded lifetime, original retained.
+CapturedProcess ImageSize(const std::string& path, int& width, int& height) {
+  width = height = 0;
+#ifdef __APPLE__
+  auto inspected = CaptureProcess(
+      {"/usr/bin/sips", "-g", "pixelWidth", "-g", "pixelHeight", path});
+  std::istringstream lines(inspected.output);
+  std::string line;
+  while (std::getline(lines, line)) {
+    std::istringstream fields(line);
+    std::string label;
+    int value = 0;
+    if (fields >> label >> value) {
+      if (label == "pixelWidth:") width = value;
+      if (label == "pixelHeight:") height = value;
+    }
+  }
+#else
+  auto inspected = CaptureProcess(
+      {"magick", "identify", "-ping", "-format", "%w %h", path + "[0]"});
+  std::istringstream(inspected.output) >> width >> height;
+#endif
+  return inspected;
+}
+
+CapturedProcess CropImage(const std::string& path, int x, int y, int width,
+                          int height, const std::string& out) {
+#ifdef __APPLE__
+  return CaptureProcess({"/usr/bin/sips", "-c", std::to_string(height),
+                         std::to_string(width), "--cropOffset",
+                         std::to_string(y), std::to_string(x), "-s", "format",
+                         "png", path, "--out", out});
+#else
+  return CaptureProcess({"magick", "-limit", "memory", "128MiB", "-limit",
+                         "map", "256MiB", path + "[0]", "-crop",
+                         std::to_string(width) + "x" + std::to_string(height) +
+                             "+" + std::to_string(x) + "+" + std::to_string(y),
+                         "+repage", "png:" + out});
+#endif
+}
+
 namespace {
 bool TextMime(const std::string& mime) {
   return mime.starts_with("text/") || mime == "application/json" ||
@@ -588,8 +630,7 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   const std::string key = "image|" + fingerprint;
   std::string cached;
   if (CachedPayload(key, mime, cached)) return cached;
-  // Platform helpers keep image decoders out of the harness binary: no shell,
-  // bounded lifetime, original retained. A vector original rasterizes first.
+  // A vector original rasterizes first.
   std::string path = attachment.path;
   // Scratch files live exactly as long as this function.
   ScopedTempFile raster_file(
@@ -609,27 +650,8 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
     path = raster_file.Path();
     mime = kPngMime;
   }
-#ifdef __APPLE__
-  auto inspected = CaptureProcess(
-      {"/usr/bin/sips", "-g", "pixelWidth", "-g", "pixelHeight", path});
   int width = 0, height = 0;
-  std::istringstream lines(inspected.output);
-  std::string line;
-  while (std::getline(lines, line)) {
-    std::istringstream fields(line);
-    std::string label;
-    int value = 0;
-    if (fields >> label >> value) {
-      if (label == "pixelWidth:") width = value;
-      if (label == "pixelHeight:") height = value;
-    }
-  }
-#else
-  auto inspected = CaptureProcess(
-      {"magick", "identify", "-ping", "-format", "%w %h", path + "[0]"});
-  int width = 0, height = 0;
-  std::istringstream(inspected.output) >> width >> height;
-#endif
+  const CapturedProcess inspected = ImageSize(path, width, height);
   if ((inspected.error.empty() && !inspected.Ok()) ||
       (inspected.Ok() && (width <= 0 || height <= 0))) {
     error = "image could not be decoded";

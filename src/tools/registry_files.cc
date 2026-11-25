@@ -84,12 +84,17 @@ void RegisterFileTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
       json::parse(R"json({"type":"object","properties":{
                     "path":{"type":"string"},
                     "offset":{"type":"integer","description":"first line or entry (default 1); -N: last N lines"},
-                    "limit":{"type":"integer","description":"lines or entries"}},
+                    "limit":{"type":"integer","description":"lines or entries"},
+                    "region":{"type":"string","description":"image part at full detail: x,y,w,h px"}},
                     "required":["path"]})json"),
       [workspace](const json& a, const ToolContext& context) {
         std::string path = JsonValue(a, "path", ".");
         int64_t offset = JsonValue(a, "offset", int64_t{1});
         int64_t limit = JsonValue(a, "limit", int64_t{0});
+        const std::string region = JsonValue(a, "region", "");
+        if (!region.empty()) {
+          return ToolReadImageRegion(path, region, context.call_id);
+        }
         std::error_code error;
         if (std::filesystem::is_directory(path, error)) {
           return ToolListDir(path, offset, limit,

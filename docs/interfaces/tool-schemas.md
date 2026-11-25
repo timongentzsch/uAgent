@@ -15,6 +15,7 @@ Read text/ranges, list directories, or add images/documents to model context. Us
 | `limit` | integer |  | lines or entries |
 | `offset` | integer |  | first line or entry (default 1); -N: last N lines |
 | `path` | string | yes |  |
+| `region` | string |  | image part at full detail: x,y,w,h px |
 
 ## write_file
 

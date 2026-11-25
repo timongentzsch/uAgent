@@ -192,6 +192,40 @@ TEST_CASE(TestAttachmentEncoding) {
 
 // HEIC stills and SVG diagrams enter the image pipeline; MP4 video, HTML and
 // mislabeled files do not. Sniffing and inspection need no converter.
+// A region of an image is cut at full detail; a plain read names the size
+// the region is given in.
+TEST_CASE(TestImageRegion) {
+  TestWorkspace workspace("image-region");
+  std::string png;
+  CHECK(
+      Base64Decode("iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAFklEQVQI"
+                   "12P8//8/AwwwQWlGRgYGBgBIDwMDBa70RgAAAABJRU5ErkJggg==",
+                   png, 1024));
+  CHECK(ToolWriteFile("small.png", png).Ok());
+  int width = 0, height = 0;
+  if (!ImageSize("small.png", width, height).error.empty()) {
+    CHECK(ToolReadImageRegion("small.png", "0,0,1,1", "cut")
+              .output.find("install ImageMagick") != std::string::npos);
+    return;
+  }
+  CHECK(ToolReadFile("small.png", 1, 1, "read").output.ends_with("; 4x2 px"));
+  const ToolResult region = ToolReadImageRegion("small.png", "2,1,5,5", "cut");
+  CHECK(region.Ok() && region.body_kind == "image");
+  CHECK(region.hint.find("Region 2,1,2,1 of small.png (4x2 px)") !=
+        std::string::npos);
+  const std::vector<Attachment> queued = Attachments().Take();
+  CHECK(queued.size() == 2);
+  CHECK(queued.size() == 2 && queued[1].mime == "image/png" &&
+        ImageSize(queued[1].path, width, height).Ok() && width == 2 &&
+        height == 1);
+  CHECK(ToolReadImageRegion("small.png", "4,0,1,1", "out")
+            .output.find("outside the 4x2 px image") != std::string::npos);
+  CHECK(!ToolReadImageRegion("small.png", "1,2", "bad").Ok());
+  CHECK(ToolWriteFile("notes.txt", "text").Ok());
+  CHECK(ToolReadImageRegion("notes.txt", "0,0,1,1", "text")
+            .output.find("raster image") != std::string::npos);
+}
+
 TEST_CASE(TestVectorAndHeicAttachments) {
   // HEIC shares the ISO BMFF ftyp box with MP4: the brand decides.
   const std::string box = std::string("\x00\x00\x00\x18", 4) + "ftyp";

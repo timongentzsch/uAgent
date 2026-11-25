@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "include/api/capabilities.h"
+#include "include/core/capture.h"
 #include "include/core/json.h"
 #include "include/core/thread_annotations.h"
 #include "include/tools/tool.h"
@@ -37,6 +38,12 @@ std::string AudioMime(std::string_view bytes);
 std::string VideoMime(std::string_view bytes);
 
 bool InspectAttachment(std::string path, Attachment& out, std::string& error);
+
+// An image's pixel size, and the cut of one into a PNG at `out`, by sips on
+// macOS and ImageMagick elsewhere; a missing converter is the error.
+CapturedProcess ImageSize(const std::string& path, int& width, int& height);
+CapturedProcess CropImage(const std::string& path, int x, int y, int width,
+                          int height, const std::string& out);
 
 // Silence when the route takes the kind; otherwise the model is told that
 // attachments degrade to file paths.

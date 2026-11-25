@@ -27,6 +27,7 @@
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
+#include "include/tools/image_result.h"
 
 namespace uagent {
 
@@ -374,7 +375,15 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
   if (encoding != TextEncoding::kUtf8) {
     start = 2;
   } else if (!LikelyTextFile(path)) {
-    return Attachments().Add(path, call_id);  // a range on media is ignored
+    // A range on media is ignored. A region of an image needs its size.
+    ToolResult attached = Attachments().Add(path, call_id);
+    int width = 0, height = 0;
+    if (attached.Ok() && !RasterMime(ReadFile(path, 64).value_or("")).empty() &&
+        ImageSize(path, width, height).Ok() && width > 0 && height > 0) {
+      attached.output +=
+          "; " + std::to_string(width) + "x" + std::to_string(height) + " px";
+    }
+    return attached;
   }
   f.clear();
   f.seekg(start);
@@ -471,6 +480,58 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
   result.hint = header + "]";
   if (!output_limited) result.read_range = ReadRange{path, first, last};
   return result;
+}
+
+ToolResult ToolReadImageRegion(const std::string& path,
+                               const std::string& region,
+                               const std::string& call_id) {
+  if (auto invalid = ValidatePathTarget(path, PathTarget::kReadableFile)) {
+    return std::move(*invalid);
+  }
+  int x = -1, y = -1, w = 0, h = 0;
+  char comma[3] = {};
+  std::istringstream fields(region);
+  fields >> x >> comma[0] >> y >> comma[1] >> w >> comma[2] >> h;
+  if (!fields || x < 0 || y < 0 || w <= 0 || h <= 0 ||
+      std::string_view(comma, 3) != ",,,") {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "region is x,y,width,height in pixels");
+  }
+  if (RasterMime(ReadFile(path, 64).value_or("")).empty()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "region needs a raster image");
+  }
+  int width = 0, height = 0;
+  const CapturedProcess size = ImageSize(path, width, height);
+  if (!size.error.empty()) {
+    return ToolFailure(ToolErrorCode::kUnavailable,
+                       "cannot read the image; install ImageMagick on Linux");
+  }
+  if (width <= 0 || height <= 0) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "image could not be decoded");
+  }
+  const std::string full =
+      std::to_string(width) + "x" + std::to_string(height) + " px";
+  if (x >= width || y >= height) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "region starts outside the " + full + " image");
+  }
+  w = std::min(w, width - x);
+  h = std::min(h, height - y);
+  ScopedTempFile crop(
+      (std::filesystem::temp_directory_path() / "uagent-region-XXXXXX")
+          .string());
+  if (!crop || !CropImage(path, x, y, w, h, crop.Path()).Ok()) {
+    return ToolFailure(ToolErrorCode::kInternal, "cannot cut the region");
+  }
+  const std::string cut = ReadFile(crop.Path(), MiB(size_t{64})).value_or("");
+  return ToolAttachedFile(cut, "region", ".png",
+                          "Region " + std::to_string(x) + "," +
+                              std::to_string(y) + "," + std::to_string(w) +
+                              "," + std::to_string(h) + " of " +
+                              DisplayPath(path) + " (" + full + ")",
+                          call_id, kArtifactsDir);
 }
 
 ToolResult ToolWriteFile(const std::string& path, const std::string& content) {

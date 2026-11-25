@@ -61,11 +61,15 @@ std::string SendSessionMail(SessionMail mail) {
   // The label says who wrote: the recipient's parent, or a session it can
   // answer by name. An agent's report names its sender itself.
   if (!mail.report) {
-    mail.text = (to.parent == from.id ? std::string("[parent guidance]")
-                                      : SessionLabel(mail.from_path)) +
-                "\n" + mail.text;
+    mail.envelope = (to.parent == from.id ? std::string("[parent guidance]")
+                                          : SessionLabel(mail.from_path)) +
+                    "\n";
+    mail.agent = {{"session", from.id},
+                  {"title", SessionName(SessionHeader(mail.from_path))},
+                  {"outcome", "note"}};
   }
-  json body = {{"text", std::move(mail.text)}};
+  json body = {{"text", mail.envelope + mail.text}};
+  if (!mail.envelope.empty()) body["envelope"] = mail.envelope.size();
   if (!mail.state.empty()) body["state"] = std::move(mail.state);
   if (!mail.agent.is_null()) body["agent"] = std::move(mail.agent);
   Mail sent =

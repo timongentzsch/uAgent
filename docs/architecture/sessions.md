@@ -35,8 +35,8 @@ A session file lives in `history/` and holds two lines:
    (`kSessionFormat`, 3), `cwd`, `model`, `session_id`, `turns`, `title`,
    `custom_title`, `parent_session_id`, `forked_at_turn`, `forked_at_time`;
    and optional `host`, `agent`, `side`, `memory: false` and `suggestion`.
-   Listings use header fields for activity, cost, token counts and to-do
-   progress. `has_file_moves` tells the file resolver whether the body
+   Listings use header fields for activity, cost, token and tool-call
+   counts and to-do progress. `has_file_moves` tells the file resolver whether the body
    contains workspace history.
 2. The state object: `messages`, `message_kinds` (same length),
    `archive`, `archive_dropped_segments`, `context_tokens`,

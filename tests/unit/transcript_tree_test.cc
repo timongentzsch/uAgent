@@ -766,6 +766,12 @@ TEST_CASE(TestOffPageAgentNamesUseTheRetainedAssignment) {
   };
   say("First report", report(first, "completed"));
   say("Second report", report(second, "completed"));
+  // A note shows without the label its model reads, and names its sender.
+  const std::string envelope = "[session Review (" + first + ")]\n";
+  json note = report(first, "note");
+  note["origin"] = "message";
+  note["envelope"] = envelope.size();
+  say(envelope + "A note", note);
   say("Side chat", report(first, "merged"));
   const TranscriptView view(conversation);
   const json page = view.Page();
@@ -778,6 +784,10 @@ TEST_CASE(TestOffPageAgentNamesUseTheRetainedAssignment) {
   }
   CHECK((labels == std::vector<std::string>{
                        label, long_label.substr(0, kStatusLabelBytes)}));
+  const json& shown = page["nodes"][page["nodes"].size() - 2];
+  CHECK(shown["body"]["text"] == "A note");
+  CHECK(shown["agent"]["outcome"] == "note");
+  CHECK(!shown.contains("envelope"));
   CHECK(page["nodes"].back()["body"]["text"] == "Side chat");
 }
 

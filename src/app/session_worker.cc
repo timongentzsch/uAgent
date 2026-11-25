@@ -112,6 +112,7 @@ class WorkerChannel final : public ApplicationChannel {
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
+        agent_name_(JsonValue(agent, "name", "")),
         mail_(SessionIdFor(path_)) {
     if (!agent.empty()) {
       link_.emplace(path_, id_,
@@ -151,9 +152,8 @@ class WorkerChannel final : public ApplicationChannel {
           JsonValue(data, "source", "") != "mandatory") {
         data["route"] = kRouteParent;
         link_->Ask(JsonValue(data, "id", ""), "approval request",
-                   "asks to run " + JsonValue(data, "tool", ""),
-                   JsonValue(data, "preview", ""),
-                   JsonValue(state_, "title", title_));
+                   JsonValue(data, "tool", ""), JsonValue(data, "preview", ""),
+                   agent_name_);
       }
       approval_ = data;
     }
@@ -275,9 +275,8 @@ class WorkerChannel final : public ApplicationChannel {
       // a person is notified only if it yields or does not answer.
       if (link_ && !person_turn_) {
         decision_["route"] = kRouteParent;
-        link_->Ask(request.id, "question", "asks the person",
-                   JsonDump(request.questions),
-                   JsonValue(state_, "title", title_));
+        link_->Ask(request.id, "question", "", JsonDump(request.questions),
+                   agent_name_);
       }
     }
     // Only a top-level session has MCP servers, so elicitations are not
@@ -335,8 +334,10 @@ class WorkerChannel final : public ApplicationChannel {
     std::string activity = JsonValue(state_, "turn_status", kIdleStatus);
     std::string phase = JsonValue(state_, "phase", "idle");
     int64_t started = JsonValue(state_, "turn_started_ms", int64_t{0});
+    int64_t calls = JsonValue(state_, "turn_tool_calls", int64_t{0});
     state_ = state;
     state_["turn_started_ms"] = started;
+    state_["turn_tool_calls"] = calls;
     state_["notices"] = notices_;
     state_["turn_status"] = activity;
     state_["phase"] = phase;
@@ -353,8 +354,7 @@ class WorkerChannel final : public ApplicationChannel {
     if (finished_turn && link_) {
       link_->Report(JsonValue(JsonValue(state, "stop", json::object()),
                               "reason", "completed"),
-                    JsonValue(state_, "title", title_),
-                    JsonValue(state, "answer", ""));
+                    agent_name_, JsonValue(state, "answer", ""));
     }
     // Only a summary written to its end goes; a merge that failed or was
     // stopped leaves the side chat as it was, its stop saying why.
@@ -853,7 +853,7 @@ class WorkerChannel final : public ApplicationChannel {
     SendState();
   }
 
-  std::string path_, id_, generation_, title_;
+  std::string path_, id_, generation_, title_, agent_name_;
   // Socket callbacks can run while bootstrap initializes the environment.
   Pipe wake_;
   MailboxWatch mail_;

@@ -40,6 +40,11 @@ struct Usage {
                                     cache_write);
   }
 
+  // Every token its calls processed: the header's and a session row's.
+  int64_t Tokens() const {
+    return SaturatingNonnegativeAdd(PromptTokens(), GeneratedTokens());
+  }
+
   // Zero when nothing has been counted yet. Summed in double, which neither
   // saturates nor needs more precision than the integer result carries.
   int64_t CacheHitPercent() const {

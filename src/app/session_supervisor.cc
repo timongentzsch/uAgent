@@ -467,6 +467,8 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   if (kind == "turn_status") {
     session.state["turn_status"] = JsonValue(frame, "turn_status", kIdleStatus);
     session.state["phase"] = JsonValue(frame, "phase", "working");
+    session.state["turn_tool_calls"] =
+        JsonValue(frame, "turn_tool_calls", int64_t{0});
     session.turn_active = JsonValue(frame, "busy", false);
     session.status = LiveStatus(session);
     return true;

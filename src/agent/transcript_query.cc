@@ -83,7 +83,8 @@ void LabelAgent(json& node, const AgentLabels& labels) {
   if (labels.empty()) return;
   std::string_view id;
   if (const json* agent = JsonObject(node, "agent")) {
-    if (JsonValue(*agent, "outcome", "") == "merged") return;
+    const std::string outcome = JsonValue(*agent, "outcome", "");
+    if (outcome == "merged" || outcome == "note") return;
     if (const auto* sender = JsonStringRef(*agent, "session")) id = *sender;
   }
   if (auto found = labels.find(id); found != labels.end()) {

@@ -42,7 +42,8 @@ count, outcome), `diff` (person only), an `artifact` (spilled log), a
 `FileEffect` for `/undo`, the to-do list, and `background` (an activity id).
 
 Built-in tools and discovered MCP tools share a transcript row. The headline
-and result facts stay visible when folded. The body uses the tool's recorded
+and result facts stay visible when folded; it names an agent by its `name`
+and an activity by its description or command, never by an id. The body uses the tool's recorded
 parts for fields, code, links, sources and agent reports. Calls with a
 retained exchange expose their original request and response in the inspector.
 A patch records its child receipt IDs in execution order so reopening it

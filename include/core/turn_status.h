@@ -39,6 +39,8 @@ class TurnStatus {
 
   bool active_ = false;
   int64_t turn_ = 0;
+  // Calls this turn started: the session row's count before the turn ends.
+  int64_t started_ = 0;
   uint64_t revision_ = 0;
   std::string response_, phase_ = "idle";
   std::string part_, line_, excerpt_;

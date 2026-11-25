@@ -29,13 +29,17 @@ struct SessionMail {
   std::string from_path{};
   std::string to_path{};
   std::string text{};
+  // What precedes `text` for the model only: a report's label; a note's is
+  // made here. A transcript shows the text without it.
+  std::string envelope{};
   std::string id{};  // set to send the same message again as itself
   int hops = 0;
   // An agent's report to its parent: neither labelled nor rate limited.
   bool report = false;
   // What a report reports: the turn's stop reason, or "needs decision".
   std::string state{};
-  // The reporting or requesting agent: {session, title, outcome}.
+  // The reporting or requesting agent: {session, title, outcome, tool?};
+  // a note's sender is set here, outcome "note".
   json agent = nullptr;
 };
 

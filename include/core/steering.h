@@ -28,8 +28,10 @@ class Steering {
     // Queued for after the running turn: no step applies it and no wait
     // yields to it; the turn's end starts it as a turn of its own.
     bool after_turn = false;
-    // Who wrote it when not the person: {kind, mail, hops, agent}, `kind`
-    // being "agent" (a report), "message" (other mail) or "activity".
+    // Who wrote it when not the person: {kind, mail, hops, agent, envelope},
+    // `kind` being "agent" (a report), "message" (other mail, a note's
+    // `agent` its sender) or "activity"; `envelope` the bytes of the text's
+    // start that only the model reads.
     json origin = nullptr;
   };
   bool Requested() const { return requested_; }

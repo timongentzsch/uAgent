@@ -66,7 +66,9 @@ TEST_CASE(TestTurnStatus) {
   CHECK(projection.Status()["phase"] == "decision");
   emit(EventId::kInteractionResolved, {{"id", "same"}});
   emit(EventId::kToolStarted, first);
+  emit(EventId::kToolStarted, first);  // A progress label starts nothing new.
   emit(EventId::kToolStarted, second);
+  CHECK(projection.Status()["turn_tool_calls"] == 2);
   const json both = "Running · Running tests · +1 tools";
   CHECK(projection.Status()["turn_status"] == both);
   emit(EventId::kToolCall, first);  // Duplicate preparation cannot un-start it.
@@ -95,6 +97,7 @@ TEST_CASE(TestTurnStatus) {
   CHECK(projection.Status()["phase"] == "finishing");
   CHECK(!emit(EventId::kToolStarted, first));
   emit(EventId::kTurnStarted, {{"turn", 2}});
+  CHECK(projection.Status()["turn_tool_calls"] == 0);
   CHECK(!emit(EventId::kToolResult, second));
   CHECK(StatusLabel(std::string(kStatusLabelBytes - 1, 'x') + "µlong").size() ==
         kStatusLabelBytes - 1);

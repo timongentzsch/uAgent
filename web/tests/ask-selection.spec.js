@@ -270,6 +270,30 @@ test("Merge sums a side chat up for the conversation, which answers, and keeps i
   await expect(transcript).not.toContainText("The person merges");
 });
 
+test("a formula in a selection is quoted as it was written", async ({
+  page,
+  session,
+}) => {
+  const transcript = await answered(page, session, {
+    width: 1440,
+    height: 900,
+  });
+  const picked = page.getByRole("group", { name: "Selection" }).locator("p");
+  // The whole of the paragraph a text is in, and of the formula a symbol is.
+  const all = (text, frame) =>
+    transcript
+      .locator(frame, { hasText: text })
+      .last()
+      .evaluate((node) => getSelection().selectAllChildren(node));
+  await all("Inline", "p");
+  await expect(picked).toHaveText("Inline $x^2 + y^2 = z^2$ and $a+b$.");
+  await all("∫", ".katex-display");
+  await expect(picked).toHaveText("$$\\int_0^1 x \\, dx = \\frac{1}{2}$$");
+  // Part of one formula is the formula.
+  await select(transcript.locator(".katex-html").first(), "y");
+  await expect(picked).toHaveText("$x^2 + y^2 = z^2$");
+});
+
 test("quotes stack over the draft, stay with it and go before its text", async ({
   page,
   session,

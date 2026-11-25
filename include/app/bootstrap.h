@@ -24,6 +24,7 @@
 #include "include/core/fd.h"
 #include "include/core/json.h"
 #include "include/core/runtime_config.h"
+#include "include/core/skills.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
 #include "include/providers/providers.h"
@@ -97,6 +98,8 @@ struct AppContext {
   ProviderSetup provider;
   ToolPolicy tool_policy;
   std::vector<Tool> tools;
+  // The installed skills the skill tool offers beside served ones.
+  std::vector<Skill> skills;
   // The name this session holds the shared browser under.
   std::string browser_lease;
   SessionRules session_rules;

@@ -564,6 +564,27 @@ test("an agent's report is a row that opens to its text and a note is one line, 
     agent: { session: hex(7), title: "fstab", outcome: "note" },
     body: { kind: "text", text: "Mounts look fine.\nNothing to change." },
   };
+  // Real reports start with a list item or a table.
+  const listed = {
+    ...mail,
+    id: "m-87",
+    sequence: 87,
+    agent: { session: hex(9), title: "y 746-1060", outcome: "completed" },
+    body: {
+      kind: "markdown",
+      text: "- **(525, 969) — Clear Street**, strong match.\n- more",
+    },
+  };
+  const table = {
+    ...listed,
+    id: "m-88",
+    sequence: 88,
+    agent: { session: hex(6), title: "y 421-745", outcome: "completed" },
+    body: {
+      kind: "markdown",
+      text: "| Coordinates | Match |\n| --- | --- |\n| (1, 2) | Acme |\n",
+    },
+  };
   const finished = agentOf(8, {
     id: "child",
     agent_name: "Find flights",
@@ -583,9 +604,11 @@ test("an agent's report is a row that opens to its text and a note is one line, 
       mail,
       ...arrivals.slice(1, 3),
       note,
+      listed,
+      table,
       ...arrivals.slice(3),
     ],
-    [finished],
+    [finished, agentOf(7, { tool_calls: 5, tokens: 100 })],
   );
   const report = page.locator('article[data-message-id="m-82"]');
   const row = report.getByRole("button", { name: /^Find flights finished/ });
@@ -609,8 +632,16 @@ test("an agent's report is a row that opens to its text and a note is one line, 
   await expect(line).toContainText("fstab");
   await expect(line).toContainText("Mounts look fine.");
   await expect(line).not.toContainText("Nothing to change.");
+  // A note carries no figures; a report does.
+  await expect(line).not.toContainText("calls");
   await line.getByRole("button").click();
   await expect(line).toContainText("Nothing to change.");
+  await expect(
+    page.locator('article[data-message-id="m-87"] .node-headline'),
+  ).toHaveText("(525, 969) — Clear Street, strong match.");
+  await expect(
+    page.locator('article[data-message-id="m-88"] .node-headline'),
+  ).toHaveText("(1, 2) Acme");
   expect(await page.locator(".transcript").innerText()).not.toMatch(
     /[0-9a-f]{16}|\[session|\[agent/,
   );

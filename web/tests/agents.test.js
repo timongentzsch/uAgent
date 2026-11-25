@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { agentReports } from "../src/shared/message-view.ts";
+import { agentReports, firstLine } from "../src/shared/message-view.ts";
 import { agentGroups, atWork, statusWord } from "../src/state/attention.ts";
 
 test("one word for where an agent is", () => {
@@ -47,4 +47,22 @@ test("the latest report of each agent is its first line", () => {
     ]),
     { a: "New." },
   );
+});
+
+test("a headline is plain words from the first line of markdown", () => {
+  assert.equal(
+    firstLine(
+      "- **(525, 969) — Clear Street ($12B), strong match.** The white",
+    ),
+    "(525, 969) — Clear Street ($12B), strong match. The white",
+  );
+  assert.equal(
+    firstLine("| Coordinates | Match |\n| --- | :--: |\n| (1, 2) | `Acme` |\n"),
+    "(1, 2) Acme",
+  );
+  assert.equal(
+    firstLine("\n## See [the doc](http://x.example) now"),
+    "See the doc now",
+  );
+  assert.equal(firstLine("1. snake_case stays"), "snake_case stays");
 });

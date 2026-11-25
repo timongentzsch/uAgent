@@ -257,20 +257,20 @@ function Message({
           open={wantFull}
           onToggle={() => setWantFull(!wantFull)}
           lead={
-            <span class="node-lead">
+            <span class="node-lead" id={nameId}>
               <Bot aria-hidden="true" />
-              <strong class="truncate" id={nameId}>
-                {[
-                  known?.agent_name || sender.title,
-                  node.origin === "agent" && outcomeWord(sender.outcome),
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
+              <strong class="truncate">
+                {known?.agent_name || sender.title}
               </strong>
+              {node.origin === "agent" && (
+                <span>{outcomeWord(sender.outcome)}</span>
+              )}
             </span>
           }
           headline={firstLine(text)}
+          factsClass="agent-figures"
           facts={
+            node.origin === "agent" &&
             known &&
             [
               known.tool_calls ? plural(known.tool_calls, "call") : "",

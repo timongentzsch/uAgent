@@ -30,17 +30,26 @@ div.node-row > .row-chevron {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* An agent's icon and name lead its row. */
+/* An agent's icon, name and word lead its row and are cut last: the name
+   shortens, the headline gives way. */
 .node-lead {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  flex: 0 1 auto;
+  flex: none;
   min-width: 0;
-  max-width: 40%;
+  max-width: 60%;
 }
-/* An agent's icon keeps its size. */
-.node-lead > .lucide {
+.node-lead > .truncate {
+  min-width: 0;
+}
+@container column (max-width: 43rem) {
+  .node-word.agent-figures {
+    display: none;
+  }
+}
+/* Its icon and word keep their size. */
+.node-lead > :not(.truncate) {
   flex: none;
 }
 /* The word takes at most two fifths of the row; the headline keeps the rest. */

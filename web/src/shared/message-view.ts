@@ -160,9 +160,33 @@ export function shownText(node: Node, text: string) {
   return node.origin === "activity" ? "" : text;
 }
 
-// A note or report's first line, for its row and the Agents panel.
-export const firstLine = (text: string) =>
-  cleanText(text).trim().split("\n", 1)[0];
+const tableRule = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+
+// The first line of markdown as plain words: no list, heading or quote
+// marks, emphasis, code or link syntax; for a table, its first data row.
+export function firstLine(markdown: string) {
+  const lines = cleanText(markdown).split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i].trim();
+    if (!line || tableRule.test(line)) continue;
+    if (tableRule.test(lines[i + 1] ?? "")) {
+      i++;
+      continue;
+    }
+    if (line.includes("|"))
+      line = line
+        .split("|")
+        .map((cell) => cell.trim())
+        .filter(Boolean)
+        .join(" ");
+    line = line
+      .replace(/^(?:#{1,6}|>|[-*+]|\d+[.)])\s+/, "")
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/(\*\*|__|[*`~])/g, "");
+    if (line) return line;
+  }
+  return "";
+}
 
 // What each agent last reported, by its session, from the loaded nodes.
 export function agentReports(nodes: Node[]) {

@@ -18,6 +18,7 @@ export function FoldRow({
   title,
   facts,
   factsTitle,
+  factsClass = "",
   failed,
 }: {
   open: boolean;
@@ -32,6 +33,7 @@ export function FoldRow({
   title?: string;
   facts?: ComponentChildren;
   factsTitle?: string;
+  factsClass?: string;
   failed?: boolean;
 }) {
   const content = (
@@ -43,7 +45,7 @@ export function FoldRow({
         {headline}
       </span>
       {facts && (
-        <small class="node-word" title={factsTitle}>
+        <small class={`node-word ${factsClass}`} title={factsTitle}>
           {facts}
         </small>
       )}

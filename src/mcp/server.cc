@@ -126,16 +126,22 @@ bool McpFillBuffer(McpServer& s, bool eof_is_fatal) {
     return false;
   }
   s.rbuf.append(buffer, static_cast<size_t>(count));
-  if (s.rbuf.size() <= kMcpResponseBytes) return true;
+  if (s.rbuf.size() - s.rstart <= kMcpResponseBytes) return true;
   s.Shutdown();
   return false;
 }
 
+// Taken lines stay in the buffer until no whole line is left: one erase per
+// read, however many lines it held.
 bool McpTakeLine(McpServer& s, std::string& line) {
-  size_t newline = s.rbuf.find('\n');
-  if (newline == std::string::npos) return false;
-  line = s.rbuf.substr(0, newline);
-  s.rbuf.erase(0, newline + 1);
+  const size_t newline = s.rbuf.find('\n', s.rstart);
+  if (newline == std::string::npos) {
+    s.rbuf.erase(0, s.rstart);
+    s.rstart = 0;
+    return false;
+  }
+  line = s.rbuf.substr(s.rstart, newline - s.rstart);
+  s.rstart = newline + 1;
   return true;
 }
 

@@ -88,9 +88,7 @@ repository path in a code span is tracked. Generated pages are skipped.
 `tests/fixtures/` holds the provider route contract, saved sessions, the
 stand-in Chrome and Xvnc (`browser_runtime.py`) and an SSH relay;
 `tests/package_contents.py` validates a release archive and its bundled skill
-tree; `tests/reviewer_eval/` holds labelled tool calls for the approval
-reviewer (`run.py` checks a model by hand with an API key, with the questions
-the build embeds from `src/app/`).
+tree.
 
 ### Selecting cases
 
@@ -226,9 +224,7 @@ provider and the checks that define a good run (answer, files read, forbidden
 tools, model rounds, batch width, deduplication, cumulative request and result
 size, folder immutability). Results are compared with
 `benchmarks/baselines/hermetic.json`. `benchmarks/run_trace.py` holds the run
-timing and trace aggregation the eval and `memory_quality.py` share.
-The [benchmark snapshot](../benchmarks/README.md#current-measurements) records
-dated package sizes and local CPU samples.
+timing and trace aggregation.
 
 ```sh
 python3 benchmarks/eval.py build/debug/uagent --check

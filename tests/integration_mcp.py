@@ -12,6 +12,7 @@ from integration_support import (
     budget,
     event,
     function_names,
+    mcp_servers,
     run,
     run_dialog,
     run_pty,
@@ -50,9 +51,7 @@ def test_mcp_roots_continuation_preserves_arguments(root, home, *, binary):
         "    result.setdefault('resultType', 'complete')\n",
         setup=f"ROOT = {workspace.resolve().as_uri()!r}\n",
     )
-    (workspace / ".mcp.json").write_text(
-        json.dumps({"mcpServers": {"probe": {"command": sys.executable, "args": [str(fake)]}}})
-    )
+    mcp_servers(workspace, {"probe": fake})
 
     def verify(_, body):
         assert_true("roots-and-empty-ok" in "".join(tool_results(body["messages"])), body)
@@ -249,10 +248,7 @@ def test_mcp_image_reaches_the_model(root, home, *, binary):
         "        result = {}\n",
         setup=f"PNG = {png!r}\n",
     )
-    (workspace / ".mcp.json").write_text(
-        json.dumps({"mcpServers": {"cam": {"command": sys.executable, "args": [str(fake)]}}}),
-        encoding="utf-8",
-    )
+    mcp_servers(workspace, {"cam": fake})
 
     def verify(_, body):
         tool_text = "".join(tool_results(body["messages"]))
@@ -343,20 +339,7 @@ def test_legacy_mcp_server_is_rejected_without_initialize_fallback(root, home, *
         "    print(json.dumps(reply), flush=True)\n",
         encoding="utf-8",
     )
-    (workspace / ".mcp.json").write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "old": {
-                        "command": sys.executable,
-                        "args": [str(fake)],
-                        "required": False,
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
+    mcp_servers(workspace, {"old": fake}, required=False)
 
     def verify(_, body):
         return event(
@@ -397,10 +380,7 @@ def test_required_mcp_failure_stops_bootstrap(root, home, *, binary):
         "    print(json.dumps(reply), flush=True)\n",
         encoding="utf-8",
     )
-    (workspace / ".mcp.json").write_text(
-        json.dumps({"mcpServers": {"needed": {"command": sys.executable, "args": [str(fake)]}}}),
-        encoding="utf-8",
-    )
+    mcp_servers(workspace, {"needed": fake})
 
     with Server([event({"content": "must-not-run"})]) as server:
         result = run(
@@ -434,10 +414,7 @@ def test_mcp_log_bound_does_not_limit_server_files(root, home, *, binary):
         "    else:\n"
         "        result = {}\n",
     )
-    (workspace / ".mcp.json").write_text(
-        json.dumps({"mcpServers": {"probe": {"command": sys.executable, "args": [str(fake)]}}}),
-        encoding="utf-8",
-    )
+    mcp_servers(workspace, {"probe": fake})
     with Server([event({"content": "done"})]) as server:
         env = base_env(home, server.url)
         result = run(workspace, env, "--trust-project-config", "-p", "probe", binary=binary)
@@ -473,25 +450,7 @@ def test_optional_mcp_servers_share_startup_grace(root, home, *, binary):
         "    else:\n"
         "        result = {}\n",
     )
-    (workspace / ".mcp.json").write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "slow": {
-                        "command": sys.executable,
-                        "args": [str(slow)],
-                        "required": False,
-                    },
-                    "fast": {
-                        "command": sys.executable,
-                        "args": [str(fast)],
-                        "required": False,
-                    },
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
+    mcp_servers(workspace, {"slow": slow, "fast": fast}, required=False)
 
     def final(_, body):
         result = tool_results(body["messages"])[0]
@@ -524,20 +483,7 @@ def test_optional_mcp_refresh_never_blocks_a_model_step(root, home, *, binary):
         "        continue\n",
         extra_imports=("time",),
     )
-    (workspace / ".mcp.json").write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "pending": {
-                        "command": sys.executable,
-                        "args": [str(fake)],
-                        "required": False,
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
+    mcp_servers(workspace, {"pending": fake}, required=False)
 
     rounds = 0
 
@@ -581,20 +527,7 @@ def test_optional_mcp_notification_before_discovery_is_not_fatal(root, home, *, 
         "        result = {}\n",
         extra_imports=("time",),
     )
-    (workspace / ".mcp.json").write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "notice": {
-                        "command": sys.executable,
-                        "args": [str(fake)],
-                        "required": False,
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
+    mcp_servers(workspace, {"notice": fake}, required=False)
 
     def route(_, body):
         results = tool_results(body["messages"])
@@ -637,20 +570,7 @@ def test_optional_mcp_slow_tool_list_resumes_one_request(root, home, *, binary):
         extra_imports=("pathlib", "time"),
         setup=f"count = pathlib.Path({str(requests)!r})\n",
     )
-    (workspace / ".mcp.json").write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "delayed": {
-                        "command": sys.executable,
-                        "args": [str(delayed)],
-                        "required": False,
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
+    mcp_servers(workspace, {"delayed": delayed}, required=False)
 
     def route(_, body):
         results = tool_results(body["messages"])

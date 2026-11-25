@@ -3,6 +3,7 @@ import {
   expect,
   DEV_SERVER_URL,
   fakeStream,
+  mockHost,
 } from "./fixtures.js";
 
 // A tap into a field focuses it without scrolling, so a phone's keyboard
@@ -22,41 +23,16 @@ const SESSION = {
 };
 
 async function open(page) {
-  await page.route("**/api/**", (route) => {
-    const path = new URL(route.request().url()).pathname;
-    const json = (body) => route.fulfill({ json: { v: 2, ...body } });
-    if (path === "/api/sessions")
-      return json({
-        epoch: EPOCH,
-        cursor: 1,
-        sessions: [SESSION],
-        capabilities: {},
-        devices: [],
-        commands: [],
-      });
-    if (path === `/api/sessions/${SESSION.id}`)
-      return json({
-        epoch: EPOCH,
-        cursor: 1,
-        metadata: SESSION,
-        state: { phase: "idle", view: { nodes: [] } },
-        pending: null,
-      });
-    return route.fulfill({ status: 404, json: { v: 2, error: "no" } });
+  await mockHost(page, {
+    epoch: EPOCH,
+    cursor: 1,
+    sessions: [SESSION],
+    state: { phase: "idle", view: { nodes: [] } },
   });
   await page.addInitScript(fakeStream, { epoch: EPOCH, cursor: 1 });
   await page.addInitScript(() => {
     // No worker here: its failed registration's banner covers the page.
-    Object.defineProperty(navigator, "serviceWorker", {
-      value: {
-        register: () => new Promise(() => {}),
-        getRegistration: async () => undefined,
-        ready: new Promise(() => {}),
-        controller: null,
-        addEventListener() {},
-        removeEventListener() {},
-      },
-    });
+    delete Navigator.prototype.serviceWorker;
     // Whether the last touchend's default was prevented, seen after ours.
     addEventListener("touchend", (event) => {
       globalThis.tapTaken = event.defaultPrevented;

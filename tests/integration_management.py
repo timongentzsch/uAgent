@@ -39,6 +39,18 @@ def control(binary, root, env, kind, **fields):
     return json.loads(result.stdout)
 
 
+def hourly(name, prompt, cwd, permissions="yolo"):
+    """A local task that runs every hour."""
+    return dict(
+        name=name,
+        prompt=prompt,
+        cwd=str(cwd),
+        permissions=permissions,
+        environment="local",
+        schedule=dict(type="interval", seconds=3600),
+    )
+
+
 def test_library_revisions_scopes_and_external_copy(root, home, *, binary):
     env = base_env(home, "http://127.0.0.1:1")
 
@@ -234,14 +246,7 @@ def test_schedule_calendar_dst_and_conflicts(root, home, *, binary):
     assert_true(times[0] == stamp("2026-10-25T00:30:00+00:00"), times)
     times = call(action="preview", schedule=rule, after=stamp("2026-10-25T00:45:00+00:00"))["times"]
     assert_true(times[0] == stamp("2026-11-01T01:30:00+00:00"), times)
-    task = dict(
-        name="Review",
-        prompt="Review the repository.",
-        cwd=str(root),
-        permissions="ask",
-        environment="local",
-        schedule=dict(type="interval", seconds=3600),
-    )
+    task = hourly("Review", "Review the repository.", root, permissions="ask")
     item = call(action="save", revision="", task=task)["item"]
     assert_true(
         call(action="save", key=item["id"], revision="old", task=task)["conflict"], "stale edit"
@@ -294,14 +299,7 @@ def test_a_schedule_change_reaches_a_waiting_event_stream_at_once(root, home, *,
         # Long enough for the host to be waiting; a shorter wait only makes
         # this test pass where it should have failed, never the reverse.
         time.sleep(0.2)
-        task = dict(
-            name="Review",
-            prompt="Review the repository.",
-            cwd=str(root),
-            permissions="ask",
-            environment="local",
-            schedule=dict(type="interval", seconds=3600),
-        )
+        task = hourly("Review", "Review the repository.", root, permissions="ask")
         control(binary, root, env, "schedule", action="save", revision="", task=task)
         assert_true(pushed.wait(budget(4)), "the change waited for the heartbeat")
 
@@ -317,14 +315,7 @@ def test_scheduled_run_native_session_and_restart(root, home, *, binary):
     with Server([answer]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, process, env):
             client.pair(code)
-            task = dict(
-                name="Scheduled review",
-                prompt="Inspect the workspace",
-                cwd=str(root),
-                environment="local",
-                permissions="yolo",
-                schedule=dict(type="interval", seconds=3600),
-            )
+            task = hourly("Scheduled review", "Inspect the workspace", root)
             response = client.command("schedule", action="save", revision="", task=task)
             assert_true(response.get("accepted"), response)
             item = response["result"]["item"]
@@ -431,14 +422,7 @@ def test_scheduled_run_completes_beside_a_detached_server(root, home, *, binary)
     with Server([respond]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, env):
             client.pair(code)
-            task = dict(
-                name="Serve",
-                prompt="Start a server",
-                cwd=str(root),
-                environment="local",
-                permissions="yolo",
-                schedule=dict(type="interval", seconds=3600),
-            )
+            task = hourly("Serve", "Start a server", root)
             item = client.command("schedule", action="save", revision="", task=task)["result"][
                 "item"
             ]
@@ -477,14 +461,7 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
                 "schedule",
                 action="save",
                 revision="",
-                task=dict(
-                    name="Restart",
-                    prompt="Review",
-                    cwd=str(root),
-                    environment="local",
-                    permissions="ask",
-                    schedule=dict(type="interval", seconds=3600),
-                ),
+                task=hourly("Restart", "Review", root, permissions="ask"),
             )["result"]["item"]
             run = control(binary, root, env, "schedule", action="run", key=task["id"])["run"]
             try:

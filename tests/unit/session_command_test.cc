@@ -454,10 +454,9 @@ TEST_CASE(TestCommandReplies) {
   AppContext context(RuntimeConfig{}, ConfigManager::Capture({}), Options{},
                      observability, nullptr);
   context.runtime.api.model = "test-model";
-  context.agent = std::make_unique<Agent>(
-      context.runtime.api, context.tools, context.runtime.processes,
-      context.runtime.side_usage,
-      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
+  context.agent = std::make_unique<Agent>(context.runtime.api, context.tools,
+                                          context.runtime.processes,
+                                          context.runtime.side_usage, Denied);
   std::vector<Attachment> attachments;
   std::string path;
   uint64_t revision = 0;
@@ -497,10 +496,9 @@ TEST_CASE(TestCostRoutesCountCacheWrites) {
   AppContext context(RuntimeConfig{}, ConfigManager::Capture({}), Options{},
                      observability, nullptr);
   context.runtime.api.model = "test-model";
-  context.agent = std::make_unique<Agent>(
-      context.runtime.api, context.tools, context.runtime.processes,
-      context.runtime.side_usage,
-      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
+  context.agent = std::make_unique<Agent>(context.runtime.api, context.tools,
+                                          context.runtime.processes,
+                                          context.runtime.side_usage, Denied);
   SessionRecord record;
   record.metadata = {.cwd = CanonicalCwd(),
                      .model = "test",
@@ -624,10 +622,9 @@ TEST_CASE(TestSessionPersistence) {
   AppContext context(config, ConfigManager::Capture({}), Options{}, observation,
                      &channel);
   context.runtime.api.model = "test-model";
-  context.agent = std::make_unique<Agent>(
-      context.runtime.api, context.tools, context.runtime.processes,
-      context.runtime.side_usage,
-      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
+  context.agent = std::make_unique<Agent>(context.runtime.api, context.tools,
+                                          context.runtime.processes,
+                                          context.runtime.side_usage, Denied);
   const std::vector<json> requests = {
       {{"kind", "tools"}},
       {{"kind", "permissions"}},

@@ -3,6 +3,7 @@ import {
   expect,
   DEV_SERVER_URL,
   fakeStream,
+  mockHost,
 } from "./fixtures.js";
 
 // The footer shows ongoing work. In the sidebar only the selected working
@@ -56,46 +57,18 @@ const NODES = [
 ];
 
 async function open(page) {
-  await page.route("**/api/**", (route) => {
-    const path = new URL(route.request().url()).pathname;
-    const json = (body) => route.fulfill({ json: { v: 2, ...body } });
-    if (path === "/api/sessions")
-      return json({
-        epoch: EPOCH,
-        cursor: 10,
-        sessions: SESSIONS,
-        capabilities: {},
-        devices: [],
-        commands: [],
-      });
-    if (path === `/api/sessions/${OPEN.id}`)
-      return json({
-        epoch: EPOCH,
-        cursor: 10,
-        metadata: OPEN,
-        state: {
-          phase: "working",
-          turn_status: "Working",
-          view: { nodes: NODES },
-        },
-        pending: null,
-      });
-    return route.fulfill({ status: 404, json: { v: 2, error: "no" } });
+  await mockHost(page, {
+    epoch: EPOCH,
+    cursor: 10,
+    sessions: SESSIONS,
+    open: OPEN,
+    state: { phase: "working", turn_status: "Working", view: { nodes: NODES } },
   });
   await page.addInitScript(fakeStream, { epoch: EPOCH, cursor: 10 });
   await page.addInitScript(
     ({ epoch, open }) => {
       // No worker here: its failed registration's banner covers the page.
-      Object.defineProperty(navigator, "serviceWorker", {
-        value: {
-          register: () => new Promise(() => {}),
-          getRegistration: async () => undefined,
-          ready: new Promise(() => {}),
-          controller: null,
-          addEventListener() {},
-          removeEventListener() {},
-        },
-      });
+      delete Navigator.prototype.serviceWorker;
       let sequence = 11;
       globalThis.testSend = (fields) =>
         globalThis.testStream.dispatchEvent(

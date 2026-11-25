@@ -5,13 +5,13 @@
 
 µAgent is a coding agent built as one native C++20 executable. A long-lived host process on a machine you control runs every turn. It calls the model endpoint you configure, executes tools on any machine you reach over SSH and in a Chrome that carries your profile, and streams the same session to a terminal, a browser and a phone.
 
-![The µAgent web client with a conversation that ran on a remote host, the agent's Chrome with a saved login filled into GitHub's sign-in page, and a terminal and a phone asked to approve the same command](docs/images/cover.png)
-
-The v1.12 clients against a scripted provider. The Chrome frame is the container's browser with one placeholder login saved in its profile. [How the figures are produced](docs/testing.md#web-tests)
-
 ## Native remote
 
 A conversation's execution host is fixed when it starts: Local, or a machine added by its SSH name. The agent loop stays on your host and its tools run on the remote.
+
+![The web client with a conversation that read a file and ran a command on the remote host gpu-box, which the sidebar lists as connected](docs/images/remote-conversation.png)
+
+The stills on this page are the v1.12 clients against a scripted provider; the Chrome one is the container's browser with one placeholder login saved in its profile. [How they are produced](docs/testing.md#web-tests)
 
 - **One worker per conversation.** The host keeps one `ssh -M` master per machine and starts a `uagent --execution-worker` for each conversation, agent and terminal, in the remote folder and under that conversation's sandbox preset.
 - **The same tools.** The built-in read, search, edit, patch, exec and terminal tools keep their schemas. The worker classifies each call for approval and executes it in the remote folder. Nothing is mounted or synced, and the Files pane and terminals of the web client work on the remote folder too.
@@ -19,13 +19,27 @@ A conversation's execution host is fixed when it starts: Local, or a machine add
 - **No setup on the remote.** The host sends the payload of its own build over SSH and the remote verifies its SHA-256. It needs Linux with glibc 2.38 on x86-64 or ARM64, or macOS 15 on ARM64, and no compiler, root or download.
 - **A dropped link is recoverable.** Commands and terminals keep running. After a reconnect the host reads each result by its receipt, and an uncertain mutation is never sent twice.
 
-![Your host keeps the agent loop, keys and approvals and sends checked tool calls over a forwarded Unix socket to a worker in the remote folder](docs/images/remote-execution.png)
+```mermaid
+sequenceDiagram
+  participant H as Your host<br/>agent loop, keys, history, approvals
+  participant R as Remote machine<br/>uagent --execution-worker in the folder
+  H->>R: its own build over SSH, SHA-256 verified
+  loop every tool call
+    H->>R: check: classify for approval
+    R-->>H: what the call would do
+    H->>R: run, as JSON over a forwarded Unix socket
+    R-->>H: result, read by its receipt
+  end
+  Note over H,R: After a dropped link the host reads the receipt.<br/>An uncertain mutation is never sent twice.
+```
 
 A remote conversation has no browser tool and no project MCP servers. [Connect a host](docs/operations/remote-access.md#connect-an-ssh-execution-host) · [Execution gateway: protocol, limits and failure modes](docs/architecture/execution-gateway.md) · [What a remote account may do](SECURITY.md)
 
 ## Chrome with your profile
 
 On a Linux host the agent drives a real Chrome whose profile persists and can be signed in as you, so it works in your accounts without holding their passwords.
+
+![The agent's Chrome in the Browser pane after Take over: GitHub's sign-in page with a saved login offered by Chrome](docs/images/browser-sign-in.png)
 
 - **A real, persistent profile.** `uagent --browser-service` owns Chrome and its virtual display. The profile keeps cookies and saved logins across restarts. **Sign in to profile** restarts Chrome without the agent's control channel, so you can sign Chrome in to your Google account and turn on sync.
 - **Logins are used, not read.** `fill_saved` has Chrome fill the focused field and returns only its length. `type` refuses password fields. Page text shows `(filled)` or `(empty)` for password, one-time-code and card fields, and a screenshot is taken only once password fields are drawn as dots.
@@ -37,7 +51,21 @@ On a Linux host the agent drives a real Chrome whose profile persists and can be
 
 ## One host, every client
 
-![Terminal, browser and phone attach to one host, which reaches model endpoints over HTTPS, remote machines over SSH and Chrome over pipes](docs/images/how-it-works.png)
+```mermaid
+flowchart TB
+  terminal["Terminal<br/>Unix socket"] --- host
+  browser["Browser<br/>HTTP, SSE, WebSocket"] --- host
+  phone["Phone<br/>the same web client"] --- host
+  host["<b>µAgent host</b><br/>session runtimes · web host · scheduler<br/>keys, history, approvals"]
+  host -->|HTTPS| models["Model endpoints<br/>Responses · Chat Completions · Messages"]
+  host -->|"SSH, a forwarded Unix socket"| remote["Remote machines<br/>one worker per conversation"]
+  host -->|"pipes, no TCP port"| chrome["Chrome on your profile<br/>browser service, Xvnc"]
+```
+
+<p>
+  <img src="docs/images/terminal-approval.png" alt="The terminal client asking to approve a command" width="70%">
+  <img src="docs/images/phone-approval.png" alt="A phone asked to approve the same command" width="24%" align="top">
+</p>
 
 - **Sessions outlive clients.** Each conversation is a session runtime that calls `setsid()` and keeps running after the client that started it exits, until `runtime.idleMinutes` pass with no turn, queued message, command or attached terminal.
 - **Every client sees the same turn.** The terminal client attaches over a Unix socket; browsers and phones attach through the web host over HTTP, SSE and WebSocket. Replies, tool calls and approval requests stream to all of them, and any of them can answer an approval.

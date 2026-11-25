@@ -224,7 +224,7 @@ if [ "$os" = Linux ] && [ "$browser" = no ] && has apt-get &&
    ask "Install Chrome and TigerVNC for the agent's browser, with sudo?"; then
   deb=$tmp/chrome.deb
   fetch "https://dl.google.com/linux/direct/google-chrome-stable_current_$(dpkg --print-architecture).deb" "$deb"
-  sudo apt-get install -y tigervnc-standalone-server xauth fonts-noto-core \
+  sudo apt-get install -y tigervnc-standalone-server xauth xcompmgr fonts-noto-core \
     fonts-noto-color-emoji "$deb"
 fi
 

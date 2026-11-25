@@ -358,36 +358,84 @@ recent output to a device that opens it; one device types at a time, and
 
 ## Artifacts
 
-![A conversation with a SQL example beside an editable two-slide deck](images/workspace.png)
+**Every artifact is an HTML file in your folder.** A deck is a folder of
+HTML pages, a sheet is an HTML page of tables, a document is a page that
+names its paper, a design system is a folder with a `tokens.css`. No project
+format, database or export step stands between you and the file: the agent
+writes it with the same tools it writes code with, Files draws it as its
+kind, what you change by hand is written back into the same markup,
+**Source** shows it, Git diffs it and any browser opens it.
 
-Ask the agent to make a deck, document, sheet, whiteboard or design. Open
-its artifact card to see the result beside the conversation. Edits are saved
-in the workspace file, and the preview follows changes made by the agent.
+| Kind | What makes an HTML file one |
+| --- | --- |
+| Document | `<meta name="print" content="flow a4">` |
+| Slide; a folder of them is a deck | `<meta name="artboard" content="1280x720 slide">` |
+| Design page; a folder of them is a design | `<meta name="artboard" content="1440x900">` |
+| Whiteboard | an artboard and `<meta name="board">` |
+| Sheet | `<meta name="sheet" content="1">`, each tab a `<table data-sheet="Name">` |
+| Design system | a folder with `tokens.css`; its document is the brand book |
+
+Ask the agent to make one, and open its artifact card to see the result
+beside the conversation. The preview follows changes made by the agent.
 [File formats](interfaces/artifact-formats.md) · [How previews work](architecture/artifacts.md)
 
-- **Every kind.** **Find** searches all pages; **Select** turns a clicked
-  element into a line in your message; **Tweaks** tries the levers a page
-  declares and **Keep** sends them as a line; **Present** fills the
-  screen. Where the agent's browser runs, **Export** has the host draw a
-  PDF or PNG (**Draw on it** opens the image in markup); elsewhere it
-  offers the browser's own print. A page that fails is marked and **Ask
-  agent to fix** puts its errors in your message.
-- **Decks.** Slides are the folder's pages in name order. A slide's last
-  `<aside>` is its speaker notes, shown in **Presenter view**, a second
-  window kept in step. Dragging in the legend or **Slide actions** moves,
-  duplicates, adds, skips or deletes slides by renaming files.
-- **Documents** are paged on screen as they print. **Edit** (also on a
-  slide) makes headings, paragraphs, list items and table cells editable
-  and saves after a pause; a block the agent changed meanwhile is not
-  overwritten. Export adds Markdown.
-- **Designs** open as a canvas of every page, image and video at real
-  size; a design system opens as its brand book.
-- **Whiteboards** let you move shapes, notes and connectors directly on the canvas.
-- **Sheets** are grids computed by IronCalc in the page's own worker.
-  Edits, formats, merges, groups, rules, charts and tabs are written into
-  that tab's table in the file; **Comment** adds the selected range to your
-  message. `.xlsx` and `.csv` open read-only until **Save as sheet**;
-  Export gives an Excel workbook or the open tab as CSV.
+![A conversation with a SQL example beside an editable two-slide deck](images/workspace.png)
+
+For every kind: **Find** searches all pages; **Select** turns a clicked
+element into a line in your message; **Tweaks** tries the levers a page
+declares and **Keep** sends them as a line; **Present** fills the screen.
+Where the agent's browser runs, **Export** has the host draw a PDF or PNG
+(**Draw on it** opens the image in markup); elsewhere it offers the
+browser's own print. A page that fails is marked and **Ask agent to fix**
+puts its errors in your message.
+
+### Design systems
+
+A folder with `tokens.css` is a design system. It opens as its brand book,
+a document the agent writes from the tokens, and its themes are under
+**Tweaks**. Pages elsewhere link the same `tokens.css`.
+
+![A design system's brand book in Files: colours, type and controls drawn from tokens.css](images/artifact-design-system.png)
+
+### Designs
+
+A design opens as a canvas of every page, image and video at real size.
+Pages whose names start with the same number sit in one row.
+
+![A design's canvas in Files with a desktop and a phone page side by side](images/artifact-design.png)
+
+### Sheets
+
+A sheet is a grid computed by IronCalc in the page's own worker. Edits,
+formats, merges, groups, rules, charts and tabs are written into that tab's
+`<table>` in the file; **Comment** adds the selected range to your message.
+`.xlsx` and `.csv` open read-only until **Save as sheet**; Export gives an
+Excel workbook or the open tab as CSV.
+
+![A sheet in Files with totals computed from formulas, a bar chart and two tabs](images/artifact-sheet.png)
+
+### Decks
+
+Slides are the folder's pages in name order. A slide's last `<aside>` is its
+speaker notes, shown in **Presenter view**, a second window kept in step.
+Dragging in the legend or **Slide actions** moves, duplicates, adds, skips
+or deletes slides by renaming files.
+
+![A deck in Files: three slides in the legend, the first one shown with its speaker notes](images/artifact-deck.png)
+
+### Documents
+
+A document is paged on screen as it prints. **Edit** (also on a slide) makes
+headings, paragraphs, list items and table cells editable and saves after a
+pause; a block the agent changed meanwhile is not overwritten. Export adds
+Markdown.
+
+![A document in Files on an A4 page with a checklist and a table](images/artifact-document.png)
+
+### Whiteboards
+
+A whiteboard lets you move shapes, notes and connectors directly on the
+canvas.
 
 ## Agents and the to-do list
 

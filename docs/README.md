@@ -23,7 +23,7 @@ machines reached over SSH and in a Chrome the host drives.
 | Workspaces, folders, side chats and search | [Conversations](manual.md#conversations) | [Sessions](architecture/sessions.md) · [Web client](architecture/web-client.md) |
 | Approvals, rules, Auto review and the sandbox | [Approvals and plan mode](manual.md#approvals-and-plan-mode) | [Tools and approvals](architecture/tools.md) · [Sandbox](architecture/sandbox.md) |
 | Memory, skills and scheduled tasks | [Memory, skills and schedules](manual.md#memory-skills-and-schedules) | [Memory and schedules](architecture/memory-and-schedules.md) |
-| Artifacts: documents, decks, sheets, designs and whiteboards | [Artifacts](manual.md#artifacts) · [Supported formats](interfaces/artifact-formats.md) | [Artifact rendering and editing](architecture/artifacts.md) |
+| Artifacts: documents, decks, sheets, designs, design systems and whiteboards, each a plain HTML file | [Artifacts](manual.md#artifacts) · [Supported formats](interfaces/artifact-formats.md) | [Artifact rendering and editing](architecture/artifacts.md) |
 | Sub-agents and the to-do list | [Agents and the to-do list](manual.md#agents-and-the-to-do-list) | [Turn loop](architecture/turn-loop.md) |
 | MCP servers over stdio | [Settings](manual.md#settings) | [Tools and approvals](architecture/tools.md) |
 

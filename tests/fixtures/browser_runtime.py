@@ -14,6 +14,10 @@ from pathlib import Path
 name = Path(sys.argv[0]).name
 if name == "xauth":
     sys.exit(0)
+if name == "xcompmgr":
+    # Writes down the display it composites, and waits to be stopped.
+    Path(os.environ["HOME"], "compositor").write_text(os.environ["DISPLAY"])
+    signal.pause()
 if name == "Xtigervnc":
     # A display that takes a viewer's handshake and writes down its keys.
     path = sys.argv[sys.argv.index("-rfbunixpath") + 1]

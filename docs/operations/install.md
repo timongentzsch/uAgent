@@ -61,7 +61,7 @@ verify a different release.
 
 ```sh
 repo=timongentzsch/uAgent
-tag=v1.12.0
+tag=v1.13.0
 archive="uagent-${tag#v}-linux-x86_64.tar.gz"
 gh release download "$tag" --repo "$repo" -p "$archive" -p SHA256SUMS -p SHA256SUMS.sigstore.json
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \

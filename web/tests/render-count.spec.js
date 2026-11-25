@@ -423,6 +423,10 @@ test("state frames and an open dialog leave the shell alone", async ({
 }) => {
   await open(page);
   const turn = { ...SESSIONS[0], status: "running", turn_active: true };
+  let styleReads = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/user.css")) styleReads++;
+  });
   const frames = await page.evaluate(async (metadata) => {
     await testMark();
     for (let index = 0; index < 20; index++) {
@@ -449,6 +453,8 @@ test("state frames and an open dialog leave the shell alone", async ({
     return { state, activity: testSince().renders };
   }, turn);
   measured("frames", frames);
+  // The person's sheet is read again when the turn starts, not per caption.
+  expect(styleReads).toBeLessThanOrEqual(1);
   // The first frame starts the turn; the others restate it.
   for (const name of ["App", "SidebarView", "SessionRow", "Composer"])
     expect(frames.state[name] || 0, name).toBeLessThanOrEqual(1);

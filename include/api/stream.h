@@ -240,6 +240,9 @@ struct StreamCtx {
 inline void CollectToolCalls(std::map<int, ToolCall>& streamed,
                              ChatResult& result) {
   std::set<std::string> ids;
+  // Each call's id as streamed, in order, to the id it keeps; empty if
+  // dropped.
+  std::multimap<std::string, std::string> outcomes;
   for (auto it = streamed.begin(); it != streamed.end();) {
     auto current = it++;
     int index = current->first;
@@ -262,15 +265,7 @@ inline void CollectToolCalls(std::map<int, ToolCall>& streamed,
             "partial_tool_call_dropped",
             {{"stream_index", index}, {"finish_reason", result.finish_reason}});
         result.cut_tool_call = true;
-        // No result will answer it, so the replay drops its block too.
-        auto blocks = result.replay.find("content");
-        if (blocks != result.replay.end() && blocks->is_array()) {
-          std::erase_if(blocks->get_ref<json::array_t&>(),
-                        [&](const json& block) {
-                          return JsonValue(block, "type", "") == "tool_use" &&
-                                 JsonValue(block, "id", "") == call.id;
-                        });
-        }
+        outcomes.emplace(call.id, "");
         streamed.erase(current);
         break;
       }
@@ -281,6 +276,7 @@ inline void CollectToolCalls(std::map<int, ToolCall>& streamed,
                                        {"args_chars", call.args.size()}});
       if (call.name.empty()) {
         ++result.nameless_tool_calls;
+        outcomes.emplace(call.id, "");
         streamed.erase(current);
         continue;
       }
@@ -304,6 +300,34 @@ inline void CollectToolCalls(std::map<int, ToolCall>& streamed,
                 {"reason", original.empty() ? "missing" : "duplicate"}});
     }
     ids.insert(candidate);
+    outcomes.emplace(original, candidate);
+  }
+  // No result answers a dropped call, so the replay sent back next turn
+  // drops it too and names the others by the ids their results use.
+  for (const char* list : {"content", "items"}) {
+    json* blocks = result.replay.is_object() && result.replay.contains(list)
+                       ? &result.replay[list]
+                       : nullptr;
+    if (!blocks || !blocks->is_array()) continue;
+    json kept = json::array();
+    for (json& block : *blocks) {
+      const std::string type = JsonValue(block, "type", "");
+      const char* key = type == "tool_use"        ? "id"
+                        : type == "function_call" ? "call_id"
+                                                  : nullptr;
+      // The first call streamed with this id: lower_bound, as find may
+      // return any of equal keys.
+      const std::string sent = key ? JsonValue(block, key, "") : "";
+      auto found = key ? outcomes.lower_bound(sent) : outcomes.end();
+      if (found != outcomes.end() && found->first == sent) {
+        const std::string id = std::move(found->second);
+        outcomes.erase(found);
+        if (id.empty()) continue;
+        block[key] = id;
+      }
+      kept.push_back(std::move(block));
+    }
+    *blocks = std::move(kept);
   }
   for (auto& [index, call] : streamed) {
     (void)index;

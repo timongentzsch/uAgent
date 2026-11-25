@@ -82,7 +82,7 @@ A provider is a base URL with a key. The runtime speaks OpenAI Responses, Chat C
 | Workspaces and folders, filed per host | [Conversations](docs/manual.md#conversations) |
 | Approvals, rules, Auto review and the sandbox | [Approvals and plan mode](docs/manual.md#approvals-and-plan-mode) · [Sandbox](docs/architecture/sandbox.md) |
 | Memory, skills and scheduled tasks | [Memory, skills and schedules](docs/manual.md#memory-skills-and-schedules) |
-| Artifacts: documents, decks, sheets, designs and whiteboards, edited beside the conversation | [Artifacts](docs/manual.md#artifacts) |
+| Artifacts: documents, decks, sheets, designs, design systems and whiteboards, each a plain HTML file, edited beside the conversation | [Artifacts](docs/manual.md#artifacts) |
 | Sub-agents and the to-do list | [Agents and the to-do list](docs/manual.md#agents-and-the-to-do-list) |
 | MCP servers over stdio | [Tools and approvals](docs/architecture/tools.md) |
 | Headless runs with JSON output | [Headless JSON and streaming](docs/interfaces/headless.md) |

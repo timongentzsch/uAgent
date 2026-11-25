@@ -208,6 +208,7 @@ terminal-and-phone recording use Playwright against the fixture host. From
 | --- | --- |
 | `npm run record -- readme` | `docs/images/remote-conversation.png`, `terminal-approval.png` and `phone-approval.png` |
 | `npm run record -- files` | the slide workspace screenshot |
+| `npm run record -- artifacts` | `docs/images/artifact-*.png`: a design system, a design, a sheet, a deck and a document |
 | `npm run record -- terminal` | the GIF; requires ffmpeg |
 
 The remote host is scripted in the recording. The Chrome still,

@@ -5,7 +5,6 @@
 ### Fixes
 
 - A `web_fetch` rule for a site no longer matches an address whose query or fragment holds `@` and that site's name; the rule is keyed by the host the fetch goes to. A preview's sheet engine route no longer serves a file outside the engine's folder.
-- A save from Files and the agent's write to the same file at the same moment no longer lose one of them silently: both take a lock on the file's folder around reading, checking and replacing it, so the later one sees the earlier one's text or is refused as changed.
 
 ## v1.12.0 - 2026-11-24
 

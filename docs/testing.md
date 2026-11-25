@@ -272,8 +272,8 @@ On a pull request, `.github/changes.py` selects jobs by the paths changed:
 
 For native changes, `clang-tidy` reads the changed `.cc` files under `src/`,
 `tests/` and `benchmarks/` in one job. A changed header, `.clang-tidy`,
-`CMakeLists.txt`, `CMakePresets.json`, `.dockerignore`, `.github/` or
-`third_party/` selects all units across three runners. A push to `master`
+`CMakeLists.txt`, `CMakePresets.json`, `.dockerignore` or `.github/`
+selects all units across three runners. A push to `master`
 reads the same way from the commit it followed (the pull request already
 read it); weekly and manual runs read all units. `coverage` runs weekly and
 by hand only. The selection source is
@@ -294,7 +294,7 @@ promotes, but not ThreadSanitizer; scheduled and manual runs run them all:
 
 | Leg | Runs on a pull request that touches (`.github/changes.py`) |
 | --- | --- |
-| ThreadSanitizer (`heavy`) | `src/web/`, `src/browser/`, `include/web/`, `include/browser/`, `.github/`, `cmake/`, `deploy/`, `third_party/`, `CMakeLists.txt`, `CMakePresets.json`, `.dockerignore` |
+| ThreadSanitizer (`heavy`) | `src/web/`, `src/browser/`, `include/web/`, `include/browser/`, `.github/`, `cmake/`, `deploy/`, `CMakeLists.txt`, `CMakePresets.json`, `.dockerignore` |
 | remote bundle (`bundle`) | `.github/`, `cmake/`, `deploy/`, `CMakeLists.txt`, `CMakePresets.json`, `.dockerignore`, `install.sh` |
 | Linux ARM64 build | either list |
 | container image (`image`) | `deploy/`, `.github/workflows/`, `.dockerignore` |

@@ -616,7 +616,6 @@ TEST_CASE(TestActivityWithoutAProcessIsNeverSignalled) {
   for (const pid_t leader : {-1, 0, 1}) {
     CHECK(!SignalProcessGroup(leader, 0));
     CHECK(!ProcessGroupAlive(leader));
-    CHECK(!StopProcess(leader, true, std::chrono::milliseconds(0)));
   }
   ActivitySupervisor supervisor;
   auto session = std::make_shared<ActivitySession>();

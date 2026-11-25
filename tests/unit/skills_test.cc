@@ -298,6 +298,7 @@ TEST_CASE(TestSkillDiscovery) {
   std::vector<Skill> local{
       {"mine", "local-description-sentinel", {}, {}, {}, {}}};
   std::vector<Skill> served;
+  served.reserve(256);
   for (int index = 0; index < 256; ++index) {
     served.push_back(
         {"srv:path/skill-" + std::to_string(index), "served", {}, {}, {}, {}});

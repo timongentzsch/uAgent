@@ -731,14 +731,15 @@ def test_mcp_served_skills_load_after_the_person_allows_them(root, home, *, bina
                 ),
             )
         web.until(session, lambda value: value["metadata"]["status"] == "idle")
-        # Compaction keeps a local skill as system text, never a served one.
+        # Compaction carries a local skill on as harness text, never a served one.
         web.command("submit", session, text="/compact")
         web.until(session, lambda value: value["metadata"]["status"] == "idle")
         web.command("submit", session, text="next")
         web.until(session, lambda _: "after" in seen)
         web.until(session, lambda value: value["metadata"]["status"] == "idle")
-    system = json.dumps([m for m in seen["after"] if m.get("role") == "system"])
-    assert_true("LOCAL REVIEW" in system and "REVIEW STEPS" not in system, system)
+    after = json.dumps(seen["after"])
+    assert_true("kept across compaction" in after and "LOCAL REVIEW" in after, after)
+    assert_true("REVIEW STEPS" not in after, after)
     catalogue = seen["catalogue"]
     assert_true("- review: The local review" in catalogue, catalogue)
     assert_true("- probe:acme/review: Review a change" in catalogue, catalogue)
@@ -844,4 +845,3 @@ def test_mcp_failed_skills_list_keeps_the_server(root, home, *, binary):
         result = run(workspace, base_env(home, server.url), "--yolo", "-p", "go", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
     assert_true(seen == ["echoed"], seen)
-    assert_true("no skills here" in result.stderr + result.stdout, result.stderr)

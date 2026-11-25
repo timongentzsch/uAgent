@@ -9,7 +9,6 @@ file(GLOB_RECURSE _runtime_inputs CONFIGURE_DEPENDS
      RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
      "${CMAKE_CURRENT_SOURCE_DIR}/src/*"
      "${CMAKE_CURRENT_SOURCE_DIR}/include/*"
-     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/*"
      "${CMAKE_CURRENT_SOURCE_DIR}/skills/*")
 list(FILTER _runtime_inputs EXCLUDE REGEX "(^|/)([.]|__pycache__)|[.]pyc$")
 list(APPEND _runtime_inputs "CMakeLists.txt"
@@ -22,7 +21,28 @@ list(APPEND _runtime_inputs "CMakeLists.txt"
      "web/src/shared/styles/tokens.css")
 list(SORT _runtime_inputs)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_runtime_inputs})
-set(_runtime_hashes "${PROJECT_VERSION}")
+# Two single-header libraries, pinned. An offline build names unpacked
+# copies with FETCHCONTENT_SOURCE_DIR_JSON and FETCHCONTENT_SOURCE_DIR_HTTPLIB.
+set(_json_sha256
+    42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa)
+set(_httplib_sha256
+    be711ddaf7a3655d8f23aa5655709250b24d247aedd4b2629989d18b6164e5be)
+include(FetchContent)
+if(POLICY CMP0135)
+  cmake_policy(SET CMP0135 NEW)  # extracted files take the extraction time
+endif()
+FetchContent_Declare(
+  json
+  URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+  URL_HASH SHA256=${_json_sha256}
+  SOURCE_SUBDIR none)
+FetchContent_Declare(
+  httplib
+  URL https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.67.0.tar.gz
+  URL_HASH SHA256=${_httplib_sha256}
+  SOURCE_SUBDIR none)
+FetchContent_MakeAvailable(json httplib)
+set(_runtime_hashes "${PROJECT_VERSION}json:${_json_sha256}httplib:${_httplib_sha256}")
 foreach(_input IN LISTS _runtime_inputs)
   file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/${_input}" _hash)
   string(APPEND _runtime_hashes "${_input}:${_hash}\n")
@@ -58,6 +78,8 @@ find_package(Threads REQUIRED)
 
 add_library(uagent_options INTERFACE)
 target_include_directories(uagent_options INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(uagent_options SYSTEM
+                           INTERFACE ${json_SOURCE_DIR}/single_include)
 target_link_libraries(uagent_options INTERFACE CURL::libcurl OpenSSL::Crypto
                                                Threads::Threads)
 target_compile_features(uagent_options INTERFACE cxx_std_20)
@@ -342,7 +364,7 @@ add_library(uagent_web src/web/master.cc
                        src/web/rfb_filter.cc "${_web_generated}")
 find_package(ZLIB REQUIRED)  # libcurl's own dependency: it inflates assets
 target_link_libraries(uagent_web PUBLIC uagent_app ZLIB::ZLIB)
-target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
+target_include_directories(uagent_web SYSTEM PRIVATE ${httplib_SOURCE_DIR})
 target_sources(uagent_tools PRIVATE src/browser/browser.cc
                                     src/browser/broker.cc
                                     src/browser/runtime.cc
@@ -354,7 +376,7 @@ target_link_libraries(uagent PRIVATE uagent_web)
 
 # json.hpp reaches nearly every translation unit and never changes.
 set(UAGENT_PCH
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/json.hpp"
+    "${json_SOURCE_DIR}/single_include/nlohmann/json.hpp"
     <algorithm>
     <chrono>
     <cstdint>
@@ -420,7 +442,7 @@ if(BUILD_TESTING)
                                       tests/unit/web_remote_test.cc
                                       tests/unit/browser_test.cc
                                       tests/unit/web_push_test.cc)
-  target_include_directories(uagent_tests SYSTEM PRIVATE third_party/cpp-httplib)
+  target_include_directories(uagent_tests SYSTEM PRIVATE ${httplib_SOURCE_DIR})
   target_link_libraries(uagent_tests PRIVATE uagent_web)
   # Not REUSE_FROM: the test binary is built with an extra -D.
   target_precompile_headers(uagent_tests PRIVATE ${UAGENT_PCH})
@@ -507,5 +529,7 @@ install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
 install(DIRECTORY docs/ DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs
         FILES_MATCHING PATTERN "*.md")
 install(FILES web/dist/THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
-install(FILES third_party/cpp-httplib/LICENSE
+install(FILES ${httplib_SOURCE_DIR}/LICENSE
         DESTINATION ${CMAKE_INSTALL_DOCDIR}/licenses RENAME cpp-httplib.txt)
+install(FILES ${json_SOURCE_DIR}/LICENSE.MIT
+        DESTINATION ${CMAKE_INSTALL_DOCDIR}/licenses RENAME nlohmann-json.txt)

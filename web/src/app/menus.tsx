@@ -91,7 +91,7 @@ export function TerminalMenu({
 
 // The level a conversation's work is drawn at, whether thinking is, and how
 // this device changes either.
-export interface DetailControl {
+interface DetailControl {
   levels: readonly string[];
   level: string;
   change: (level: string) => void;

@@ -736,11 +736,9 @@ json Request(const fs::path& root, const json& request) {
     for (const auto& change : changes.list) {
       json row = {{"path", change.path},
                   {"state", std::string(1, change.State())}};
-      if (path == "split") {
-        for (const std::string scope : {"working", "staged"}) {
-          const char state = change.State(scope);
-          if (state != ' ') row[scope] = std::string(1, state);
-        }
+      for (const std::string scope : {"working", "staged"}) {
+        const char state = change.State(scope);
+        if (state != ' ') row[scope] = std::string(1, state);
       }
       rows.push_back(std::move(row));
     }

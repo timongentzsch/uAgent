@@ -240,6 +240,32 @@ Glyph NextGlyph(const std::string& s, size_t offset, std::mbstate_t& state,
           static_cast<size_t>(std::max(0, ::wcwidth(wide)))};
 }
 
+std::string DisplayTail(std::string text, size_t columns) {
+  size_t total = DisplayWidth(text);
+  if (total <= columns) return text;
+  if (columns == 0) return "";
+  struct Boundary {
+    size_t offset;
+    size_t width;
+  };
+  std::vector<Boundary> boundaries{{0, 0}};
+  std::mbstate_t state{};
+  size_t offset = 0;
+  size_t width = 0;
+  while (offset < text.size()) {
+    Glyph glyph = NextGlyph(text, offset, state, /*skip_ansi=*/true);
+    width += glyph.width;
+    offset += glyph.bytes;
+    boundaries.push_back({offset, width});
+  }
+  for (const Boundary& boundary : boundaries) {
+    if (total - boundary.width <= columns) {
+      return text.substr(boundary.offset);
+    }
+  }
+  return "";
+}
+
 }  // namespace
 
 size_t CsiSpan(std::string_view text) {
@@ -444,32 +470,6 @@ std::string TerminalSafe(std::string_view s) {
   return out;
 }
 
-std::string DisplayTail(std::string text, size_t columns) {
-  size_t total = DisplayWidth(text);
-  if (total <= columns) return text;
-  if (columns == 0) return "";
-  struct Boundary {
-    size_t offset;
-    size_t width;
-  };
-  std::vector<Boundary> boundaries{{0, 0}};
-  std::mbstate_t state{};
-  size_t offset = 0;
-  size_t width = 0;
-  while (offset < text.size()) {
-    Glyph glyph = NextGlyph(text, offset, state, /*skip_ansi=*/true);
-    width += glyph.width;
-    offset += glyph.bytes;
-    boundaries.push_back({offset, width});
-  }
-  for (const Boundary& boundary : boundaries) {
-    if (total - boundary.width <= columns) {
-      return text.substr(boundary.offset);
-    }
-  }
-  return "";
-}
-
 std::string StatusLabel(const std::string& label, size_t columns) {
   std::string safe = TerminalSafe(label);
   if (DisplayWidth(safe) <= columns) return safe;
@@ -558,7 +558,7 @@ std::string UrlAuthority(std::string url) {
   if (auto pos = url.find("://"); pos != std::string::npos) {
     url = url.substr(pos + 3);
   }
-  if (auto pos = url.find('/'); pos != std::string::npos) {
+  if (auto pos = url.find_first_of("/?#"); pos != std::string::npos) {
     url.resize(pos);
   }
   if (auto pos = url.rfind('@'); pos != std::string::npos) {
@@ -571,7 +571,8 @@ std::string UrlAuthority(std::string url) {
 
 std::string UrlHost(std::string url) {
   std::string host = UrlAuthority(std::move(url));
-  if (auto p = host.find(':'); p != std::string::npos) {
+  // past a bracketed IPv6 address; rfind's npos + 1 wraps to 0
+  if (auto p = host.find(':', host.rfind(']') + 1); p != std::string::npos) {
     host.resize(p);
   }
   return host;

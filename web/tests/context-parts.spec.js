@@ -1,4 +1,9 @@
-import { devServerTest as test, expect, DEV_SERVER_URL } from "./fixtures.js";
+import {
+  devServerTest as test,
+  expect,
+  DEV_SERVER_URL,
+  fakeStream,
+} from "./fixtures.js";
 
 // The Statistics sheet's Context section on a mocked host. The parts come
 // with the conversation's state; its answer to the tools catalogue, which a
@@ -117,24 +122,7 @@ async function open(page, live = PARTS.tokens, parts = PARTS) {
     }
     return route.fulfill({ status: 404, json: { error: "Not in this mock" } });
   });
-  await page.addInitScript(() => {
-    globalThis.EventSource = class extends EventTarget {
-      readyState = 1;
-      constructor() {
-        super();
-        setTimeout(() =>
-          this.dispatchEvent(
-            new MessageEvent("ready", {
-              data: JSON.stringify({ epoch: "context", cursor: 1 }),
-            }),
-          ),
-        );
-      }
-      close() {
-        this.readyState = 2;
-      }
-    };
-  });
+  await page.addInitScript(fakeStream, { epoch: "context", cursor: 1 });
   await page.goto(new URL(`/#session=${ID}`, DEV_SERVER_URL).href);
   await page
     .getByRole("button", { name: "Conversation statistics", exact: true })

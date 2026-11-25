@@ -204,6 +204,7 @@ def test_web_sheet_page_loads_its_engine_from_its_own_address(root, home, *, bin
     (dist / "share/sheet/snippets/inline0.js").write_text("export {};")
     (dist / "share/sheet/LICENSE-MIT").write_text("MIT")
     (dist / "secret.txt").write_text("not the engine")
+    (root / "outside.js").write_text("not the engine")
 
     def responder(_, body):
         if any(message.get("role") == "tool" for message in body["messages"]):
@@ -242,7 +243,13 @@ def test_web_sheet_page_loads_its_engine_from_its_own_address(root, home, *, bin
             # The installed code answers, not a folder of that name; nothing
             # else of the install is reachable through it.
             assert_true(page("~sheet/sheet.js")[1] == b"export const ready = 1;", "shadowed")
-            for refused in ("~sheet/LICENSE-MIT", "~sheet/../secret.txt", "~sheet/", "~sheet/x.js"):
+            for refused in (
+                "~sheet/LICENSE-MIT",
+                "~sheet/../secret.txt",
+                "~sheet/",
+                "~sheet/x.js",
+                f"~sheet/{root / 'outside.js'}",
+            ):
                 assert_true(page(refused)[0] == 404, refused)
             # An Excel or CSV file is served as itself, and on request as a
             # page the sheet code fills from it.

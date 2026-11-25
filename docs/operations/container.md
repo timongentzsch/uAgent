@@ -141,7 +141,8 @@ time it was written; **Check now** runs `chrome-update` once.
 
 On Linux the web host runs the same browser natively:
 
-1. Install `google-chrome-stable`, `Xtigervnc` and `xauth` in a directory
+1. Install `google-chrome-stable`, `Xtigervnc`, `xauth` and `xcompmgr`
+   (without it Chrome's popups have black margins) in a directory
    of the service's fixed `PATH`
    (`/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`).
 2. Save `web.browserData` as a user setting, so every runtime sees it:

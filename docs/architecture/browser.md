@@ -15,6 +15,8 @@ service bounded requests; the web host relays the display. Chrome is
 driven over CDP on a pipe; no CDP or VNC TCP port exists. It needs Linux
 with `google-chrome-stable`, `Xtigervnc`, `xauth` and `web.browserData`
 (`UAGENT_BROWSER_DATA`) set; remote conversations have no browser tool.
+With `xcompmgr` on the path the display is composited, so Chrome's popups
+draw their shadows; without it their margins are black.
 
 ## Processes and threads
 
@@ -22,7 +24,8 @@ with `google-chrome-stable`, `Xtigervnc`, `xauth` and `web.browserData`
 | --- | --- | --- |
 | `uagent --browser-service` | the web host, `StartService` | its owner pipe (fd 3) closes |
 | `Xtigervnc`, one per instance in use | the service, on the first action or takeover | idle stop, `stop`, profile switch, service exit |
-| `google-chrome-stable`, one per instance in use | the service, after Xvnc | as Xvnc |
+| `xcompmgr`, one per instance in use, when installed | the service, after Xvnc | as Xvnc |
+| `google-chrome-stable`, one per instance in use | the service, after the compositor | as Xvnc |
 | `chrome-update --loop` | `deploy/start.sh`, container only | the container |
 
 The service gets a fixed environment: `PATH` of `<data>/chrome/bin`, where a

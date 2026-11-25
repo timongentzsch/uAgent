@@ -224,7 +224,8 @@ TEST_CASE(TestImageRegion) {
   CHECK(ToolReadImageRegion("notes.txt", "0,0,1,1", "text")
             .output.find("raster image") != std::string::npos);
   // ImageMagick 6 has convert and identify, and no magick.
-  const std::string path = getenv("PATH") ? getenv("PATH") : "";
+  const char* found = getenv("PATH");
+  const std::string path = found ? found : "";
   const std::filesystem::path six = workspace.root / "imagemagick-6";
   std::filesystem::create_directories(six);
   for (const char* tool : {"convert", "identify"}) {
@@ -272,7 +273,8 @@ TEST_CASE(TestPdfPages) {
   };
   CHECK(ToolWriteFile("paper.pdf", pdf("Page one", "Page two")).Ok());
   CHECK(ToolWriteFile("scan.pdf", pdf("", "")).Ok());
-  const std::string path = getenv("PATH") ? getenv("PATH") : "";
+  const char* found = getenv("PATH");
+  const std::string path = found ? found : "";
   setenv("PATH", workspace.root.c_str(), 1);
   const ToolResult missing = ToolReadFile("paper.pdf", 1, 1, "missing");
   setenv("PATH", path.c_str(), 1);

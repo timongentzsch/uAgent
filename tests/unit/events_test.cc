@@ -563,6 +563,8 @@ TEST_CASE(TestDiagnosticsReachTheDayLog) {
     std::fflush(stderr);
     const int saved = dup(STDERR_FILENO);
     const int file = open(captured.c_str(), O_CREAT | O_WRONLY, 0600);
+    CHECK(saved >= 0 && file >= 0);
+    if (saved < 0 || file < 0) return;
     dup2(file, STDERR_FILENO);
     Diagnose(Severity::kWarning, "usage_ledger", "cannot write usage ledger",
              {{"error", "disk full"}});
@@ -624,16 +626,16 @@ TEST_CASE(TestLogsAreKeptWithinTheirSize) {
       fs::path(UagentDir(kMcpDir)) / "image-old.png",
   };
   for (size_t i = 0; i < std::size(files); ++i) {
-    std::ofstream(files[i]) << std::string(400 * 1024, 'x');
+    std::ofstream(files[i]) << std::string(size_t{400} * 1024, 'x');
     fs::last_write_time(files[i], now - std::chrono::hours(4 - i));
-    std::ofstream(in_use[i]) << std::string(400 * 1024, 'x');
+    std::ofstream(in_use[i]) << std::string(size_t{400} * 1024, 'x');
     fs::last_write_time(in_use[i], now - std::chrono::hours(6));
   }
   // Sessions keep their own rules, however large.
   const fs::path journal =
       fs::path(UagentDir(kHistoryDir)) / "s.json.events.jsonl";
   std::ofstream(fs::path(UagentDir(kHistoryDir)) / "s.json") << "session";
-  std::ofstream(journal) << std::string(2 * 1024 * 1024, 'x');
+  std::ofstream(journal) << std::string(size_t{2} * 1024 * 1024, 'x');
   fs::last_write_time(journal, now - std::chrono::hours(8));
   MaintainArtifacts();
   CHECK(!fs::exists(files[0]));

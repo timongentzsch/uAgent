@@ -371,7 +371,8 @@ test.describe("touch", () => {
     });
 
     test("a body scrolled down scrolls instead", async ({ page }) => {
-      const body = sheet.locator(".dialog-body");
+      // Settings scrolls its page, not its whole body.
+      const body = sheet.locator(".settings-pane");
       await body.evaluate((node) => {
         const tall = document.createElement("div");
         tall.style.height = "3000px";

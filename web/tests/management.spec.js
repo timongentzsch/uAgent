@@ -428,7 +428,7 @@ test("instructions return to their Settings topic and opener", async ({
   await settings
     .getByRole("button", { name: "Instructions and memory", exact: true })
     .click();
-  const opener = settings.getByRole("button", { name: /^Instructions What/ });
+  const opener = settings.getByRole("button", { name: /^Instructions Read/ });
   await opener.click();
   await expect(
     page.getByRole("dialog", { name: "Instructions", exact: true }),

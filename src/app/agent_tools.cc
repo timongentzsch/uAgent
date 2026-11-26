@@ -384,13 +384,12 @@ ToolResult StartAgents(const Api& api,
   ToolResult result;
   if (!wait) {
     if (batch.running == 0) return Unavailable(rows[0].answer);
-    // Said where it applies: waiting costs nothing, polling does.
+    // Said where it applies: an answer is held until the reports.
     json started = {
-        {"next", std::string(items ? "Each" : "It") +
-                     " reports when its turn ends. To have that in this "
-                     "turn, call agents with action wait once your own work "
-                     "is done; else end this turn with one line saying what "
-                     "you started, and the report starts your next."}};
+        {"next", std::string(items ? "Each reports" : "It reports") +
+                     " before this turn ends: work on meanwhile, and answer "
+                     "with " +
+                     (items ? "their reports." : "its report.")}};
     if (items) {
       started["agents"] = json::array();
       for (const Child& row : rows) {
@@ -769,7 +768,7 @@ Tool AgentStartTool(const Api& api, std::function<std::string()> own_model,
       "be able to finish alone. edits: none reads only (the default), "
       "worktree edits a fresh git worktree, folder edits this folder. With "
       "wait (the default) its answer is this call's result; without, its "
-      "report starts your next turn. items starts one agent per item, the "
+      "report comes later in this turn. items starts one agent per item, the "
       "item appended to the brief; with wait, the result holds all their "
       "answers. One agent per "
       "independent part; keep dependent steps in one.",

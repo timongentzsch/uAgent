@@ -321,6 +321,8 @@ def test_items_not_waited_for_start_at_once_and_report_later(root, home, *, bina
             == [("a", "working"), ("b", "working")],
             started,
         )
+        # Their reports come in this turn: nothing tells the model to end it.
+        assert_true("before this turn ends" in started["next"], started)
         assert_true(result.stdout.strip() == "heard did a did b", result.stdout)
     # Not waited for, they start now or not at all.
     with Server(

@@ -24,7 +24,7 @@ Open the first brief with:
 > publish, change permissions, or start agents.
 
 Send every later handoff to its id with `agent_send`, which keeps its
-conversation and model, then end your turn: its report starts your next one.
+conversation and model; its report reaches you before your turn ends.
 Its runtime may stop between handoffs, so processes and shell state from an
 earlier one are gone.
 

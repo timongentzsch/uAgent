@@ -310,7 +310,7 @@ export default function ContextSection({
               )
             }
           >
-            Compact now
+            Compact
           </Button>
           <Button disabled={!online} onClick={showContext}>
             Raw context

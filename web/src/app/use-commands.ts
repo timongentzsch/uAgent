@@ -97,7 +97,8 @@ export function useCommands({
     "/context": () => showContext(),
     "/config": () => open({ type: "settings" }),
     "/detail": () => open({ type: "settings", section: "user" }),
-    "/permissions": () => open({ type: "settings", section: "user" }),
+    "/permissions": () =>
+      open({ type: "settings", section: session ? "project" : "user" }),
     "/mcp": () => open({ type: "settings", section: "user" }),
     "/tools": () => setModal({ type: "tools", session_id: selected }),
     "/rename": () => session && setModal({ type: "rename", session }),

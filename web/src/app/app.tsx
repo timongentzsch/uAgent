@@ -800,6 +800,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
         ? () => setFind({ session: session.id, words: "", at: Date.now() })
         : undefined,
     shortcuts: () => setOverlay("shortcuts"),
+    settings: () => open({ type: "settings" }),
     previous: () => step("ArrowUp"),
     next: () => step("ArrowDown"),
     terminal: terminalAvailable ? toggleTerminal : undefined,

@@ -146,6 +146,17 @@ export function ConversationMenu({
         </MenuItem>
       )}
       {select && <MenuItem onClick={select}>Select</MenuItem>}
+      <MenuItem
+        onClick={() => open({ type: "statistics", session_id: item.id })}
+      >
+        Context and usage
+      </MenuItem>
+      <MenuItem
+        disabled={!online}
+        onClick={() => open({ type: "tools", session_id: item.id })}
+      >
+        Tools
+      </MenuItem>
       {detail && detail.levels.length > 0 && (
         <MenuSub label="View" value={capitalize(detail.level)}>
           {detail.levels.map((level) => (
@@ -189,34 +200,13 @@ export function ConversationMenu({
           Fork conversation
         </MenuItem>
         <MenuItem
-          onClick={() => open({ type: "statistics", session_id: item.id })}
-        >
-          Statistics
-        </MenuItem>
-        <MenuItem
-          disabled={!online}
-          onClick={() => open({ type: "tools", session_id: item.id })}
-        >
-          Tools
-        </MenuItem>
-        <MenuItem
           disabled={!online}
           onClick={() =>
             void shareTranscript(item, command).then(notify, report)
           }
         >
-          Export transcript
+          Export
         </MenuItem>
-        {item.generation && (
-          <MenuItem
-            disabled={!online || item.turn_active}
-            onClick={() =>
-              void command("submit", item, { text: "/compact" }).catch(report)
-            }
-          >
-            Compact
-          </MenuItem>
-        )}
         {item.generation && (
           <MenuItem
             disabled={!online}
@@ -224,7 +214,7 @@ export function ConversationMenu({
               void restartConversation(item, manage).then(notify, report)
             }
           >
-            Restart
+            Restart conversation
           </MenuItem>
         )}
         {item.generation && (

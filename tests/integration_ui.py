@@ -1373,7 +1373,7 @@ def test_input_slash_suggestions_and_tab_completion(root, home, *, binary):
         assert_true(code == 0, output)
         # Both candidates are offered, with the same description /help prints.
         assert_true(b"/config  show changed settings" in output, output)
-        assert_true(b"/context  show current model request" in output, output)
+        assert_true(b"/context  show the raw context" in output, output)
         assert_true(b"/con" in output, output)
         assert_true(not server.get_requests, server.get_requests)
 

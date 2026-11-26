@@ -6,6 +6,7 @@ import { useLatest } from "./use-latest.ts";
 // composer's own, listed to be found; `outside` ones act only outside fields.
 export const SHORTCUTS = [
   { id: "search", keys: "Mod+K", label: "Search", global: true },
+  { id: "settings", keys: "Mod+,", label: "Settings", global: true },
   {
     id: "find",
     keys: "Mod+F",

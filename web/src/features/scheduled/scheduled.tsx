@@ -334,7 +334,7 @@ export default function Scheduled({
                             />
                           </Field>
                           <HostField
-                            label="Execution host"
+                            label="Host"
                             value={task.host || ""}
                             change={(host) =>
                               edit({ host, cwd: "", environment: "local" })

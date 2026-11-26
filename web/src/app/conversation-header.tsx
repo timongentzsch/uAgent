@@ -95,7 +95,7 @@ export default function ConversationHeader({
   const multipleHosts = useMultipleHosts();
   const executionHost =
     hosts.sources.find((source) => source.id === (session?.host || ""))?.name ||
-    "Local";
+    "This host";
   const compact = useCompact();
   const narrow = useNarrowColumn();
   const browsing = useSnapshots(
@@ -164,10 +164,7 @@ export default function ConversationHeader({
             )}
           </h1>
           {multipleHosts && page === "chat" && session && (
-            <span
-              class="execution-host small muted truncate"
-              title="Execution host"
-            >
+            <span class="execution-host small muted truncate" title="Host">
               {executionHost}
             </span>
           )}

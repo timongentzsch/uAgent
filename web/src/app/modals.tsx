@@ -181,7 +181,7 @@ export default function Modals({
                     : "Delete conversation?"
                 : "unit" in modal && modal.unit
                   ? `${modal.unit} statistics`
-                  : "Conversation statistics"
+                  : "Context and usage"
           }
           layout={modal.type === "statistics" ? "sheet" : "content"}
           close={close}

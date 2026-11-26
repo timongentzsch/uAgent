@@ -23,8 +23,8 @@ its design page.
 
 ## Remote hosts
 
-A conversation's execution host is chosen when it starts, in the **Host**
-field of a new conversation or folder: Local, or a host added with **Add
+A conversation's host is chosen when it starts, in the **Host**
+field of a new conversation or folder: This host, or a host added with **Add
 host** in the sidebar's Remote hosts panel, which shows each host's state
 and round trip with **Reconnect** and **Disconnect**.
 
@@ -123,7 +123,7 @@ provider other than the conversation's: none is asked unnamed. See
 `uagent --web` starts or reuses the user's web host and prints a pairing
 link whose code works once, for five minutes ([Remote
 access](operations/remote-access.md)). The web home screen's box starts a
-conversation in the **Scratch** workspace on Local; its **Scratch** button
+conversation in the **Scratch** workspace on this host; its **Scratch** button
 chooses another host and folder. **New** in the sidebar makes a
 conversation, workspace or folder, and **+** on a place starts one there.
 A workspace is a folder kept under `~/.uagent/spaces/<name>`; deleting it
@@ -173,23 +173,24 @@ Its sheet lists the turn, background commands and agents, each with Stop.
 
 **The transcript** draws a turn's work as a tree of steps under one
 "Worked" row; a turn of more than 30 steps folds the earlier ones.
-**Detail** in the conversation menu sets how far the tree starts open
+**View** in the conversation menu sets how far the tree starts open
 (`minimal`, `default`, `full`) and whether thinking shows, on this device;
-`/detail` sets it everywhere. A turn that changed files ends with a
+`/detail LEVEL` does the same. A turn that changed files ends with a
 receipt listing them, each with **Undo**.
 
 **Search and find.** Ctrl+K (⌘K) searches conversation and folder names,
 then message text including tool output, then actions, commands and
-settings; a query starting with `>` searches only the latter. Ctrl+F (⌘F)
+settings; a query starting with `>` searches only the latter. Ctrl+, (⌘,)
+opens Settings. Ctrl+F (⌘F)
 finds within the open conversation, loading older messages and opening
 folded rows to reach a match.
 
 **The conversation menu** holds **Find in conversation**, **Pin**,
-**Rename**, **Move to…** and **Select**; under **More**: **Fork
-conversation**, **Statistics**, **Tools**, **Export transcript**,
-**Detail**, **Compact**, **Restart**, **Close conversation** and
-**Delete**. Fork waits for a running turn. **Move to…** moves a Local
-conversation, its attached side chats and its agents to another folder or workspace; its files stay
+**Rename**, **Move to…**, **Select**, **Context and usage**, **Tools**
+and **View**; under **More**: **Fork conversation**, **Export**,
+**Restart conversation**, **Close conversation** and **Delete**. Fork
+waits for a running turn. **Move to…** moves a conversation on this host,
+its attached side chats and its agents to another folder or workspace; its files stay
 where they were. Earlier file references open in their original workspace.
 New copied file links retain their workspace after a move. An older path-only
 link opens when exactly one workspace contains that path. If several contain
@@ -348,12 +349,12 @@ agent never reads it
 
 | Kind | Started by | Lives until |
 | --- | --- | --- |
-| Folder terminal | **+** → **Terminal** on a place | closed, exited, or silent with no device showing it for `web.terminalIdleMinutes` (Local) or 24 h (remote) |
+| Folder terminal | **+** → **Terminal** on a place | closed, exited, or silent with no device showing it for `web.terminalIdleMinutes` (this host) or 24 h (remote) |
 | Panel terminal | Ctrl+\` or the header button; **+** for another | its tab closes or the page is left or reloaded |
 
 A folder terminal is listed under its place on every device and shows its
 recent output to a device that opens it; one device types at a time, and
-**Use here** takes it over. Stopping the web host ends its Local shells.
+**Use here** takes it over. Stopping the host ends its shells.
 `web.terminal` off removes both kinds at the next host start.
 
 ## Artifacts
@@ -473,7 +474,7 @@ whatever the approval mode.
 
 A key is `global/NAME` or `project/NAME`. The **Library** lists the
 memories, skills, artifacts and presented files of every place a
-conversation works in. SSH folders are grouped by host. Local items and shared
+conversation works in. SSH folders are grouped by host. Items on this host and shared
 snapshots appear while the Library loads live artifacts from connected hosts.
 A memory offers **Move to…** and
 **Copy to everywhere**, and picked items go with **Delete…**. **Scheduled**

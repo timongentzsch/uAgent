@@ -557,7 +557,7 @@ test("opening a statistics fold leaves the conversation's status alone", async (
       ),
     );
     for (const node of document.querySelectorAll(
-      ".conversation-head, .session-state",
+      ".conversation-head, .session-row",
     ))
       observer.observe(node, {
         subtree: true,

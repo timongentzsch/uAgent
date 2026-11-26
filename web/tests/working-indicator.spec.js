@@ -6,8 +6,8 @@ import {
   mockHost,
 } from "./fixtures.js";
 
-// The footer shows ongoing work. In the sidebar only the selected working
-// row pulses; background conversations keep a quiet, static mark.
+// The footer shows ongoing work. In the sidebar a row's left line is its
+// state: only the open working row's line moves; the others stand still.
 const EPOCH = "work-epoch";
 const id = (n) => n.toString(16).padStart(32, "0");
 const NOW = Date.now();
@@ -29,6 +29,7 @@ const SESSIONS = [
   session(3, { incoming: 2 }),
   session(4, { error: "The model refused." }),
   session(5),
+  session(6, { needs_you: true }),
 ];
 const NODES = [
   { id: "u", parent: null, kind: "turn", body: { kind: "text", text: "Go" } },
@@ -93,6 +94,22 @@ async function open(page) {
 const band = (page) => page.locator("canvas.work-band");
 // The band's pixels, as an image.
 const pixels = (page) => band(page).evaluate((canvas) => canvas.toDataURL());
+// The list's running animations: each its row's title and pseudo-element.
+const listAnimations = (page) =>
+  page.evaluate(() =>
+    document
+      .getAnimations()
+      .filter((animation) =>
+        animation.effect?.target?.closest?.(".sidebar, dialog.drawer"),
+      )
+      .map(
+        (animation) =>
+          `${animation.effect.target
+            .querySelector(".row-label")
+            ?.textContent.replace(/Working|Failed|Needs your input/, "")
+            .trim()} ${animation.effect.pseudoElement}`,
+      ),
+  );
 // What runs an animation because of work: none should.
 const workAnimations = (page) =>
   page.evaluate(
@@ -119,9 +136,9 @@ test("the working footer and selected sidebar mark move while background rows st
   // The glow travels: the band's pixels change.
   const first = await pixels(page);
   await expect.poll(() => pixels(page)).not.toBe(first);
-  const selected = page.locator(".session[aria-current] .status-led.running");
-  await expect(selected).toHaveCSS("animation-name", "pulse");
-  expect(await workAnimations(page)).toBe(await selected.count());
+  // In the list only the open row's line moves.
+  expect(await listAnimations(page)).toEqual([`Conversation 1 ${"::after"}`]);
+  expect(await workAnimations(page)).toBe(1);
 
   // Done: the band goes with the work.
   await page.evaluate(
@@ -177,58 +194,109 @@ test("with motion off the band stands still", async ({ page }) => {
   expect(await workAnimations(page)).toBe(0);
 });
 
-test("a working mark is centered with the row title and distinct from unread", async ({
-  page,
-}) => {
-  // Places: a folder's head carries its unread mark.
-  await page.addInitScript(() =>
-    localStorage.setItem("uagent-list", JSON.stringify("places")),
-  );
-  await open(page);
-  const row = (n) =>
-    page
-      .locator(".session-row")
-      .filter({ hasText: `Conversation ${n}` })
-      .first();
-  const mark = (locator) =>
-    locator.evaluate((node) => {
-      const style = getComputedStyle(node);
-      return {
-        image: style.backgroundImage.split("(")[0],
-        fill: style.backgroundColor,
-        width: node.getBoundingClientRect().width,
-        height: node.getBoundingClientRect().height,
-        radius: style.borderTopLeftRadius,
-      };
-    });
-  const working = await mark(row(2).locator(".status-led.running"));
-  const offset = await row(2).evaluate((entry) => {
-    const center = (selector) => {
-      const box = entry.querySelector(selector).getBoundingClientRect();
-      return box.top + box.height / 2;
+// A row's state as its left line, and the row itself.
+const row = (page, n) =>
+  page
+    .locator(".session-row")
+    .filter({ hasText: `Conversation ${n}` })
+    .first();
+const line = (locator) =>
+  locator.evaluate((node) => {
+    const style = (pseudo) => getComputedStyle(node, pseudo);
+    const box = node.getBoundingClientRect();
+    const label = node.querySelector(".row-label").getBoundingClientRect();
+    const button = getComputedStyle(node.querySelector(".session"));
+    return {
+      track:
+        style("::before").content === "none"
+          ? "none"
+          : style("::before").backgroundImage.startsWith("repeating")
+            ? "dotted"
+            : style("::before").backgroundColor,
+      run:
+        style("::after").content === "none"
+          ? "none"
+          : style("::after").animationName,
+      width: Number.parseFloat(style("::before").width) || 0,
+      // The title starts at the row's own inset: no column before it.
+      title: Math.round(label.left - box.left),
+      cut:
+        node.querySelector(".row-label").scrollWidth >
+        node.querySelector(".row-label").clientWidth,
+      inset: Math.round(Number.parseFloat(button.paddingLeft)),
     };
-    return center(".status-led.running") - center(".row-label");
   });
-  expect(Math.abs(offset)).toBeLessThan(1);
-  // A failure is its own sign; an idle row shows none.
-  await expect(row(4).getByRole("img", { name: "Failed" })).toBeVisible();
-  await expect(row(5).locator(".status-led")).toHaveCount(0);
-  // Folded, the folder's head says that something in it is unread.
-  await page.getByRole("button", { name: "Conversations of project" }).click();
-  const unread = await mark(page.locator(".place-head .status-led.unread"));
-  const connected = await mark(page.locator(".connection .status-led.active"));
-  expect(working.image).toBe("none");
-  expect(working.height).toBeLessThan(working.width);
-  for (const solid of [unread, connected]) {
-    expect(solid.image).toBe("none");
-    expect(solid.fill).not.toBe("rgba(0, 0, 0, 0)");
-  }
-  expect(unread.fill).not.toBe(connected.fill);
-  for (const square of [working, unread, connected]) {
-    expect(square.radius).toBe("0px");
-    expect(square.width).toBeCloseTo(8, 0);
-  }
-  expect(await workAnimations(page)).toBe(0);
+
+for (const width of [1280, 390])
+  test(`each row's state is its left line and its title starts at the row's inset (${width})`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await open(page);
+    if (width < 600)
+      await page.getByRole("button", { name: "Open conversations" }).click();
+    const colours = await page.evaluate(() => {
+      const probe = document.createElement("div");
+      document.body.append(probe);
+      const of = (token) => {
+        probe.style.color = `var(${token})`;
+        return getComputedStyle(probe).color;
+      };
+      const found = { accent: of("--accent"), removed: of("--removed") };
+      probe.remove();
+      return found;
+    });
+    const stripe = await page.evaluate(() =>
+      Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--stripe"),
+      ),
+    );
+    expect(await line(row(page, 1))).toMatchObject({
+      track: "dotted",
+      run: "line-run",
+      width: stripe,
+    });
+    expect(await line(row(page, 2))).toMatchObject({
+      track: "dotted",
+      run: "none",
+    });
+    expect(await line(row(page, 4))).toMatchObject({
+      track: colours.removed,
+      run: "none",
+    });
+    expect(await line(row(page, 5))).toMatchObject({
+      track: "none",
+      run: "none",
+    });
+    expect(await line(row(page, 6))).toMatchObject({
+      track: colours.accent,
+      run: "none",
+    });
+    for (const n of [1, 2, 3, 4, 5, 6]) {
+      const { title, inset, cut } = await line(row(page, n));
+      expect(title).toBe(inset);
+      expect(cut).toBe(false);
+    }
+    // The open row is told by its fill, not by a stripe of its own.
+    expect(
+      await row(page, 1).evaluate((node) => getComputedStyle(node).boxShadow),
+    ).toBe("none");
+    // The state is said, as it was by the column.
+    await expect(row(page, 4)).toContainText("Failed");
+    await expect(row(page, 6)).toContainText("Needs your input");
+    await expect(row(page, 2)).toContainText("Working");
+    // The drawer's own entrance has played by then.
+    await expect
+      .poll(() => listAnimations(page))
+      .toEqual([`Conversation 1 ${"::after"}`]);
+  });
+
+test("with motion reduced no line moves", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await open(page);
+  expect(await line(row(page, 1))).toMatchObject({ track: "dotted" });
+  expect(await listAnimations(page)).toEqual([]);
 });
 
 // A step at work looks as it will when it is done: its arrow stays, it

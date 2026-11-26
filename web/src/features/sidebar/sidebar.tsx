@@ -21,8 +21,6 @@ import {
   Library,
   CalendarClock,
   Search,
-  CircleAlert,
-  TriangleAlert,
   Terminal,
 } from "lucide-preact";
 import { useHostContext } from "../../state/host-context.ts";
@@ -43,7 +41,6 @@ import FolderLabel, {
 import { folderOf } from "../../shared/display.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { Menu, MenuItem, useLongPress } from "../../shared/menu.tsx";
-import { StatusLed } from "../../shared/connection-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { plural } from "../../shared/quantities.ts";
 import {
@@ -75,12 +72,14 @@ const SAMPLE: Session[] = [
   updated: Date.now(),
 }));
 
+// A row's state, drawn as its left line (primitives.css [data-line]) and
+// said in words.
 const STATES: Partial<
-  Record<SessionState, { label: string; Icon?: typeof CircleAlert }>
+  Record<SessionState, { label: string; line: "work" | "needs" | "failed" }>
 > = {
-  waiting: { label: "Needs your input", Icon: CircleAlert },
-  failed: { label: "Failed", Icon: TriangleAlert },
-  working: { label: "Working" },
+  waiting: { label: "Needs your input", line: "needs" },
+  failed: { label: "Failed", line: "failed" },
+  working: { label: "Working", line: "work" },
 };
 
 // A conversation and its agents at work; a finished agent leaves the list.
@@ -313,7 +312,13 @@ function SessionRow({
   const state = statusOf(item, online);
   const shown = STATES[state];
   return (
-    <div class="session-row entry" data-picked={picked || undefined}>
+    <div
+      class="session-row entry"
+      data-picked={picked || undefined}
+      data-line={shown?.line}
+      // Only the open conversation's work moves.
+      data-moving={(selected && state === "working") || undefined}
+    >
       {selecting && (
         <RowCheck
           picked={picked}
@@ -326,23 +331,10 @@ function SessionRow({
         onClick={(event) => pick?.(item.id, event) || choose(item.id)}
         aria-current={selected ? "page" : undefined}
         data-unread={unread || undefined}
-        leading={
-          <span
-            class={`session-state ${state}`}
-            role={shown && "img"}
-            aria-label={shown?.label}
-          >
-            {shown &&
-              (shown.Icon ? (
-                <shown.Icon aria-hidden />
-              ) : (
-                <StatusLed state="running" />
-              ))}
-          </span>
-        }
         title={
           <>
             <SessionName item={item} />
+            {shown && <span class="sr-only">{shown.label}</span>}
             {unread && <span role="img" aria-label="Unread messages" />}
           </>
         }

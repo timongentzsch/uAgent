@@ -142,6 +142,13 @@
     --icon-align: -0.2em;
     --stroke: max(1px, 0.12rem);
     --stripe: 2px;
+    /* A state line's work: a dotted track of --line-dot cells, and a run of
+       them that steps --line-steps cells along it and back. */
+    --line-dot: var(--space-1);
+    --line-run: calc(6 * var(--line-dot));
+    --line-steps: 10;
+    --line-track: color-mix(in srgb, var(--accent) 45%, transparent);
+    --ease-line: steps(var(--line-steps));
     /* The focus ring lies inside its control's edge: no pane clips it and
        it never covers a neighbour. */
     --focus-width: 2px;

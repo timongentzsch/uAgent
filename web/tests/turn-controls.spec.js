@@ -248,8 +248,9 @@ test("a message queued during a turn runs after it", async ({
   await expect(queue).toBeHidden();
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
   const row = page.locator(".session-row:has([aria-current])");
-  await expect(row.locator(".status-led.running")).toBeVisible();
-  await expect(row.locator(".session-state svg")).toHaveCount(0);
+  // Its line says it works; the row holds no mark of its own.
+  await expect(row).toHaveAttribute("data-line", "work");
+  await expect(row.locator(".session svg")).toHaveCount(0);
   await prompt.fill("Queued follow-up");
   await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
   await expect(

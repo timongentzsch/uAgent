@@ -42,9 +42,14 @@ test("a decision in another folder waits under Needs you, listed once in either 
   for (const view of ["Recent", "Places"]) {
     await page.getByRole("button", { name: view, exact: true }).click();
     await expect(needs.locator(".session")).toHaveCount(1);
+    // Its line says so, and its name says it in words.
+    await expect(needs.locator(".session-row")).toHaveAttribute(
+      "data-line",
+      "needs",
+    );
     await expect(
-      needs.getByRole("img", { name: "Needs your input" }),
-    ).toBeVisible();
+      needs.getByRole("button", { name: /Needs your input/ }),
+    ).toHaveCount(1);
     await expect(nav.locator(".session")).toHaveCount(2);
   }
   // Its folder holds nothing else, so Places has no place for it.
@@ -115,7 +120,7 @@ test("a conversation's agents at work sit beneath it, finished ones leave the li
   await page.goto("/");
   const agents = page.getByRole("group", { name: /^Agents of / });
   await expect(agents.locator(".session")).toHaveCount(1);
-  await expect(agents.locator(".session-state .status-led")).toHaveCount(1);
+  await expect(agents.locator('.session-row[data-line="work"]')).toHaveCount(1);
   // The finished one has no row, and nothing folds it away.
   await expect(page.getByRole("button", { name: /agent$/ })).toHaveCount(0);
   await expect(page.locator(".sidebar .session")).toHaveCount(listed - 1);

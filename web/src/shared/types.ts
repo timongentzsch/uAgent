@@ -765,7 +765,11 @@ export interface ConfigSetting {
   label: string;
   purpose?: string;
   description: string;
-  category: string;
+  // Where Settings lists it: a topic id and a group id of `groups`.
+  topic: string;
+  group: string;
+  // Listed under Show all.
+  advanced?: boolean;
   type: string;
   sensitivity: string;
   default?: JSONValue;
@@ -788,6 +792,11 @@ export interface ConfigSetting {
   follows?: string;
   fallback?: string;
 }
+export interface ConfigGroup {
+  id: string;
+  label: string;
+  topic: string;
+}
 export interface ConfigChange {
   key: string;
   value?: string;
@@ -800,8 +809,8 @@ export interface Configuration {
   problem: string;
   // That file as it stands, every secret hidden.
   document?: JSONValue;
-  // The groups settings are listed under, in order.
-  categories: { id: string; label: string }[];
+  // The groups settings are listed under, in order, each in a topic.
+  groups: ConfigGroup[];
   effects: {
     key: string;
     effect: "next_turn" | "restart" | "shadowed";

@@ -91,7 +91,8 @@ export default function Configuration({
         <RestartNotice
           key={config.restart.join()}
           keys={config.restart.map((key) => find(key)?.label || key)}
-          host={config.restart.some((key) => find(key)?.category === "web")}
+          // The web host's own settings restart it, not a conversation.
+          host={config.restart.some((key) => find(key)?.key.startsWith("web."))}
           running={sessions.filter((item) => item.generation).length}
           folder={scope === "project" ? folder : undefined}
         />
@@ -137,8 +138,8 @@ export default function Configuration({
         </Group>
       )}
       {!asFile &&
-        config.categories.map(({ id, label }) => {
-          const own = listed.filter((setting) => setting.category === id);
+        config.groups.map(({ id, label }) => {
+          const own = listed.filter((setting) => setting.group === id);
           const field = (setting: ConfigSetting) => (
             <SettingField
               key={setting.name}

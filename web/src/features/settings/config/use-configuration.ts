@@ -75,7 +75,7 @@ export function useConfiguration(
     file: value?.file || "",
     document: value?.document,
     problem: value?.problem || "",
-    categories: value?.categories || [],
+    groups: value?.groups || [],
     loaded: !!value,
     error,
     retry: () => setAttempt((prior) => prior + 1),

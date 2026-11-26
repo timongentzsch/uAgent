@@ -51,6 +51,8 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
                   const SelfDescriptionInputs& inputs);
 
 json ConfigSchemaJson();
+// The groups settings are listed under, in order, each with its topic.
+json ConfigGroupsJson();
 // Per setting (one when `name` is set): its descriptor, `scopes`, `set`,
 // `effective`, `source` and `locked`. A secret reports only that it is set.
 json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,

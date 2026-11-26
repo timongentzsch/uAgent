@@ -74,14 +74,10 @@ json ConfigurationControl(const json& request, const ConfigManager& manager) {
   } else if (operation != "get") {
     return {{"error", "unknown configuration operation"}};
   }
-  json categories = json::array();
-  for (const ConfigCategory& category : kConfigCategories) {
-    categories.push_back({{"id", category.id}, {"label", category.label}});
-  }
   const EffectiveConfigSnapshot saved = manager.Read();
   return {
       {"settings", ConfigSettingsJson(saved, JsonValue(request, "name", ""))},
-      {"categories", std::move(categories)},
+      {"groups", ConfigGroupsJson()},
       {"effects", effects},
       // Where it is all saved, for whoever would rather edit the file,
       // and what that file holds that could not be taken.

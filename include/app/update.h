@@ -17,6 +17,10 @@ namespace uagent {
 // it but `terminal` (the web terminal's switch) or its folder does not.
 json UpdateState(bool terminal);
 
+// How the installer says this was installed: release, source, checkout or
+// container; empty when nothing says.
+std::string InstallKind();
+
 // Asks GitHub for the newest release and keeps the answer; the state, with
 // `error` when it could not be read.
 json CheckForUpdate(bool terminal);

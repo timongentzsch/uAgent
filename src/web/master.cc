@@ -521,6 +521,11 @@ void Master::RegisterApiRoutes() {
                      {"url", origin_},
                      {"pairing_code", Pair()}});
   });
+  // What a page may know before it is paired: how this host was installed,
+  // which decides the commands it shows. The kind only, no path.
+  server_.Get("/api/auth", [](const Request&, Response& response) {
+    Reply(response, {{"install", InstallKind()}}, 200);
+  });
   server_.Post("/api/auth", [this](const Request& request, Response& response) {
     Authenticate(request, response);
   });

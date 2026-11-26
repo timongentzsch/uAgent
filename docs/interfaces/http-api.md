@@ -16,6 +16,7 @@ are in [Web host](../architecture/web-host.md#protocol).
 
 | Route | Request | Response |
 | --- | --- | --- |
+| `GET /api/auth` | none; no device needed | `{install}`: how this host was installed (`release`, `source`, `checkout`, `container`, or empty), which decides the commands a page shows |
 | `POST /api/auth` | `{code, name}`, at most 4 KiB | `{v, device}` and `Set-Cookie: uagent_device=…`; 403 bad or expired code, 409 at 16 devices, 429 over 12 tries a minute |
 | `POST /api/instance` | header `X-Uagent-Instance: <secret from discovery.json>` | `{v, epoch, url, pairing_code}`; makes a new pairing code |
 

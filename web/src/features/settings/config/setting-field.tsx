@@ -192,21 +192,24 @@ export function SettingField({
   );
   if (itemized(setting))
     return (
-      <ProvidersField
-        label={setting.label}
-        footer={detail}
-        value={own}
-        error={error}
-        disabled={disabled}
-        save={set}
-        reload={reload}
-        online={online}
-      />
+      <div data-row={setting.key}>
+        <ProvidersField
+          label={setting.label}
+          footer={detail}
+          value={own}
+          error={error}
+          disabled={disabled}
+          save={set}
+          reload={reload}
+          online={online}
+        />
+      </div>
     );
   return (
     <div
       class="setting-field"
       data-setting={setting.name}
+      data-row={setting.key}
       title={setting.key}
       // A value that may be long gets its own line on a phone.
       data-wide={

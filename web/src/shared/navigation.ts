@@ -67,6 +67,28 @@ export function withoutFileAddress() {
   return `#${params}`;
 }
 
+// #settings=approvals/rules: Settings open at a topic and row, kept in the
+// address while it is open, so a reload or a link opens the same place.
+export const settingsFromURL = () =>
+  addressParams().get("settings") ?? undefined;
+
+const hashOf = (params: URLSearchParams) =>
+  `#${params.toString().replace(/%2F/g, "/")}`;
+
+export function writeSettingsAddress(address: string) {
+  const params = addressParams();
+  params.set("settings", address);
+  history.replaceState(history.state, "", hashOf(params));
+}
+
+// What Back from a linked Settings lands on.
+export function withoutSettingsAddress() {
+  const params = addressParams();
+  if (!params.has("settings")) return undefined;
+  params.delete("settings");
+  return hashOf(params);
+}
+
 // In an iOS home-screen app the left edge opens the drawer, and Safari
 // swipes back from that edge whenever there is an entry to go back to. So
 // there a conversation replaces the last one, written under any open layer.

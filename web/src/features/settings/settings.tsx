@@ -6,7 +6,13 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { useDismiss } from "../../shared/dismiss.ts";
 import { usePhone } from "../../shared/layout.ts";
 import { usePushDirection } from "../../shared/motion.ts";
-import { Button, DialogHeader, Group, Row } from "../../shared/ui.tsx";
+import { Button, DialogHeader, Group, Input, Row } from "../../shared/ui.tsx";
+import { writeSettingsAddress } from "../../shared/navigation.ts";
+import {
+  findSettings,
+  settingsEntries,
+  type SettingsEntry,
+} from "../../shared/settings-index.ts";
 import {
   parseAddress,
   TOPICS,
@@ -43,6 +49,7 @@ export default function Settings(props: SettingsProps) {
   // picked topic is a layer the back gesture returns from.
   const [place, setPlace] = useState(() => parseAddress(props.address));
   const [all, setAll] = useState(false);
+  const [query, setQuery] = useState("");
   const [editingInstructions, setEditingInstructions] = useState(false);
   const moved = usePushDirection(place.topic !== undefined);
   useDismiss(phone && place.topic !== undefined, () => go());
@@ -57,6 +64,7 @@ export default function Settings(props: SettingsProps) {
   const go = (address?: string) => {
     setPlace(parseAddress(address));
     setAll(false);
+    setQuery("");
   };
   // biome-ignore lint/correctness/useExhaustiveDependencies: follows the address it is opened at
   useEffect(() => go(props.address), [props.address]);
@@ -72,6 +80,25 @@ export default function Settings(props: SettingsProps) {
     if (row) row.scrollIntoView({ block: "start" });
     else pane.scrollTo(0, 0);
   }, [current, place.row, config.loaded, all]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: written when the place changes
+  useEffect(
+    () =>
+      writeSettingsAddress(
+        phone && !drilled
+          ? ""
+          : place.row
+            ? `${current}/${place.row}`
+            : current,
+      ),
+    [current, place.row, drilled],
+  );
+  const results = findSettings(
+    settingsEntries(config.settings, config.groups, topics),
+    query,
+  );
+  const found = query.trim() !== "" && (
+    <SearchResults results={results} open={(entry) => go(entry.address)} />
+  );
 
   const groups = [
     ...topic.parts.flatMap((part) => ("group" in part ? [part.group] : [])),
@@ -176,80 +203,122 @@ export default function Settings(props: SettingsProps) {
           select={(id) => go(id)}
           details={{ conversation: session?.title || "Conversation" }}
           class={moved && "push"}
-        />
-        {(!phone || drilled) && (
-          <div
-            ref={body}
-            class={moved ? "settings-pane push" : "settings-pane"}
-          >
-            {!phone && <h3 class="settings-pane-title">{topic.label}</h3>}
-            {groups.length > 0 && folder && (
-              <div
-                class="segmented settings-scope"
-                role="group"
-                aria-label="Where it applies"
-              >
-                <Button
-                  aria-pressed={scope === "user"}
-                  onClick={() => setScope("user")}
+          search={
+            <Input
+              type="search"
+              class="settings-search"
+              aria-label="Find a setting"
+              placeholder="Find a setting, a status or an action"
+              value={query}
+              onInput={(event) => setQuery(event.currentTarget.value)}
+            />
+          }
+        >
+          {phone && found}
+        </SettingsNav>
+        {!phone && found ? (
+          <div class="settings-pane">{found}</div>
+        ) : (
+          (!phone || drilled) && (
+            <div
+              ref={body}
+              class={moved ? "settings-pane push" : "settings-pane"}
+            >
+              {!phone && <h3 class="settings-pane-title">{topic.label}</h3>}
+              {groups.length > 0 && folder && (
+                <div
+                  class="segmented settings-scope"
+                  role="group"
+                  aria-label="Where it applies"
                 >
-                  All conversations
-                </Button>
-                <Button
-                  aria-pressed={scope === "project"}
-                  onClick={() => setScope("project")}
-                >
-                  <span class="truncate">This folder · {nameOf(folder)}</span>
-                </Button>
-              </div>
-            )}
-            {groups.length > 0 && (
-              <ConfigNotices
-                config={config}
-                scope={scope}
-                folder={folder}
-                sessions={catalogue.sessions}
-              />
-            )}
-            {groups.length > 0 && !config.loaded && config.error == null && (
-              <SettingRowsLoading />
-            )}
-            {parts.map((part) => {
-              if (!("group" in part))
-                return (
-                  <div key={part.panel} data-row={part.panel}>
-                    {(
-                      panels[part.panel] ??
-                      (() => props.panels[part.panel]?.(go, place.row))
-                    )()}
-                  </div>
+                  <Button
+                    aria-pressed={scope === "user"}
+                    onClick={() => setScope("user")}
+                  >
+                    All conversations
+                  </Button>
+                  <Button
+                    aria-pressed={scope === "project"}
+                    onClick={() => setScope("project")}
+                  >
+                    <span class="truncate">This folder · {nameOf(folder)}</span>
+                  </Button>
+                </div>
+              )}
+              {groups.length > 0 && (
+                <ConfigNotices
+                  config={config}
+                  scope={scope}
+                  folder={folder}
+                  sessions={catalogue.sessions}
+                />
+              )}
+              {groups.length > 0 && !config.loaded && config.error == null && (
+                <SettingRowsLoading />
+              )}
+              {parts.map((part) => {
+                if (!("group" in part))
+                  return (
+                    <div key={part.panel} data-row={part.panel}>
+                      {(
+                        panels[part.panel] ??
+                        (() => props.panels[part.panel]?.(go, place.row))
+                      )()}
+                    </div>
+                  );
+                const own = listed.filter(
+                  (setting) =>
+                    setting.group === part.group && (all || !setting.advanced),
                 );
-              const own = listed.filter(
-                (setting) =>
-                  setting.group === part.group && (all || !setting.advanced),
-              );
-              return (
-                config.loaded && (
-                  <SettingsGroup
-                    key={part.group}
-                    config={config}
-                    label={label(part.group)}
-                    settings={own}
-                    scope={scope}
-                    folder={folder}
-                    online={online}
-                  />
-                )
-              );
-            })}
-            {config.loaded && folded > 0 && (
-              <ShowAll count={folded} shown={all} toggle={() => setAll(!all)} />
-            )}
-          </div>
+                return (
+                  config.loaded && (
+                    <SettingsGroup
+                      key={part.group}
+                      config={config}
+                      label={label(part.group)}
+                      settings={own}
+                      scope={scope}
+                      folder={folder}
+                      online={online}
+                    />
+                  )
+                );
+              })}
+              {config.loaded && folded > 0 && (
+                <ShowAll
+                  count={folded}
+                  shown={all}
+                  toggle={() => setAll(!all)}
+                />
+              )}
+            </div>
+          )
         )}
       </div>
       {editingInstructions &&
         props.instructions(() => setEditingInstructions(false))}
     </SettingsContext.Provider>
+  );
+}
+
+function SearchResults({
+  results,
+  open,
+}: {
+  results: SettingsEntry[];
+  open: (entry: SettingsEntry) => void;
+}) {
+  return (
+    <Group title="Found">
+      {!results.length && <Row label="Nothing matches" />}
+      {results.map((entry) => (
+        <Row
+          key={entry.address}
+          label={entry.label}
+          detail={[entry.detail, entry.topic].filter(Boolean).join(" · ")}
+          onClick={() => open(entry)}
+        />
+      ))}
+    </Group>
   );
 }

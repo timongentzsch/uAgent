@@ -90,6 +90,7 @@ import { folderOf } from "../shared/display.ts";
 import {
   focusComposer,
   fileFromURL,
+  settingsFromURL,
   artifactURL,
   withoutFileAddress,
 } from "../shared/navigation.ts";
@@ -815,6 +816,19 @@ function App({ host, bindResult, reading }: HostAppProps) {
     terminal: terminalAvailable ? toggleTerminal : undefined,
   };
   useShortcuts(authenticated ? shortcutActions : {});
+  // #settings=…: opens Settings there, on load and when such a link is
+  // entered; entries the app wrote itself (state set) never reopen it.
+  useEffect(() => {
+    if (!authenticated) return;
+    const follow = () => {
+      const address = settingsFromURL();
+      if (address !== undefined && !history.state)
+        setModal({ type: "settings", address, linked: true });
+    };
+    follow();
+    addEventListener("hashchange", follow);
+    return () => removeEventListener("hashchange", follow);
+  }, [authenticated]);
   const navigate = useCallback((value: typeof page) => {
     setPage(value);
     setDrawer(false);
@@ -1171,6 +1185,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                     settings={(address: string) =>
                       open({ type: "settings", address })
                     }
+                    conversation={!!session}
                     actions={{ ...shortcutActions, search: undefined }}
                   />
                 ) : (

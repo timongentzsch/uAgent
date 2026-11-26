@@ -9,7 +9,10 @@ import { useHosts } from "../state/sources.ts";
 import HostField from "../shared/host-field.tsx";
 import { ListRow } from "../shared/list-row.tsx";
 import FolderLabel from "../shared/folder-label.tsx";
-import { withoutFileAddress } from "../shared/navigation.ts";
+import {
+  withoutFileAddress,
+  withoutSettingsAddress,
+} from "../shared/navigation.ts";
 import FolderPicker from "../features/files/folder-picker.tsx";
 import { folderOf, projectsOf } from "../shared/display.ts";
 import { plural } from "../shared/quantities.ts";
@@ -443,6 +446,7 @@ export default function Modals({
           layout="sheet"
           header={false}
           close={close}
+          backAddress={modal.linked ? withoutSettingsAddress() : undefined}
         >
           <Settings
             address={modal.address}

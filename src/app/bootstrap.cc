@@ -20,6 +20,7 @@
 #include "include/agent/prompt.h"
 #include "include/agent/session_store.h"
 #include "include/api/client.h"
+#include "include/app/agent_tools.h"
 #include "include/app/asset_store.h"
 #include "include/app/commands.h"
 #include "include/app/execution.h"
@@ -463,6 +464,10 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       std::move(instructions), std::move(skills));
   context->agent->SetSessionRole(context->options.session);
   context->agent->JudgeReports(MakeReportJudge(app));
+  context->agent->AwaitAgentsWith(
+      [](std::chrono::steady_clock::time_point until) {
+        return AgentsOwing(OwnSessionFile(), until);
+      });
   if (context->channel && !context->channel->SessionPath().empty()) {
     context->agent->OpenEditJournal(context->channel->SessionPath() +
                                     kSessionEditsSuffix);

@@ -258,6 +258,8 @@ struct Agent::StepState {
   int64_t provider_continuations = 0;
   bool context_overflow_recovery_attempted = false;
   bool midturn_compaction_enabled = true;
+  // Answers held in a row while agents owed reports and none came.
+  int64_t holds = 0;
   // Sent as the last message of the next request and erased once answered,
   // so a nudge never accumulates in history.
   std::string note;

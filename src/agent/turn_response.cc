@@ -9,21 +9,38 @@
 #include <vector>
 
 #include "include/agent/agent.h"
+#include "include/agent/node.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_role.h"
+#include "include/agent/transcript.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/core/checked.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/time.h"
 #include "include/providers/providers.h"
 #include "src/agent/turn_internal.h"
 
 namespace uagent {
+namespace {
+// Answers held in a row while agents owe reports and none arrives.
+constexpr int64_t kAnswerHolds = 3;
+
+std::string NameList(const std::vector<std::string>& names) {
+  std::string list;
+  for (const std::string& name : names) {
+    list += (list.empty() ? "" : ", ") + name;
+  }
+  return list;
+}
+}  // namespace
+
 void Agent::RecordModelResponse(
     ChatResult& response, TurnExecution& state,
     std::unordered_map<std::string, int64_t>& tool_counts) {
@@ -257,8 +274,76 @@ Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
   DeliverMail();
   if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
   if (SteeringState().Requested()) return InterruptTurn(state);
+  if (StepFlow held = HoldAnswer(state, loop); held != StepFlow::kProceed) {
+    return held;
+  }
   state.stop.outcome = TurnOutcome::kComplete;
   return StepFlow::kEndTurn;
+}
+
+std::vector<std::string> Agent::AwaitAgents(
+    const std::vector<std::string>& owed,
+    std::chrono::steady_clock::time_point until) {
+  const std::string id = RecordWorkNotice(
+      {{"view",
+        {{"verb", {"Waiting for", "Waited for"}}, {"target", NameList(owed)}}},
+       {"state", "running"}})["id"];
+  std::vector<std::string> left = agent_wait_(until);
+  conversation_.RecordDisplay(
+      id, {{"state", AbortRequested() ? "cancelled" : "ok"}});
+  Emit(Event{EventId::kMessageChanged,
+             {{"node", EntryNode(JsonValue(conversation_.DisplayFacts(),
+                                           id.c_str(), json::object()))}}});
+  return left;
+}
+
+// An answer given while agents this conversation started still owe a report
+// is held as a step of the work: the host waits for them, with no model call,
+// and the model writes one answer with what arrived.
+Agent::StepFlow Agent::HoldAnswer(TurnExecution& state, StepState& loop) {
+  const std::vector<std::string> owed =
+      agent_wait_ ? agent_wait_({}) : std::vector<std::string>();
+  if (owed.empty()) return StepFlow::kProceed;
+  const std::string names = NameList(owed);
+  if (loop.holds >= kAnswerHolds) {
+    RecordWorkNotice({{"view",
+                       {{"verb", {"Answered before", "Answered before"}},
+                        {"target", names + " reported"}}},
+                      {"state", "failed"}});
+    return StepFlow::kProceed;
+  }
+  ++loop.holds;
+  const std::string held = conversation_.LastDisplayId();
+  const auto publish = [&](bool on) {
+    conversation_.RecordDisplay(held, {{"held", on}});
+    for (json& node : LastNodes(conversation_)) {
+      Emit(Event{EventId::kMessageChanged, {{"node", std::move(node)}}});
+    }
+  };
+  publish(true);
+  const std::vector<std::string> left = AwaitAgents(
+      owed, std::min(state.deadline, DeadlineAfter(AgentsWaitSeconds())));
+  // Escape or the person's message ends the hold: the answer stands.
+  if (AbortRequested() || SteeringState().Requested() ||
+      SteeringYieldRequested()) {
+    publish(false);
+    if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
+    return InterruptTurn(state);
+  }
+  ++work_.notes;
+  if (left.size() < owed.size()) loop.holds = 0;
+  // Kept after the held answer, so the history reads in order.
+  conversation_.Push(
+      HarnessMessage("[Your answer was held" +
+                     (left.empty() ? " until " + names + " finished"
+                                   : ": " + NameList(left) + " still working") +
+                     ". Write one complete answer with what has arrived" +
+                     (loop.holds == kAnswerHolds && !left.empty()
+                          ? ", and say who has not reported."
+                          : ".") +
+                     "]"),
+      MessageKind::kInternal);
+  return StepFlow::kNextStep;
 }
 
 }  // namespace uagent

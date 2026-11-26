@@ -25,6 +25,8 @@ int64_t AutoCompactPct();
 int64_t AutoCompactTokens();
 // 0 is a conversation nobody started; nesting is bounded by agents.depth.
 int64_t AgentDepth();
+// One wait for agents, by the agents tool or a held answer, at most.
+int64_t AgentsWaitSeconds();
 bool CanDelegate();
 int64_t MaxOutputTokens();
 // Experiment overlay for the base prompt: a path, empty when unset.

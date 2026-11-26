@@ -66,12 +66,13 @@ void Agent::RecordReceipt(const Headline& headline, json parts) {
 
 // A notice breaks a run of grouped reads. It belongs to the work that
 // was current on arrival; after the turn finishes it follows the footer.
-void Agent::RecordWorkNotice(json notice) {
+json Agent::RecordWorkNotice(json notice) {
   EndRun();
   notice["turn_root"] = turn_root_;
   notice["work"] = WorkId(reply_to_);
-  const json entry = conversation_.RecordEntry(std::move(notice));
+  json entry = conversation_.RecordEntry(std::move(notice));
   Emit(Event{EventId::kMessageChanged, {{"node", EntryNode(entry)}}});
+  return entry;
 }
 
 // A memory saved or lost in the background.

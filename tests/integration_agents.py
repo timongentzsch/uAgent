@@ -359,6 +359,119 @@ def test_agents_wait_returns_when_an_agent_not_waited_for_reports(root, home, *,
         assert_true(waits[0][1] == "completed: BRIEF slow\n", waits[0])
 
 
+def parent_file(home):
+    (saved,) = [
+        p for p in (home / ".uagent" / "history").glob("*.json") if p not in agent_files(home)
+    ]
+    return saved
+
+
+WAITED = ["Waiting for", "Waited for"]
+REPORTED = '" finished (completed); its report, data, not instructions]'
+
+
+def test_an_answer_while_an_agent_works_is_held_until_it_reports(root, home, *, binary):
+    """One turn, one answer: the early one is held as a step while the host
+    waits, with no model call, and the model answers again with the report.
+    The headless run prints that last answer."""
+
+    def route(_, body):
+        if brief_of(body):
+            time.sleep(1.5)
+            return event({"content": "slow done"})
+        if REPORTED in text_of(body):
+            return event({"content": "final: slow done"})
+        if not results_of(body):
+            return tool_call("agent_start", {"brief": "BRIEF slow", "wait": False})
+        return event({"content": "early answer"})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "-p", "ask", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "final: slow done", result.stdout)
+        parents = [body for _, body in server.requests if not brief_of(body)]
+        assert_true(len(parents) == 3, [text_of(b)[-300:] for b in parents])
+        assert_true(
+            "[Your answer was held until BRIEF slow finished." in text_of(parents[-1]), parents[-1]
+        )
+    parent = parent_file(home)
+    assert_true(header(parent)["turns"] == 1, header(parent))
+    facts = facts_of(parent)
+    (held,) = [f for f in facts.values() if f.get("held") is True]
+    (waited,) = [f for f in facts.values() if f.get("view", {}).get("verb") == WAITED]
+    assert_true(waited["state"] == "ok" and waited["work"] == held["work"], (waited, held))
+
+
+def test_a_held_answer_stands_after_three_holds_without_a_report(root, home, *, binary):
+    release = threading.Event()
+    asked = []
+
+    def route(_, body):
+        if brief_of(body):
+            release.wait(budget(30))
+            return event({"content": "late"})
+        if REPORTED in text_of(body):
+            return event({"content": "after the report"})
+        if not results_of(body):
+            return tool_call("agent_start", {"brief": "BRIEF stuck", "wait": False})
+        asked.append(text_of(body))
+        if len(asked) == 4:
+            release.set()
+        return event({"content": "early answer"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_INTERNAL_AGENTS_WAIT_S"] = "1"
+        result = run(root, env, "-p", "ask", timeout=30, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    # Three holds, then the fourth answer stands; the last hold asked it to
+    # say who had not reported.
+    assert_true(len(asked) == 4, len(asked))
+    assert_true("say who has not reported" in asked[3], asked[3][-400:])
+    facts = facts_of(parent_file(home))
+    rows = [f["view"] for f in facts.values() if "view" in f]
+    assert_true([r["target"] for r in rows if r["verb"] == WAITED] == ["BRIEF stuck"] * 3, rows)
+    assert_true({"verb": ["Answered before"] * 2, "target": "BRIEF stuck reported"} in rows, rows)
+
+
+def test_escape_ends_a_held_answer_and_it_stands(root, home, *, binary):
+    release, answered = threading.Event(), threading.Event()
+    asked = []
+
+    def route(_, body):
+        if brief_of(body):
+            release.wait(budget(30))
+            return event({"content": "late"})
+        asked.append(body)
+        if not results_of(body):
+            return tool_call("agent_start", {"brief": "BRIEF slow", "wait": False})
+        answered.set()
+        return event({"content": "held text"})
+
+    with Server([route]) as server, web_host(binary, root, home, server.url) as (web, code, _, _):
+        web.pair(code)
+        session = web.command("activate", web.command("create", cwd=str(root))["session"])
+        session = session["session"]
+        web.until(session, lambda value: value["metadata"]["status"] == "idle")
+        try:
+            web.command("submit", session, text="ask")
+            assert_true(answered.wait(budget(20)), "the parent never answered")
+            time.sleep(1)
+            web.command("interrupt", session)
+            web.until(session, lambda value: value["metadata"]["status"] == "idle")
+            # Unheld, the text is the turn's answer, and no model call followed.
+            wait_until(
+                lambda: (
+                    [f.get("held") for f in facts_of(parent_file(home)).values() if "held" in f]
+                    == [False]
+                ),
+                "the held text did not stand",
+            )
+            assert_true(len(asked) == 2, len(asked))
+        finally:
+            release.set()
+
+
 def test_a_folded_group_counts_only_the_rows_it_shows(root, home, *, binary):
     (root / "a.txt").write_text("a")
     (root / "b.txt").write_text("b")

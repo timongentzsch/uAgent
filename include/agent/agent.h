@@ -122,6 +122,12 @@ class Agent {
   using ReportJudge = std::function<std::string(
       const std::string& sender, const std::string& report, int64_t turn)>;
   void JudgeReports(ReportJudge judge) { judge_report_ = std::move(judge); }
+  // The names of the agents this conversation started that still owe a
+  // report: at once, or after waiting until `until` for mail from one, none
+  // to work, Escape or steering.
+  using AgentWait = std::function<std::vector<std::string>(
+      std::chrono::steady_clock::time_point until)>;
+  void AwaitAgentsWith(AgentWait wait) { agent_wait_ = std::move(wait); }
   // An agent's role ({agent}), saved in the session header.
   void SetSessionRole(json role) { session_role_ = std::move(role); }
   void RetainExchanges(bool enabled) {
@@ -319,6 +325,12 @@ class Agent {
   void PushAssistantMessage(ChatResult& response,
                             const std::vector<ToolCall>& calls);
   StepFlow FinishWithProse(TurnExecution& state, StepState& loop);
+  StepFlow HoldAnswer(TurnExecution& state, StepState& loop);
+  // Waits for the agents `owed` names under a row, with no model call; who
+  // still owes a report after.
+  std::vector<std::string> AwaitAgents(
+      const std::vector<std::string>& owed,
+      std::chrono::steady_clock::time_point until);
   StepFlow ExecuteToolCalls(const std::vector<ToolCall>& calls,
                             const std::string& served_by, TurnExecution& state,
                             StepState& loop);
@@ -414,7 +426,7 @@ class Agent {
   void PublishWork(const std::vector<CallTask>& tasks);
   // Ends the work replying to the latest message of yours as `outcome`.
   void CloseWork(const std::string& outcome);
-  void RecordWorkNotice(json notice);
+  json RecordWorkNotice(json notice);
   // True when the user interrupted the batch.
   bool RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                 StepState& loop, std::vector<ToolRejection>& rejections,
@@ -441,6 +453,7 @@ class Agent {
   Approver approve_;
   ToolRefresher refresh_tools_;
   ReportJudge judge_report_;
+  AgentWait agent_wait_;
   ProjectInstructions project_instructions_;
   std::vector<Skill> skills_;
   // Read once: a later edit must not rewrite a running conversation's prefix.

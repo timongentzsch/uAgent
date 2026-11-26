@@ -57,8 +57,6 @@ constexpr size_t kWaitChars = KiB(48);
 constexpr auto kTick = std::chrono::milliseconds(250);
 // How often a wait looks whether the agents it waits for still run.
 constexpr int kTicksPerLook = 20;
-// As long as the longest wait on a command.
-constexpr auto kAgentsWait = std::chrono::minutes(5);
 
 using ReportJudge =
     std::function<std::string(const std::string&, const std::string&, int64_t)>;
@@ -601,7 +599,6 @@ ToolResult AwaitAgents(const std::string& own, const ToolContext& context) {
   const std::string box = SessionIdFor(own);
   const std::vector<SessionInfo> children = Children(own);
   const auto start = std::chrono::steady_clock::now();
-  const auto end = std::min(context.deadline, start + kAgentsWait);
   for (;;) {
     const std::vector<Mail> mail = PendingMail(box);
     std::map<std::string, std::string> names;  // by state
@@ -621,7 +618,7 @@ ToolResult AwaitAgents(const std::string& own, const ToolContext& context) {
       list += (list.empty() ? "" : ", ") + info.name;
     }
     const bool working = names.contains("working");
-    const bool bound = std::chrono::steady_clock::now() >= end;
+    const bool bound = context.Expired();
     if (sent || !working || bound || AbortRequested() ||
         SteeringYieldRequested()) {
       std::string text;
@@ -647,7 +644,9 @@ ToolResult AwaitAgents(const std::string& own, const ToolContext& context) {
 ToolResult Agents(const json& a, const ToolContext& context) {
   const std::string own = OwnSessionFile();
   const std::string action = JsonValue(a, "action", "");
-  if (action == "wait") return AwaitAgents(own, context);
+  if (action == "wait") {
+    return AwaitAgents(own, context.WithTimeout(AgentsWaitSeconds()));
+  }
   if (action == "list") {
     std::string list;
     const auto children = Children(own);
@@ -970,6 +969,20 @@ void AddAgentTools(std::vector<Tool>& tools, const Api& api,
   tools.push_back(AgentSendTool());
   tools.push_back(AgentsTool());
   tools.push_back(DecideTool());
+}
+
+std::vector<std::string> AgentsOwing(
+    const std::string& path, std::chrono::steady_clock::time_point until) {
+  if (path.empty()) return {};
+  if (until > std::chrono::steady_clock::now()) {
+    AwaitAgents(path, ToolContext(until));
+  }
+  const std::string box = SessionIdFor(path);
+  std::vector<std::string> names;
+  for (const SessionInfo& info : Children(path)) {
+    if (AgentState(info, box) == "working") names.push_back(info.name);
+  }
+  return names;
 }
 
 bool AgentsOwe(const std::string& path) {

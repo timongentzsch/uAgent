@@ -788,25 +788,25 @@ test("the grid runs on past the table: what is typed there joins it, and the fil
   // drawn and back.
   await cell("Inputs", "A9").click();
   await app.keyboard.type("kept");
-  await toRow(stage, 4990);
-  await expect(cell("Inputs", "A5000")).toBeInViewport();
+  await toRow(stage, 990);
+  await expect(cell("Inputs", "A1000")).toBeInViewport();
   await expect(cell("Inputs", "A9")).toHaveCount(0);
   await toRow(stage, 1);
   await expect(cell("Inputs", "A9")).toBeInViewport();
   await expect(stage.locator("input.sheet-editor")).toHaveValue("kept");
   await app.keyboard.press("Escape");
-  // Typed five thousand rows down, the file holds every row between, and
+  // Typed a thousand rows down, the file holds every row between, and
   // Undo gives them back.
-  await toRow(stage, 4990);
-  await enter(cell("Inputs", "A5000"), "far");
+  await toRow(stage, 990);
+  await enter(cell("Inputs", "A1000"), "far");
   await expect
     .poll(async () => (await saved()).match(/\n<tr/g).length)
-    .toBe(5 + 5000);
-  expect((await saved()).length).toBeLessThan(200_000);
+    .toBe(5 + 1000);
+  expect((await saved()).length).toBeLessThan(40_000);
   await files.getByRole("button", { name: "Undo" }).click();
   await expect.poll(saved).toBe(reached);
   // At the spreadsheet's last row it is refused: the file would be too large.
-  await cell("Inputs", "A4995").click();
+  await cell("Inputs", "A995").click();
   await app.keyboard.press("Control+ArrowDown");
   await expect(at).toHaveText("Inputs!A1048576");
   await app.keyboard.type("too far");

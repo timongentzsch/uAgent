@@ -188,6 +188,17 @@ class InstallerTest(unittest.TestCase):
         self.assertEqual(native.read_text(), "#!/bin/sh\necho native\n")
         self.assertIn("the container's is: docker compose -f", result.stdout)
 
+    def test_the_link_says_how_another_device_reaches_it(self):
+        local = self.install(UAGENT_INSTALL="container")
+        self.assertIn("A pairing link works once, within 5 minutes", local.stdout)
+        self.assertNotIn("ssh -L", local.stdout)
+        remote = self.install(
+            UAGENT_INSTALL="container", SSH_CONNECTION="203.0.113.7 50000 198.51.100.2 22"
+        )
+        self.assertIn(f"ssh -L {PORT}:127.0.0.1:{PORT} ", remote.stdout)
+        self.assertIn("@198.51.100.2, then open the link there", remote.stdout)
+        self.assertIn("docs/operations/remote-access.md", remote.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

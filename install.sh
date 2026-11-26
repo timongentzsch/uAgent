@@ -186,6 +186,19 @@ fi
 container_mark="# uagent: µAgent's container"
 bin=$prefix/bin/uagent
 
+# A pairing link names this machine's loopback and lasts as long as the web
+# host's code: what another device needs, and for how long.
+pairing_minutes=5
+remote_access=https://github.com/$repo/blob/master/docs/operations/remote-access.md
+reach_hint() {
+  if [ -n "${SSH_CONNECTION:-}" ]; then
+    server=$(echo "$SSH_CONNECTION" | cut -d' ' -f3)
+    echo "From another device: ssh -L $port:127.0.0.1:$port $(id -un)@$server, then open the link there."
+    echo "To keep a way in: $remote_access"
+  fi
+  echo "A pairing link works once, within $pairing_minutes minutes; $1 --web prints a new one."
+}
+
 # The container's agent is UID 10001; you keep access to what it makes.
 workspace_folder() {
   mkdir -p "$1"
@@ -305,6 +318,7 @@ EOF
   fi
   echo "Open the link below to pair this browser; to pair another device later: $command --web"
   compose exec -T uagent uagent --web
+  reach_hint "$command"
   exit 0
 fi
 
@@ -545,6 +559,7 @@ if [ "$web_service" = yes ]; then
     echo "Installed $bin. The web interface is running; open the link below to pair this browser."
     echo "Start the terminal with: uagent  (uagent --web pairs another device)"
     "$bin" --web || true
+    reach_hint uagent
   else
     echo "Installed $bin, but the web interface did not answer on port $port." >&2
     if [ "$service" = systemd ]; then

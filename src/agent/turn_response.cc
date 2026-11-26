@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -282,13 +283,13 @@ Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
 }
 
 std::vector<std::string> Agent::AwaitAgents(
-    const std::vector<std::string>& owed,
+    const std::vector<std::string>& owed, const std::set<std::string>& calls,
     std::chrono::steady_clock::time_point until, bool on_mail) {
   const std::string id = RecordWorkNotice(
       {{"view",
         {{"verb", {"Waiting for", "Waited for"}}, {"target", NameList(owed)}}},
        {"state", "running"}})["id"];
-  std::vector<std::string> left = agent_wait_(until, on_mail);
+  std::vector<std::string> left = agent_wait_(calls, until, on_mail);
   conversation_.RecordDisplay(
       id, {{"state", AbortRequested() ? "cancelled" : "ok"}});
   Emit(Event{EventId::kMessageChanged,
@@ -297,19 +298,21 @@ std::vector<std::string> Agent::AwaitAgents(
   return left;
 }
 
-// An answer given while agents this conversation started still owe a report
-// is held as a step of the work: the host waits for them, with no model call,
-// and the model writes one answer with what arrived.
+// An answer given while agents this turn started still owe a report is held
+// as a step of the work: the host waits for them, with no model call, and the
+// model writes one answer with what arrived. Agents of earlier turns never
+// hold it: their reports come with a turn of their own.
 Agent::StepFlow Agent::HoldAnswer(TurnExecution& state, StepState& loop) {
+  if (!agent_wait_ || state.agent_calls.empty()) return StepFlow::kProceed;
   const std::vector<std::string> owed =
-      agent_wait_ ? agent_wait_({}, true) : std::vector<std::string>();
+      agent_wait_(state.agent_calls, {}, true);
   if (owed.empty()) return StepFlow::kProceed;
   const std::string names = NameList(owed);
   if (loop.holds >= kAnswerHolds) {
     RecordWorkNotice({{"view",
                        {{"verb", {"Answered before", "Answered before"}},
                         {"target", names + " reported"}}},
-                      {"state", "failed"}});
+                      {"state", "ok"}});
     return StepFlow::kProceed;
   }
   ++loop.holds;
@@ -322,7 +325,8 @@ Agent::StepFlow Agent::HoldAnswer(TurnExecution& state, StepState& loop) {
   };
   publish(true);
   const std::vector<std::string> left = AwaitAgents(
-      owed, std::min(state.deadline, DeadlineAfter(AgentsWaitSeconds())), true);
+      owed, state.agent_calls,
+      std::min(state.deadline, DeadlineAfter(AgentsWaitSeconds())), true);
   // Escape or the person's message ends the hold: the answer stands.
   if (AbortRequested() || SteeringState().Requested() ||
       SteeringYieldRequested()) {

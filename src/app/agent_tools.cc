@@ -592,13 +592,26 @@ std::string Row(const SessionInfo& info, const std::string& state) {
                                                         : "");
 }
 
-// Returns once an agent of `own` has mail for it (with `on_mail`), none
-// works or the bound passes. The mail stays for ordinary delivery after this
-// call.
+// The agents `own` started, or only those its agent_start `calls` did.
+std::vector<SessionInfo> Started(const std::string& own,
+                                 const std::set<std::string>& calls) {
+  std::vector<SessionInfo> children = Children(own);
+  if (!calls.empty()) {
+    std::erase_if(children, [&](const SessionInfo& info) {
+      return !calls.contains(info.agent_call);
+    });
+  }
+  return children;
+}
+
+// Returns once an agent of `own` (of `calls`) has mail for it (with
+// `on_mail`), none works or the bound passes. The mail stays for ordinary
+// delivery after this call.
 ToolResult AwaitAgents(const std::string& own, const ToolContext& context,
-                       bool on_mail = true) {
+                       bool on_mail = true,
+                       const std::set<std::string>& calls = {}) {
   const std::string box = SessionIdFor(own);
-  const std::vector<SessionInfo> children = Children(own);
+  const std::vector<SessionInfo> children = Started(own, calls);
   const auto start = std::chrono::steady_clock::now();
   for (;;) {
     const std::vector<Mail> mail = PendingMail(box);
@@ -973,15 +986,15 @@ void AddAgentTools(std::vector<Tool>& tools, const Api& api,
 }
 
 std::vector<std::string> AgentsOwing(
-    const std::string& path, std::chrono::steady_clock::time_point until,
-    bool on_mail) {
+    const std::string& path, const std::set<std::string>& calls,
+    std::chrono::steady_clock::time_point until, bool on_mail) {
   if (path.empty()) return {};
   if (until > std::chrono::steady_clock::now()) {
-    AwaitAgents(path, ToolContext(until), on_mail);
+    AwaitAgents(path, ToolContext(until), on_mail, calls);
   }
   const std::string box = SessionIdFor(path);
   std::vector<std::string> names;
-  for (const SessionInfo& info : Children(path)) {
+  for (const SessionInfo& info : Started(path, calls)) {
     if (AgentState(info, box) == "working") names.push_back(info.name);
   }
   return names;

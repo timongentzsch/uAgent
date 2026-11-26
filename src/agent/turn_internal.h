@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 
@@ -106,6 +107,8 @@ struct Agent::TurnExecution {
   int64_t model_calls_before = 0;
   // Stopped at a limit and answered all the same: not reported as a failure.
   bool answered_at_limit = false;
+  // Its agent_start calls: only their agents hold its answer.
+  std::set<std::string> agent_calls;
 };
 
 // A model's mistake never ends a turn outright: it is counted and advised,

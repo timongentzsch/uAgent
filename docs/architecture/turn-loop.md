@@ -80,14 +80,14 @@ Each step:
 2. `Agent::Chat` sends the request. A `kPause` stop with replay data is a
    provider continuation: pushed, and the step repeats (at most 8 a turn).
 3. No tool call: `FinishWithProse` takes mail once more; guidance or mail
-   reopens the turn. While an agent the conversation started owes a report
+   reopens the turn. While an agent this turn started owes a report
    (working or about to; not one waiting on a person), `HoldAnswer` holds
    the answer as a step of the work and waits under a `Waiting for` row as
    the `agents` wait does (at most 300 s), with no model call; a host note
    then asks for one complete answer. Three holds in a row without a report
    let the answer stand, with an `Answered before` row; Escape or the
-   person's message ends a hold and the answer stands. Otherwise the turn
-   is complete.
+   person's message ends a hold and the answer stands, its agents still
+   working. Otherwise the turn is complete.
 4. Tool calls: `RunCalls` validates and asks approval for every call in
    order, executes the approved ones (a run of adjacent `parallel_safe`
    calls concurrently), then appends results in call order, capped per call

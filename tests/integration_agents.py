@@ -434,9 +434,17 @@ def test_a_held_answer_stands_after_three_holds_without_a_report(root, home, *, 
     rows = [f["view"] for f in facts.values() if "view" in f]
     assert_true([r["target"] for r in rows if r["verb"] == WAITED] == ["BRIEF stuck"] * 3, rows)
     assert_true({"verb": ["Answered before"] * 2, "target": "BRIEF stuck reported"} in rows, rows)
+    # A notice, not a failure.
+    (answered,) = [
+        f for f in facts.values() if f.get("view", {}).get("verb", [""])[0] == "Answered before"
+    ]
+    assert_true(answered["state"] == "ok", answered)
 
 
-def test_escape_ends_a_held_answer_and_it_stands(root, home, *, binary):
+def test_escape_ends_a_hold_and_an_earlier_agent_holds_no_later_answer(root, home, *, binary):
+    """Escape ends a hold at once: the held text is the answer and the agent
+    keeps working. The person's next question is answered without a hold:
+    only the agents a turn starts hold its answer."""
     release, answered = threading.Event(), threading.Event()
     asked = []
 
@@ -445,10 +453,15 @@ def test_escape_ends_a_held_answer_and_it_stands(root, home, *, binary):
             release.wait(budget(30))
             return event({"content": "late"})
         asked.append(body)
+        if user_texts(body)[-1] == "else":
+            return event({"content": "else answered"})
         if not results_of(body):
             return tool_call("agent_start", {"brief": "BRIEF slow", "wait": False})
         answered.set()
         return event({"content": "held text"})
+
+    def held():
+        return [f.get("held") for f in facts_of(parent_file(home)).values() if "held" in f]
 
     with Server([route]) as server, web_host(binary, root, home, server.url) as (web, code, _, _):
         web.pair(code)
@@ -462,14 +475,21 @@ def test_escape_ends_a_held_answer_and_it_stands(root, home, *, binary):
             web.command("interrupt", session)
             web.until(session, lambda value: value["metadata"]["status"] == "idle")
             # Unheld, the text is the turn's answer, and no model call followed.
-            wait_until(
-                lambda: (
-                    [f.get("held") for f in facts_of(parent_file(home)).values() if "held" in f]
-                    == [False]
-                ),
-                "the held text did not stand",
-            )
+            wait_until(lambda: held() == [False], "the held text did not stand")
             assert_true(len(asked) == 2, len(asked))
+            (agent,) = agent_files(home)
+            assert_true(socket_of(home, agent).exists(), "Escape stopped the agent")
+            web.command("submit", session, text="else")
+            web.until(
+                session,
+                lambda value: (
+                    "else answered" in json.dumps(value) and value["metadata"]["status"] == "idle"
+                ),
+            )
+            # Answered at once, while the earlier agent still works.
+            assert_true(not release.is_set() and socket_of(home, agent).exists(), "agent gone")
+            assert_true(held() == [False], held())
+            assert_true(len(asked) == 3, len(asked))
         finally:
             release.set()
 

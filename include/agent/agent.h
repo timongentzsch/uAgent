@@ -122,10 +122,12 @@ class Agent {
   using ReportJudge = std::function<std::string(
       const std::string& sender, const std::string& report, int64_t turn)>;
   void JudgeReports(ReportJudge judge) { judge_report_ = std::move(judge); }
-  // The names of the agents this conversation started that still owe a
-  // report: at once, or after waiting until `until` for mail from one (with
-  // `on_mail`) or for none to work, Escape or steering.
+  // The names of the agents this conversation started (with `calls`, only
+  // those these agent_start calls did) that still owe a report: at once, or
+  // after waiting until `until` for mail from one (with `on_mail`) or for
+  // none to work, Escape or steering.
   using AgentWait = std::function<std::vector<std::string>(
+      const std::set<std::string>& calls,
       std::chrono::steady_clock::time_point until, bool on_mail)>;
   void AwaitAgentsWith(AgentWait wait) { agent_wait_ = std::move(wait); }
   // An agent's role ({agent}), saved in the session header.
@@ -330,7 +332,7 @@ class Agent {
   // Waits for the agents `owed` names under a row, with no model call; who
   // still owes a report after.
   std::vector<std::string> AwaitAgents(
-      const std::vector<std::string>& owed,
+      const std::vector<std::string>& owed, const std::set<std::string>& calls,
       std::chrono::steady_clock::time_point until, bool on_mail);
   StepFlow ExecuteToolCalls(const std::vector<ToolCall>& calls,
                             const std::string& served_by, TurnExecution& state,

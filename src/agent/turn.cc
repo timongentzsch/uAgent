@@ -355,8 +355,9 @@ void Agent::Turn(const std::string& user_input, json user_content,
   // A report that finds others still owed waits a while for them, so one
   // turn answers them all.
   if (JsonValue(origin, "kind", "") == "agent" && agent_wait_) {
-    if (const auto owed = agent_wait_({}, true); !owed.empty()) {
-      AwaitAgents(owed, std::min(state.deadline, DeadlineAfter(kReportBundleS)),
+    if (const auto owed = agent_wait_({}, {}, true); !owed.empty()) {
+      AwaitAgents(owed, {},
+                  std::min(state.deadline, DeadlineAfter(kReportBundleS)),
                   false);
     }
   }

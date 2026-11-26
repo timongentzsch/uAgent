@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <functional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -22,13 +23,14 @@ void AddAgentTools(
     std::function<std::string(const std::string&, const std::string&, int64_t)>
         judge_report);
 
-// The names of the agents the session at `path` started that still owe a
-// report: those working or about to, not one waiting on a person. With
-// `until` ahead, after waiting as the agents tool's wait does, or with
-// `on_mail` false until none works.
+// The names of the agents the session at `path` started (with `calls`, only
+// those these agent_start calls did) that still owe a report: those working
+// or about to, not one waiting on a person. With `until` ahead, after
+// waiting as the agents tool's wait does, or with `on_mail` false until none
+// works.
 std::vector<std::string> AgentsOwing(
-    const std::string& path, std::chrono::steady_clock::time_point until = {},
-    bool on_mail = true);
+    const std::string& path, const std::set<std::string>& calls = {},
+    std::chrono::steady_clock::time_point until = {}, bool on_mail = true);
 
 // Whether an agent of the session at `path` works or has not begun, or a
 // report from one is not yet acknowledged. One waiting on a person does not

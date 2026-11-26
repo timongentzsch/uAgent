@@ -8,7 +8,12 @@ import {
   Notice,
   Row,
 } from "../../shared/ui.tsx";
-import { itemized, note, type SavedScope } from "./config/facts.ts";
+import {
+  hostRestarts,
+  itemized,
+  note,
+  type SavedScope,
+} from "./config/facts.ts";
 import { RestartNotice } from "./config/restart-notice.tsx";
 import { SettingField } from "./config/setting-field.tsx";
 import type { Config } from "./config/use-configuration.ts";
@@ -57,10 +62,7 @@ export function ConfigNotices({
         <RestartNotice
           key={config.restart.join()}
           keys={config.restart.map((key) => config.find(key)?.label || key)}
-          // The web host's own settings restart it, not a conversation.
-          host={config.restart.some((key) =>
-            config.find(key)?.key.startsWith("web."),
-          )}
+          host={config.restart.some((key) => hostRestarts(config.find(key)))}
           running={sessions.filter((item) => item.generation).length}
           folder={scope === "project" ? folder : undefined}
         />

@@ -58,13 +58,17 @@ export function settingsEntries(
 
 // Every word of the query somewhere in an entry; names that start with it
 // first, those that hold it as a whole word before the rest.
+// How far a name holding the query as a whole word ranks ahead of one that
+// only starts with it.
+const WHOLE_WORD_LEAD = 0.5;
+
 export function findSettings(entries: SettingsEntry[], query: string) {
   const needle = query.trim().toLowerCase();
   if (!needle) return [];
   const score = (entry: SettingsEntry) => {
     const named = fuzzyScore(needle, entry.label);
     const word = entry.label.toLowerCase().split(/\s+/).includes(needle);
-    return named < 0 ? Infinity : named - (word ? 0.5 : 0);
+    return named < 0 ? Infinity : named - (word ? WHOLE_WORD_LEAD : 0);
   };
   return entries
     .filter((entry) => matches(query, entry.label, entry.detail, entry.words))

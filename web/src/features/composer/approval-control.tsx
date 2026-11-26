@@ -1,3 +1,4 @@
+import { SETTINGS_AT } from "../../shared/settings-topics.ts";
 import { Shield } from "lucide-preact";
 import {
   Button,
@@ -128,7 +129,7 @@ export default function ApprovalControl({
               size="compact"
               onClick={() => {
                 close();
-                settings("approvals/approval.mode");
+                settings(SETTINGS_AT.defaultApproval);
               }}
             >
               Change the default

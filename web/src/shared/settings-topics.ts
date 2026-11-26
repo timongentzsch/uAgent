@@ -49,6 +49,8 @@ export const TOPICS = [
     id: "conversation",
     label: "This conversation",
     icon: MessageSquare,
+    // Listed while a conversation is open.
+    open: true,
     parts: [
       panel("context", "Context", "window tokens compact raw estimated"),
       panel("model", "Model", "effort reasoning"),
@@ -150,9 +152,16 @@ export const TOPICS = [
   id: string;
   label: string;
   icon: unknown;
+  open?: boolean;
   parts: readonly Part[];
 }[];
 export type Topic = (typeof TOPICS)[number]["id"];
+
+// The topics Settings lists now.
+export const topicsFor = (conversationOpen: boolean): Topic[] =>
+  TOPICS.filter((topic) => conversationOpen || !("open" in topic)).map(
+    ({ id }) => id,
+  );
 
 export const topicOf = (id?: string) => TOPICS.find((topic) => topic.id === id);
 
@@ -163,3 +172,19 @@ export function parseAddress(address = "") {
   const topic = topicOf(id);
   return { topic: topic?.id, row: topic ? row || undefined : undefined };
 }
+
+// A row's address, checked against the table: a panel by its id, a host
+// setting by its key in the settings file.
+const at = (topic: Topic, row: Panel | string) => `${topic}/${row}`;
+
+// The rows the rest of the app opens Settings at.
+export const SETTINGS_AT = {
+  context: at("conversation", "context"),
+  tools: at("conversation", "tools"),
+  view: at("conversation", "view"),
+  providers: at("models", "providers"),
+  defaultModel: at("models", "model"),
+  defaultApproval: at("approvals", "approval.mode"),
+  rules: at("approvals", "rules"),
+  mcpServers: at("tools", "mcp-servers"),
+} as const;

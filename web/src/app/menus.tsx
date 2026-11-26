@@ -1,3 +1,4 @@
+import { SETTINGS_AT } from "../shared/settings-topics.ts";
 import type { ComponentChildren } from "preact";
 import { Check } from "lucide-preact";
 import type {
@@ -149,10 +150,10 @@ export function ConversationMenu({
         </MenuItem>
       )}
       {select && <MenuItem onClick={select}>Select</MenuItem>}
-      <MenuItem onClick={() => settings("conversation/context")}>
+      <MenuItem onClick={() => settings(SETTINGS_AT.context)}>
         Context and usage
       </MenuItem>
-      <MenuItem onClick={() => settings("conversation/tools")}>Tools</MenuItem>
+      <MenuItem onClick={() => settings(SETTINGS_AT.tools)}>Tools</MenuItem>
       {detail && detail.levels.length > 0 && (
         <MenuSub label="View" value={capitalize(detail.level)}>
           {detail.levels.map((level) => (

@@ -1,3 +1,4 @@
+import { SETTINGS_AT } from "../../shared/settings-topics.ts";
 import { useContext, useState } from "preact/hooks";
 import type { Node, RefusalPart, SessionRef } from "../../shared/types.ts";
 import { Button } from "../../shared/ui.tsx";
@@ -56,7 +57,7 @@ export function Refusal({
         host && (
           <Button
             onClick={() =>
-              host.setModal({ type: "settings", address: "approvals/rules" })
+              host.setModal({ type: "settings", address: SETTINGS_AT.rules })
             }
           >
             Rules…

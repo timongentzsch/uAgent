@@ -1,3 +1,4 @@
+import { SETTINGS_AT } from "../shared/settings-topics.ts";
 import { useEffect } from "preact/hooks";
 import type {
   Act,
@@ -96,11 +97,11 @@ export function useCommands({
   const screens: Record<string, () => void> = {
     "/context": () => showContext(),
     "/config": () => open({ type: "settings" }),
-    "/detail": () => open({ type: "settings", address: "conversation/view" }),
+    "/detail": () => open({ type: "settings", address: SETTINGS_AT.view }),
     "/permissions": () =>
-      open({ type: "settings", address: "approvals/rules" }),
-    "/mcp": () => open({ type: "settings", address: "tools/mcp-servers" }),
-    "/tools": () => open({ type: "settings", address: "conversation/tools" }),
+      open({ type: "settings", address: SETTINGS_AT.rules }),
+    "/mcp": () => open({ type: "settings", address: SETTINGS_AT.mcpServers }),
+    "/tools": () => open({ type: "settings", address: SETTINGS_AT.tools }),
     "/rename": () => session && setModal({ type: "rename", session }),
     "/memory": () => showLibrary("memory"),
     "/skills": () => showLibrary("skill"),

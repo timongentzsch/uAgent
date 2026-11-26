@@ -20,7 +20,7 @@ import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { SuggestionList } from "../../shared/suggestion-list.tsx";
 import { fuzzy, matches } from "../../shared/fuzzy.ts";
 import { occurrences } from "../../../sheet/text.js";
-import { TOPICS } from "../../shared/settings-topics.ts";
+import { topicsFor } from "../../shared/settings-topics.ts";
 import { findSettings, settingsEntries } from "../../shared/settings-index.ts";
 import { SHORTCUTS, keysOf, type ShortcutId } from "../../shared/shortcuts.ts";
 import { useResource } from "../../shared/use-resource.ts";
@@ -195,9 +195,7 @@ export default function Spotlight({
     settingsEntries(
       config.value?.settings ?? [],
       config.value?.groups ?? [],
-      TOPICS.map(({ id }) => id).filter(
-        (id) => id !== "conversation" || inConversation,
-      ),
+      topicsFor(inConversation),
     ),
     words,
   ).map((entry) => ({

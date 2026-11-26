@@ -1,3 +1,4 @@
+import { SETTINGS_AT } from "../../shared/settings-topics.ts";
 import {
   AttachButton,
   FileChip,
@@ -113,7 +114,7 @@ function Composer({
     [setModal],
   );
   const openContext = useCallback(
-    () => settings("conversation/context"),
+    () => settings(SETTINGS_AT.context),
     [settings],
   );
   const narrow = useNarrowColumn();

@@ -1,3 +1,4 @@
+import { SETTINGS_AT } from "./settings-topics.ts";
 import type { SessionRef, State } from "./types.ts";
 import { useState } from "preact/hooks";
 import { useAction } from "./use-action.ts";
@@ -82,7 +83,7 @@ export default function ModelPicker({
         size="compact"
         onClick={() => {
           close();
-          settings("models/model");
+          settings(SETTINGS_AT.defaultModel);
         }}
       >
         Change the default
@@ -147,7 +148,7 @@ export default function ModelPicker({
                   size="compact"
                   onClick={() => {
                     close();
-                    settings("models/providers");
+                    settings(SETTINGS_AT.providers);
                   }}
                 >
                   Providers in Settings

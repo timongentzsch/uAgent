@@ -1,3 +1,4 @@
+import { SETTINGS_AT } from "../shared/settings-topics.ts";
 import { useState } from "preact/hooks";
 import { OpenRouterSignIn } from "../shared/openrouter-signin.tsx";
 import { Button } from "../shared/ui.tsx";
@@ -40,7 +41,7 @@ export function FreeStart({ online }: { online: boolean }) {
       >
         <Button
           onClick={() =>
-            setModal({ type: "settings", address: "models/providers" })
+            setModal({ type: "settings", address: SETTINGS_AT.providers })
           }
         >
           I have an API key

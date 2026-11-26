@@ -582,8 +582,12 @@ test("a project overrides a setting; a draft survives other saves", async ({
   await nav.getByRole("button", { name: "Approvals and safety" }).click();
   await scope.getByRole("button", { name: /^This folder/ }).click();
   await form.getByRole("button", { name: /^Show all/ }).click();
+  await expect(
+    scope.getByRole("button", { name: /^This folder/ }),
+  ).toHaveAttribute("aria-pressed", "true");
   const steps = form.getByRole("spinbutton", { name: "Steps per turn" });
   await steps.fill("5");
+  await expect(steps).toHaveValue("5");
   await steps.blur();
   await expect(field("UAGENT_MAX_STEPS")).toContainText(
     "Overrides 0 from all conversations",

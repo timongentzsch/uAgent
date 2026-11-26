@@ -1,3 +1,4 @@
+import { SETTINGS_AT } from "../shared/settings-topics.ts";
 import "./conversation-header.css";
 import type { ComponentChildren } from "preact";
 import type { Outgoing, Session } from "../shared/types.ts";
@@ -42,7 +43,7 @@ function Totals({
         state={state}
         queued={queued ? 0 : session.guidance}
         open={() =>
-          setModal({ type: "settings", address: "conversation/context" })
+          setModal({ type: "settings", address: SETTINGS_AT.context })
         }
       />
     </span>

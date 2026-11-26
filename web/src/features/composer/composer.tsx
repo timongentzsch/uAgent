@@ -1,4 +1,9 @@
-import { ImageTile } from "../../shared/attachments.tsx";
+import {
+  AttachButton,
+  FileChip,
+  ImageTile,
+  pastedFiles,
+} from "../../shared/attachments.tsx";
 import "../../shared/attachments.css";
 import { useCommandSuggestions } from "./command-suggestions.tsx";
 import { useFileMentions } from "./file-mentions.tsx";
@@ -19,7 +24,7 @@ import type {
 } from "../../shared/types.ts";
 import type { ComponentChildren, TargetedKeyboardEvent } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { ArrowUp, Paperclip, Square, X } from "lucide-preact";
+import { ArrowUp, Square } from "lucide-preact";
 import { emptyDraft } from "../../state/store.ts";
 import { useStoreValue } from "../../state/value-store.ts";
 import { useApi } from "../../state/api.ts";
@@ -332,13 +337,8 @@ function Composer({
             mentions.changed(event.currentTarget.selectionStart ?? 0)
           }
           onPaste={(event) => {
-            const files = [...(event.clipboardData?.files || [])];
-            // Spreadsheets and web pages put a rendered image beside the
-            // text; the text is what was copied.
-            if (files.length && !event.clipboardData?.getData("text/plain")) {
-              event.preventDefault();
-              upload(files);
-            }
+            const files = pastedFiles(event);
+            if (files.length) upload(files);
           }}
           onKeyDown={(event) => {
             if (mentions.keyDown(event)) return;
@@ -372,71 +372,66 @@ function Composer({
         {draft.files.length > 0 && (
           <div class="attachments">
             {draft.files.map((asset) => (
-              <div
-                class="chip chip-outline file-chip"
+              <FileChip
                 key={asset.id}
-                aria-busy={asset.pending || undefined}
+                name={asset.name}
+                busy={asset.pending}
+                tile={
+                  asset.image &&
+                  !asset.pending && (
+                    <ImageTile
+                      draftId={asset.id}
+                      name={asset.name}
+                      src={routes.asset(session.id, asset.id)}
+                    />
+                  )
+                }
+                remove={
+                  asset.pending
+                    ? undefined
+                    : () =>
+                        setDraft({
+                          ...draft,
+                          files: draft.files.filter(
+                            (item) => item.id !== asset.id,
+                          ),
+                        })
+                }
               >
-                {asset.image && !asset.pending ? (
-                  <ImageTile
-                    draftId={asset.id}
-                    name={asset.name}
-                    src={routes.asset(session.id, asset.id)}
+                {renaming === asset.id && !asset.pending ? (
+                  <Input
+                    aria-label={`Rename ${asset.name}`}
+                    defaultValue={asset.name}
+                    autoFocus
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter")
+                        commitRename(asset.id, event.currentTarget.value);
+                      else if (event.key === "Escape") {
+                        // Reset before closing: the unmount blur
+                        // would otherwise commit the edit.
+                        event.currentTarget.value = asset.name;
+                        setRenaming(null);
+                      }
+                    }}
+                    onBlur={(event) =>
+                      commitRename(asset.id, event.currentTarget.value)
+                    }
                   />
                 ) : (
-                  <Paperclip />
-                )}
-                <span title={asset.name}>
-                  {renaming === asset.id && !asset.pending ? (
-                    <Input
-                      aria-label={`Rename ${asset.name}`}
-                      defaultValue={asset.name}
-                      autoFocus
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter")
-                          commitRename(asset.id, event.currentTarget.value);
-                        else if (event.key === "Escape") {
-                          // Reset before closing: the unmount blur
-                          // would otherwise commit the edit.
-                          event.currentTarget.value = asset.name;
-                          setRenaming(null);
-                        }
-                      }}
-                      onBlur={(event) =>
-                        commitRename(asset.id, event.currentTarget.value)
-                      }
-                    />
-                  ) : (
-                    <Button
-                      class="chip-name quiet"
-                      title={`Rename ${asset.name}`}
-                      aria-label={`Rename ${asset.name}`}
-                      disabled={asset.pending}
-                      onClick={() => setRenaming(asset.id)}
-                    >
-                      {asset.name}
-                    </Button>
-                  )}
-                  <small>
-                    {asset.pending ? "Uploading…" : bytes(asset.bytes)}
-                  </small>
-                </span>
-                {!asset.pending && (
-                  <IconButton
-                    label={`Remove ${asset.name}`}
-                    onClick={() =>
-                      setDraft({
-                        ...draft,
-                        files: draft.files.filter(
-                          (item) => item.id !== asset.id,
-                        ),
-                      })
-                    }
+                  <Button
+                    class="chip-name quiet"
+                    title={`Rename ${asset.name}`}
+                    aria-label={`Rename ${asset.name}`}
+                    disabled={asset.pending}
+                    onClick={() => setRenaming(asset.id)}
                   >
-                    <X />
-                  </IconButton>
+                    {asset.name}
+                  </Button>
                 )}
-              </div>
+                <small>
+                  {asset.pending ? "Uploading…" : bytes(asset.bytes)}
+                </small>
+              </FileChip>
             ))}
           </div>
         )}
@@ -445,19 +440,10 @@ function Composer({
           class="composer-actions message-actions"
           data-held={!!pending || undefined}
         >
-          <label class="file-button icon-button" title="Attach files">
-            <Paperclip />
-            <Input
-              type="file"
-              aria-label="Attach files"
-              multiple
-              disabled={!online || uploading || !!pending}
-              onChange={(event) => {
-                upload([...(event.currentTarget.files || [])]);
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
+          <AttachButton
+            disabled={!online || uploading || !!pending}
+            add={upload}
+          />
           <ModelControl
             key={session.id}
             session={session}

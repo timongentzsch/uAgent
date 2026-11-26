@@ -86,6 +86,14 @@ export const downloadRevokeMs = 30_000;
 // As the host has them (kUploadCount, kUploadBytes).
 export const maxDraftFiles = 8;
 export const maxUploadBytes = 8 * 1024 * 1024;
+// What refuses `adding` beside `kept` files already on a message.
+export const uploadLimit = (adding: File[], kept: number) =>
+  adding.length + kept > maxDraftFiles ||
+  adding.some((file) => file.size > maxUploadBytes)
+    ? new Error(
+        `Attach up to ${maxDraftFiles} files, at most ${maxUploadBytes / 1024 / 1024} MiB each.`,
+      )
+    : null;
 // The host writes no larger text file.
 export const maxTextFileBytes = 1024 * 1024;
 

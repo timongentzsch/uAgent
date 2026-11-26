@@ -159,7 +159,11 @@ export default function ChatPage({
     place: "conversation" | "workspace" | "folder",
     text?: string,
   ) => void;
-  start: (text: string, model?: ModelChoice) => Promise<unknown>;
+  start: (
+    text: string,
+    model?: ModelChoice,
+    files?: File[],
+  ) => Promise<unknown>;
   settings: () => void;
   // On a narrow screen: opens the list of every conversation.
   openList?: () => void;
@@ -501,7 +505,8 @@ export default function ChatPage({
           disabled={!online}
           // A phone would open its keyboard over the lists.
           autoFocus={!openList}
-          start={(text) => start(text, model)}
+          attach
+          start={(text, files) => start(text, model, files)}
         >
           {(text) => (
             <>

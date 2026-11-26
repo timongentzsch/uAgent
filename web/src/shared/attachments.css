@@ -6,9 +6,25 @@
   max-height: var(--scroll-s);
   overflow: auto;
 }
+/* A message's files, in a row over its controls: the composer's, and the
+   box a conversation starts from. */
+.message-box > .attachments {
+  flex-wrap: nowrap;
+  max-height: none;
+  padding: var(--space-2) var(--space-4);
+  overscroll-behavior-x: contain;
+}
+.message-box .file-chip {
+  flex: none;
+  max-width: var(--pane);
+}
 .file-chip {
   padding-block: var(--space-2);
   text-decoration: none;
+}
+/* Remove at its end stands as far from the chip's side as from its ends. */
+.file-chip:has(> .icon-button:last-child) {
+  padding-right: var(--space-2);
 }
 /* raw: a chip's name, wherever a chip is drawn. */
 .file-chip > span {

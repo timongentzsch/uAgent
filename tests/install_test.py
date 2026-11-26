@@ -103,32 +103,31 @@ class InstallerTest(unittest.TestCase):
     def calls(self):
         return self.log.read_text()
 
-    def test_each_docker_state_is_named_with_its_fix(self):
-        for state, said, fix in (
-            (None, "Docker: missing", None),
-            ("denied", "Docker is installed, but", "sudo usermod -aG docker"),
-            ("down", "Docker is installed, but not running", "start"),
-        ):
-            with self.subTest(state=state):
-                result = self.install(docker=state)
-                self.assertIn(said, result.stdout)
-                if fix:
-                    self.assertIn("For the container: ", result.stdout)
-                    self.assertIn(fix, result.stdout)
+    # Each state with the words that name it and a piece of its fix.
+    DOCKER_STATES = (
+        (None, "Docker is not installed", "install Docker"),
+        ("denied", "Docker is installed, but", "sudo usermod -aG docker"),
+        ("down", "Docker is installed, but not running", "start"),
+    )
 
-    def test_a_container_asked_for_stops_when_docker_cannot_run_it(self):
-        for state, fix in (
-            (None, None),
-            ("denied", "sudo usermod -aG docker"),
-            ("down", "start"),
-        ):
+    def test_each_docker_state_is_one_line_with_its_fix(self):
+        for state, said, fix in self.DOCKER_STATES:
+            with self.subTest(state=state):
+                lines = [
+                    line for line in self.install(docker=state).stdout.splitlines() if said in line
+                ]
+                self.assertEqual(len(lines), 1, lines)
+                self.assertIn(f"For the container: {fix}", lines[0])
+
+    def test_a_container_asked_for_stops_on_that_one_line(self):
+        for state, said, fix in self.DOCKER_STATES:
             with self.subTest(state=state):
                 result = self.install(docker=state, UAGENT_INSTALL="container")
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-                self.assertIn("The container needs Docker, which is", result.stderr)
-                if fix:
-                    self.assertIn("First: ", result.stderr)
-                    self.assertIn(fix, result.stderr)
+                self.assertNotIn(said, result.stdout)
+                lines = [line for line in result.stderr.splitlines() if said in line]
+                self.assertEqual(len(lines), 1, result.stderr)
+                self.assertIn(fix, lines[0])
                 self.assertNotIn("compose", self.calls())
 
     def test_a_taken_port_stops_before_anything_starts(self):
@@ -155,28 +154,31 @@ class InstallerTest(unittest.TestCase):
         env = (self.home / ".local/share/uagent/container/deploy/.env").read_text()
         self.assertIn("UAGENT_WEB_PORT=8181\n", env)
 
-    def test_a_container_install_names_the_full_command(self):
-        result = self.install(UAGENT_INSTALL="container")
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+    def test_the_ending_says_each_thing_once_with_the_link_first(self):
         compose = f"docker compose -f {self.home}/.local/share/uagent/container/deploy/compose.yaml"
-        self.assertIn(
-            f"to pair another device later: {compose} exec uagent uagent --web", result.stdout
-        )
-        self.assertIn(
-            f"No model provider is set yet: run {compose} exec uagent uagent setup", result.stdout
-        )
-        self.assertFalse((self.home / ".local/bin/uagent").exists())
-
-    def test_the_link_says_how_another_device_reaches_it(self):
-        local = self.install(UAGENT_INSTALL="container")
-        self.assertIn("A pairing link works once, within 5 minutes", local.stdout)
-        self.assertNotIn("ssh -L", local.stdout)
-        remote = self.install(
-            UAGENT_INSTALL="container", SSH_CONNECTION="203.0.113.7 50000 198.51.100.2 22"
-        )
-        self.assertIn(f"ssh -L {PORT}:127.0.0.1:{PORT} ", remote.stdout)
-        self.assertIn("@198.51.100.2, then open the link there", remote.stdout)
-        self.assertIn("docs/operations/remote-access.md", remote.stdout)
+        command = f"{compose} exec uagent uagent"
+        for ssh in ("", "203.0.113.7 50000 198.51.100.2 22"):
+            with self.subTest(ssh=bool(ssh)):
+                result = self.install(UAGENT_INSTALL="container", SSH_CONNECTION=ssh)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                out = result.stdout
+                self.assertEqual(out.count(command), 1, out)
+                link = out.index(f"  http://127.0.0.1:{PORT}/#pair=CODE\n")
+                self.assertLess(out.index("works once, within 5 minutes"), link)
+                self.assertLess(link, out.index(f"  {command} --web\n"))
+                self.assertIn(
+                    "No model provider is set yet: open Settings in the web interface, "
+                    "or run the same command with setup.",
+                    out,
+                )
+                self.assertIn("docs/operations/container.md", out)
+                self.assertFalse((self.home / ".local/bin/uagent").exists())
+                if ssh:
+                    self.assertIn(f"\n  ssh -L {PORT}:127.0.0.1:{PORT} ", out)
+                    self.assertIn("@198.51.100.2\n", out)
+                    self.assertLess(link, out.index("From another device first:"))
+                else:
+                    self.assertNotIn("ssh -L", out)
 
     def test_the_container_gets_this_machines_time_zone(self):
         self.fake("timedatectl", "#!/bin/sh\necho Europe/Berlin\n")

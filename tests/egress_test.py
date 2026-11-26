@@ -28,6 +28,7 @@ MENTIONED = {
     "api.groq.com": "an example provider in the configuration skill",
     "example.com": "what deploy/check-network.sh proves unreachable",
     "passwords.google.com": "blocked in Chrome's policy",
+    "docs.docker.com": "the installer's link to Docker's install guide",
 }
 
 

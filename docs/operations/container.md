@@ -21,6 +21,9 @@ curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install
 docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml down                       # stop; the data volume stays
 ```
 
+The web interface answers on this machine's `127.0.0.1` only; to use it
+from another device, see [Remote access](remote-access.md).
+
 ## Start it
 
 ```sh

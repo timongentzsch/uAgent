@@ -95,6 +95,8 @@ docker_why=
 docker_fix=
 if ! has docker; then
   docker_why="not installed"
+  docker_fix="install Docker Engine 28 or newer: https://docs.docker.com/engine/install/"
+  [ "$os" = Darwin ] && docker_fix="install Docker Desktop: https://docs.docker.com/desktop/"
 elif problem=$(docker info 2>&1 >/dev/null); then
   docker=yes
 else
@@ -109,7 +111,9 @@ else
   esac
 fi
 docker_found=$(yes_no "$docker")
-[ -z "$docker_fix" ] || docker_found="not usable"
+[ "$docker" = yes ] || [ "$docker_why" = "not installed" ] || docker_found="not usable"
+# Said once: as the reason an asked-for container stops, else as a note.
+docker_line="Docker is $docker_why. For the container: $docker_fix"
 browser=no
 if [ "$os" = Linux ] && has google-chrome-stable && has Xtigervnc && has xauth; then
   browser=yes
@@ -126,7 +130,7 @@ if [ "$os" = Linux ]; then
 else
   echo "$found; the agent's browser runs in the container or on Linux"
 fi
-[ -z "$docker_fix" ] || echo "Docker is $docker_why. For the container: $docker_fix"
+[ "$docker" = yes ] || [ "${UAGENT_INSTALL:-}" = container ] || echo "$docker_line"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
@@ -147,7 +151,7 @@ release_version() {
 # machine's files and logins, so it comes first where Docker runs.
 choice=${UAGENT_INSTALL:-here}
 if [ "$choice" = container ] && [ "$docker" = no ]; then
-  echo "The container needs Docker, which is $docker_why${docker_fix:+. First: $docker_fix}" >&2
+  echo "$docker_line" >&2
   exit 1
 fi
 if [ -z "${UAGENT_INSTALL:-}" ] && [ "$docker" = yes ] && [ "$interactive" = yes ]; then
@@ -159,17 +163,22 @@ if [ -z "${UAGENT_INSTALL:-}" ] && [ "$docker" = yes ] && [ "$interactive" = yes
   [ "$answer" = 2 ] || choice=container
 fi
 
-# A pairing link names this machine's loopback and lasts as long as the web
-# host's code: what another device needs, and for how long.
+# The link uagent --web prints (read from its text on stdin), then how
+# another device or a new link gets in: each fact once, what to copy on a
+# line of its own. $1 runs uagent here.
 pairing_minutes=5
-remote_access=https://github.com/$repo/blob/master/docs/operations/remote-access.md
-reach_hint() {
+docs=https://github.com/$repo/blob/master/docs/operations
+pair_block() {
+  text=$(cat)
+  link=$(echo "$text" | sed -n 's/^Or open: //p')
+  echo "Open this link to pair this browser (works once, within $pairing_minutes minutes):"
+  echo "  ${link:-$text}"
   if [ -n "${SSH_CONNECTION:-}" ]; then
-    server=$(echo "$SSH_CONNECTION" | cut -d' ' -f3)
-    echo "From another device: ssh -L $port:127.0.0.1:$port $(id -un)@$server, then open the link there."
-    echo "To keep a way in: $remote_access"
+    echo "From another device first:"
+    echo "  ssh -L $port:127.0.0.1:$port $(id -un)@$(echo "$SSH_CONNECTION" | cut -d' ' -f3)"
   fi
-  echo "A pairing link works once, within $pairing_minutes minutes; $1 --web prints a new one."
+  echo "A new link, or another device:"
+  echo "  $1 --web"
 }
 
 # This machine's time zone name, for the container's browser; empty when it
@@ -281,15 +290,14 @@ if [ "$choice" = container ]; then
   elif [ "$os" = Darwin ]; then
     echo "To keep µAgent available, let Docker Desktop start when you log in (Settings, General)."
   fi
+  compose exec -T uagent uagent --web | pair_block "$container_command"
   # Without questions, nothing asked for a provider.
   if [ "$interactive" = no ] &&
      ! compose exec -T uagent uagent --control '{"kind":"provider"}' 2>/dev/null |
        grep -q '"configured":true'; then
-    echo "No model provider is set yet: run $container_command setup in a terminal, or set one in Settings in the web interface."
+    echo "No model provider is set yet: open Settings in the web interface, or run the same command with setup."
   fi
-  echo "Open the link below to pair this browser; to pair another device later: $container_command --web"
-  compose exec -T uagent uagent --web
-  reach_hint "$container_command"
+  echo "All commands, and reaching µAgent from other devices: $docs/container.md"
   exit 0
 fi
 
@@ -542,10 +550,9 @@ if [ "$web_service" = yes ]; then
     sleep 0.5
   done
   if [ "$tries" -lt 20 ]; then
-    echo "Installed $bin. The web interface is running; open the link below to pair this browser."
-    echo "Start the terminal with: uagent  (uagent --web pairs another device)"
-    "$bin" --web || true
-    reach_hint uagent
+    echo "Installed $bin. The web interface is running; start the terminal with: uagent"
+    "$bin" --web | pair_block uagent || true
+    [ -z "${SSH_CONNECTION:-}" ] || echo "Reaching µAgent from other devices: $docs/remote-access.md"
   else
     echo "Installed $bin, but the web interface did not answer on port $port." >&2
     if [ "$service" = systemd ]; then

@@ -1,5 +1,5 @@
 import type { RefObject, TargetedKeyboardEvent } from "preact";
-import { useState } from "preact/hooks";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { fileQuote } from "../../shared/file-types.ts";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { bytes } from "../../shared/quantities.ts";
@@ -28,6 +28,16 @@ export function useFileMentions(
   const [caret, at] = useState(0);
   const [selected, select] = useState(-1);
   const [closed, close] = useState(true);
+  // Where the caret goes once the picked text is in the field: in the same
+  // commit, so nothing typed after the pick lands before it moves.
+  const caretTo = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const position = caretTo.current;
+    if (position === null) return;
+    caretTo.current = null;
+    input.current?.focus({ preventScroll: true });
+    input.current?.setSelectionRange(position, position);
+  });
   const mention = closed ? null : matchMention(draft.text, caret);
   const { path, lines } = workspaceMention(mention?.query ?? "");
   const search = useFileSearch(
@@ -71,11 +81,7 @@ export function useFileMentions(
     });
     close(true);
     select(-1);
-    const position = before.length + insertion.length;
-    requestAnimationFrame(() => {
-      input.current?.focus({ preventScroll: true });
-      input.current?.setSelectionRange(position, position);
-    });
+    caretTo.current = before.length + insertion.length;
   }
   function keyDown(event: TargetedKeyboardEvent<HTMLTextAreaElement>) {
     if (!mention || !plainKey(event) || event.keyCode === 229) return false;

@@ -9,7 +9,8 @@
   padding: 0;
   overflow: hidden;
   display: grid;
-  grid-template-columns: var(--pane) minmax(0, 1fr);
+  /* As wide as the sidebar, so each topic's name fits its line. */
+  grid-template-columns: var(--sidebar) minmax(0, 1fr);
   min-height: 0;
   background: var(--bg);
 }

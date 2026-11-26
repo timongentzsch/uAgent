@@ -200,7 +200,8 @@ export default function Settings(props: SettingsProps) {
       >
         <SettingsNav
           topics={topics}
-          current={phone ? undefined : current}
+          // Search results stand in for the page: no topic is open.
+          current={phone || query.trim() ? undefined : current}
           select={(id) => go(id)}
           details={{ conversation: session?.title || "Conversation" }}
           class={moved && "push"}

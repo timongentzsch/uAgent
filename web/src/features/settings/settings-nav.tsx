@@ -31,7 +31,10 @@ export function SettingsNav({
                 key={id}
                 icon={<Icon />}
                 label={label}
-                detail={details?.[id]}
+                // The open conversation's name: one line, cut.
+                detail={
+                  details?.[id] && <span class="truncate">{details[id]}</span>
+                }
                 current={id === current}
                 onClick={() => select(id)}
               />

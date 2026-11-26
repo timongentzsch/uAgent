@@ -337,6 +337,28 @@ def test_items_not_waited_for_start_at_once_and_report_later(root, home, *, bina
         assert_true("2 of 3 agents can start now" in refused, refused)
 
 
+def test_agents_wait_returns_when_an_agent_not_waited_for_reports(root, home, *, binary):
+    def route(_, body):
+        if brief_of(body):
+            time.sleep(1.5)
+            return event({"content": "slow done"})
+        results = results_of(body)
+        if not results:
+            return tool_call("agent_start", {"brief": "BRIEF slow", "wait": False})
+        if len(results) == 1:
+            return tool_call("agents", {"action": "wait"})
+        return event({"content": "done"})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "-p", "wait for it", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        parents = [body for _, body in server.requests if not brief_of(body)]
+        # One wait, not a poll: it returned once the agent had reported.
+        waits = [results_of(body) for body in parents if len(results_of(body)) == 2]
+        assert_true(waits, parents)
+        assert_true(waits[0][1] == "completed: BRIEF slow\n", waits[0])
+
+
 def parent_of(agent):
     (parent,) = [
         p for p in agent.parent.glob("*.json") if session_id(p) == header(agent)["agent"]["parent"]

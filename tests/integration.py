@@ -220,8 +220,47 @@ def main():
         remove_suite(pathlib.Path(temp))
 
 
+def case_processes(*folders):
+    """Processes whose command line names one of a case's folders: the
+    runtimes and hosts it started."""
+    listing = subprocess.run(
+        ["ps", "-axo", "pid=,command="], capture_output=True, text=True, check=True
+    ).stdout
+    found = {}
+    for line in listing.splitlines():
+        pid, _, command = line.strip().partition(" ")
+        if pid.isdigit() and int(pid) != os.getpid() and any(str(f) in command for f in folders):
+            found[int(pid)] = command
+    return found
+
+
+def outlived(*folders):
+    """What of a case still runs once its sessions were closed and had time to
+    exit: ended here, and returned so the case fails by name."""
+    deadline = time.monotonic() + budget(5)
+    left = case_processes(*folders)
+    while left and time.monotonic() < deadline:
+        time.sleep(0.1)
+        left = case_processes(*folders)
+    for pid in left:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    return left
+
+
 def run_case(root, name, binary):
     """One case in fresh folders: "passed", "skipped" or "failed"."""
+    outcome = run_case_body(root, name, binary)
+    if left := outlived(root / name, root / (name + ".home")):
+        print(f"{name} left processes running: " + "; ".join(left.values()), flush=True)
+        print(f"FAILED {name}", flush=True)
+        return "failed"
+    return outcome
+
+
+def run_case_body(root, name, binary):
     from session_support import stop_sessions
 
     print(f"running {name}", flush=True)

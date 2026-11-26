@@ -111,7 +111,8 @@ json TurnStatus::Project() const {
             : phase == "idle"       ? kIdleStatus
                                     : kWaitingStatus;
   }
-  return {{"phase", phase}, {"turn_status", label}};
+  return {
+      {"phase", phase}, {"turn_status", label}, {"turn_tool_calls", started_}};
 }
 
 bool TurnStatus::Consume(EventId id, const json& data) {
@@ -122,6 +123,7 @@ bool TurnStatus::Consume(EventId id, const json& data) {
   if (id == EventId::kTurnStarted) {
     active_ = true;
     turn_ = JsonValue(data, "turn", int64_t{0});
+    started_ = 0;
     response_.clear();
     calls_.clear();
     hosted_.clear();
@@ -171,6 +173,7 @@ bool TurnStatus::Consume(EventId id, const json& data) {
         Call& call = calls_[key];
         call.label = StatusLabel(JsonValue(activity, "status_label",
                                            JsonValue(data, "name", "tool")));
+        if (!call.running && id == EventId::kToolStarted) ++started_;
         call.running = call.running || id == EventId::kToolStarted;
         phase_ = "working";
         break;

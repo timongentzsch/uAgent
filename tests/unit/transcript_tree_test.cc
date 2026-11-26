@@ -740,17 +740,15 @@ TEST_CASE(TestTranscriptBodyPreservesFieldsAndExactPreview) {
   }
 }
 
-TEST_CASE(TestOffPageAgentNamesUseTheRetainedAssignment) {
+TEST_CASE(TestAgentMailNamesItsSenderWithoutTheLabel) {
   const std::string first = "0123456789abcdef", second = "fedcba9876543210";
-  const std::string label = "Inspect the slides";
-  const std::string long_label(kStatusLabelBytes + 8, 'a');
   Recorder turn;
   turn.Say("Review the work");
   turn.Reply("r-start", "", "", {{"start", "agent_start"}});
   const std::string call =
       turn.Call("r-start", "start", "agent_start", nullptr, "ok", {}, "",
-                json::array({LinkPart("agent", first, label),
-                             LinkPart("agent", second, long_label)}));
+                json::array({LinkPart("agent", first, "Inspect the slides"),
+                             LinkPart("agent", second, "Check the notes")}));
   turn.Result("start", call);
   Conversation conversation = turn.History();
   const auto say = [&](const std::string& text, json facts) {
@@ -766,18 +764,24 @@ TEST_CASE(TestOffPageAgentNamesUseTheRetainedAssignment) {
   };
   say("First report", report(first, "completed"));
   say("Second report", report(second, "completed"));
+  // A note shows without the label its model reads, and names its sender.
+  const std::string envelope = "[session Review (" + first + ")]\n";
+  json note = report(first, "note");
+  note["origin"] = "message";
+  note["envelope"] = envelope.size();
+  say(envelope + "A note", note);
   say("Side chat", report(first, "merged"));
   const TranscriptView view(conversation);
   const json page = view.Page();
   CHECK(page["more"] == true);
-  std::vector<std::string> labels;
   for (const auto& node : page["nodes"]) {
     CHECK(node["id"] != call);
-    if (node.contains("agent_label")) labels.push_back(node["agent_label"]);
     if (node.contains("agent")) CHECK(node["agent"]["title"] == "Review");
   }
-  CHECK((labels == std::vector<std::string>{
-                       label, long_label.substr(0, kStatusLabelBytes)}));
+  const json& shown = page["nodes"][page["nodes"].size() - 2];
+  CHECK(shown["body"]["text"] == "A note");
+  CHECK(shown["agent"]["outcome"] == "note");
+  CHECK(!shown.contains("envelope"));
   CHECK(page["nodes"].back()["body"]["text"] == "Side chat");
 }
 

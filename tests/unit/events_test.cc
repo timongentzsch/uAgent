@@ -2,9 +2,12 @@
 
 #include "include/core/events.h"
 
+#include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <atomic>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -23,6 +26,7 @@
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"
+#include "include/core/logs.h"
 #include "include/core/turn_status.h"
 #include "tests/unit/test_support.h"
 
@@ -62,7 +66,9 @@ TEST_CASE(TestTurnStatus) {
   CHECK(projection.Status()["phase"] == "decision");
   emit(EventId::kInteractionResolved, {{"id", "same"}});
   emit(EventId::kToolStarted, first);
+  emit(EventId::kToolStarted, first);  // A progress label starts nothing new.
   emit(EventId::kToolStarted, second);
+  CHECK(projection.Status()["turn_tool_calls"] == 2);
   const json both = "Running · Running tests · +1 tools";
   CHECK(projection.Status()["turn_status"] == both);
   emit(EventId::kToolCall, first);  // Duplicate preparation cannot un-start it.
@@ -91,6 +97,7 @@ TEST_CASE(TestTurnStatus) {
   CHECK(projection.Status()["phase"] == "finishing");
   CHECK(!emit(EventId::kToolStarted, first));
   emit(EventId::kTurnStarted, {{"turn", 2}});
+  CHECK(projection.Status()["turn_tool_calls"] == 0);
   CHECK(!emit(EventId::kToolResult, second));
   CHECK(StatusLabel(std::string(kStatusLabelBytes - 1, 'x') + "µlong").size() ==
         kStatusLabelBytes - 1);
@@ -137,9 +144,6 @@ TEST_CASE(TestObservabilityEvents) {
   REQUIRE(notice.presentation.has_value());
   CHECK(notice.presentation->status == PresentationStatus::kWarned);
   CHECK(notice.data["text"] == "interrupted");
-  SessionJournal notices;
-  notices.Append(notice, PolicyFor(notice.id));
-  CHECK(notices.Size() == 1);
 
   // App events carry streaming text themselves, whatever a terminal renders.
   Observability observable;
@@ -290,6 +294,14 @@ TEST_CASE(TestObservabilityEvents) {
                 {"no_change", true},
                 {"activity_terminal", false}}};
   projections.Append(result, PolicyFor(result.id));
+  Event request{EventId::kRequestCompleted,
+                {{"turn", 1},
+                 {"step", 1},
+                 {"context_tokens", 4321},
+                 {"usage", {{"input", 17}}},
+                 {"content", "answer-must-not-leak"}}};
+  projections.Append(request, PolicyFor(request.id));
+  projections.Append(notice, PolicyFor(notice.id));
   std::string projection_path = (workspace.root / "projections.jsonl").string();
   std::string projection_error;
   CHECK(projections.Flush(projection_path, projection_error));
@@ -297,99 +309,137 @@ TEST_CASE(TestObservabilityEvents) {
   std::string projection_text{std::istreambuf_iterator<char>(projection_input),
                               std::istreambuf_iterator<char>()};
   CHECK(projection_text.find("fixture-build") != std::string::npos);
+  CHECK(projection_text.find("request.completed") != std::string::npos);
+  CHECK(projection_text.find("4321") != std::string::npos);
+  CHECK(projection_text.find("answer-must-not-leak") == std::string::npos);
   CHECK(projection_text.find("secret-must-not-leak") == std::string::npos);
   CHECK(projection_text.find("schema.type") != std::string::npos);
   CHECK(projection_text.find("activity_operation") != std::string::npos);
   CHECK(projection_text.find("no_change") != std::string::npos);
   CHECK(projection_text.find("response-1:opaque") != std::string::npos);
   CHECK(projection_text.find("provider-private") == std::string::npos);
+  CHECK(projection_text.find("\"type\":\"notice\"") != std::string::npos);
 
+  // The file is the journal: every event is kept, and only events go in.
+  const auto lines_of = [](const std::string& path) {
+    std::ifstream input(path);
+    std::vector<json> records;
+    for (std::string line; std::getline(input, line);) {
+      records.push_back(json::parse(line, nullptr, false));
+    }
+    return records;
+  };
+  const auto turn = [](int64_t number) {
+    return Event{EventId::kTurnCompleted,
+                 {{"turn", number},
+                  {"outcome", "ok"},
+                  {"steps", 1},
+                  {"usage", json::object()}}};
+  };
   SessionJournal journal;
   for (int64_t sequence = 1; sequence <= 600; ++sequence) {
-    Event event{EventId::kTurnCompleted,
-                {{"turn", sequence},
-                 {"outcome", "ok"},
-                 {"steps", 1},
-                 {"usage", json::object()}}};
-    journal.Append(event, PolicyFor(event.id));
+    journal.Append(turn(sequence), PolicyFor(EventId::kTurnCompleted));
   }
-  CHECK(journal.Size() == 512);
   Event transient{EventId::kReasoningDelta};
   transient.text = "private reasoning";
   journal.Append(transient, PolicyFor(transient.id));
-  CHECK(journal.Size() == 512);
-
   std::string path = (workspace.root / "events.jsonl").string();
   std::string error;
   CHECK(journal.Flush(path, error));
   struct stat state{};
   CHECK(stat(path.c_str(), &state) == 0);
   CHECK((state.st_mode & 0777) == 0600);
-  std::ifstream input(path);
-  std::string line;
-  size_t lines = 0;
-  while (std::getline(input, line)) {
-    json record = json::parse(line, nullptr, false);
-    CHECK(record.is_object());
+  std::vector<json> records = lines_of(path);
+  CHECK(records.size() == 600);
+  for (const json& record : records) {
     CHECK(JsonValue(record, "schema", "") == "uagent.session.event.v1");
     CHECK(JsonValue(record, "type", "") == "turn.completed");
     CHECK(JsonDump(record).find("private reasoning") == std::string::npos);
-    ++lines;
   }
-  CHECK(lines == 512);
-  // A save that follows no event leaves the file alone.
+  // A save that follows no event leaves the file alone; a new event is
+  // appended to it.
   CHECK(journal.Flush(path, error));
   struct stat again{};
-  CHECK(stat(path.c_str(), &again) == 0 && again.st_ino == state.st_ino);
-  Event next{EventId::kTurnCompleted,
-             {{"turn", 601},
-              {"outcome", "ok"},
-              {"steps", 1},
-              {"usage", json::object()}}};
-  journal.Append(next, PolicyFor(next.id));
+  CHECK(stat(path.c_str(), &again) == 0 && again.st_size == state.st_size);
+  journal.Append(turn(601), PolicyFor(EventId::kTurnCompleted));
   CHECK(journal.Flush(path, error));
-  CHECK(stat(path.c_str(), &again) == 0 && again.st_ino != state.st_ino);
+  CHECK(stat(path.c_str(), &again) == 0 && again.st_ino == state.st_ino &&
+        again.st_size > state.st_size);
 
+  // A runtime continuing the file numbers its events after the file's, also
+  // those it recorded before it knew the file.
   SessionJournal restored;
+  restored.Append(turn(0), PolicyFor(EventId::kTurnCompleted));
   CHECK(restored.Load(path, error));
-  CHECK(restored.Size() == 512);
-  Event resumed{EventId::kConfigChanged,
-                {{"changed", json::array({"max_steps"})}}};
-  restored.Append(resumed, PolicyFor(resumed.id));
-  std::string resumed_path = (workspace.root / "resumed.jsonl").string();
-  CHECK(restored.Flush(resumed_path, error));
-  std::ifstream resumed_input(resumed_path);
-  json last;
-  while (std::getline(resumed_input, line)) {
-    last = json::parse(line, nullptr, false);
-  }
-  CHECK(JsonValue(last, "seq", int64_t{0}) == 602);
+  restored.Append(turn(0), PolicyFor(EventId::kTurnCompleted));
+  CHECK(restored.Flush(path, error));
+  records = lines_of(path);
+  CHECK(records.size() == 603);
+  CHECK(JsonValue(records[601], "seq", int64_t{0}) == 602);
+  CHECK(JsonValue(records[602], "seq", int64_t{0}) == 603);
 
-  // Below the ring's bound a new event is appended to the same file, and a
-  // line cut short by a crash is dropped when the file is read.
-  SessionJournal growing;
-  const std::string growing_path = (workspace.root / "growing.jsonl").string();
-  growing.Append(next, PolicyFor(next.id));
-  CHECK(growing.Flush(growing_path, error));
-  struct stat first_state{};
-  CHECK(stat(growing_path.c_str(), &first_state) == 0);
-  growing.Append(next, PolicyFor(next.id));
-  CHECK(growing.Flush(growing_path, error));
-  struct stat second_state{};
-  CHECK(stat(growing_path.c_str(), &second_state) == 0);
-  CHECK(second_state.st_ino == first_state.st_ino);
-  CHECK(second_state.st_size > first_state.st_size);
+  // A line cut short by a crash is dropped when the file is read; a corrupt
+  // one elsewhere is reported, and the journal goes on.
   {
-    std::ofstream torn(growing_path, std::ios::app);
+    std::ofstream torn(path, std::ios::app);
     torn << "{\"schema\":\"uagent.session.ev";
   }
   SessionJournal reread;
-  CHECK(reread.Load(growing_path, error));
-  CHECK(reread.Size() == 2);
-  CHECK(reread.Flush(growing_path, error));
-  SessionJournal clean;
-  CHECK(clean.Load(growing_path, error));
-  CHECK(clean.Size() == 2);
+  CHECK(reread.Load(path, error));
+  reread.Append(turn(0), PolicyFor(EventId::kTurnCompleted));
+  CHECK(reread.Flush(path, error));
+  records = lines_of(path);
+  CHECK(records.size() == 604);
+  CHECK(JsonValue(records.back(), "seq", int64_t{0}) == 604);
+  {
+    std::ofstream corrupt(path, std::ios::app);
+    corrupt << "not json\n";
+  }
+  SessionJournal damaged;
+  CHECK(!damaged.Load(path, error));
+  CHECK(error == "dropped 1 invalid session journal line");
+  error.clear();
+  damaged.Append(turn(0), PolicyFor(EventId::kTurnCompleted));
+  CHECK(damaged.Flush(path, error));
+  CHECK(JsonValue(lines_of(path).back(), "seq", int64_t{0}) == 605);
+  // The bad line went with that read, so the next one finds none.
+  SessionJournal mended;
+  CHECK(mended.Load(path, error) && error.empty());
+  CHECK(lines_of(path).size() == 605);
+
+  // Without a session file to take them, the oldest lines go past a bound.
+  SessionJournal unsaved;
+  for (size_t sequence = 0; sequence <= kJournalPendingLines; ++sequence) {
+    unsaved.Append(turn(0), PolicyFor(EventId::kTurnCompleted));
+  }
+  const std::string unsaved_path = (workspace.root / "unsaved.jsonl").string();
+  CHECK(unsaved.Flush(unsaved_path, error));
+  records = lines_of(unsaved_path);
+  CHECK(records.size() == kJournalPendingLines);
+  CHECK(JsonValue(records.front(), "seq", int64_t{0}) == 2);
+
+  // Past its cap the file keeps its newest half.
+  SessionJournal large;
+  const std::string large_path = (workspace.root / "large.jsonl").string();
+  int64_t written = 0;
+  while (static_cast<size_t>(written) * 100 <= kSessionJournalBytes) {
+    large.Append(turn(++written), PolicyFor(EventId::kTurnCompleted));
+  }
+  CHECK(large.Flush(large_path, error));
+  large.Append(turn(++written), PolicyFor(EventId::kTurnCompleted));
+  CHECK(large.Flush(large_path, error));
+  CHECK(std::filesystem::file_size(large_path) <=
+        kSessionJournalBytes / 2 + 200);
+  records = lines_of(large_path);
+  CHECK(records.front().is_object());
+  CHECK(JsonValue(records.back(), "seq", int64_t{0}) == written);
+  // Turned off, nothing is recorded or written.
+  large.SetEnabled(false);
+  large.Append(turn(0), PolicyFor(EventId::kTurnCompleted));
+  large.SetEnabled(true);
+  const uintmax_t before = std::filesystem::file_size(large_path);
+  CHECK(large.Flush(large_path, error));
+  CHECK(std::filesystem::file_size(large_path) == before);
 
   DebugSink debug;
   std::string debug_path = (workspace.root / "debug.jsonl").string();
@@ -398,6 +448,7 @@ TEST_CASE(TestObservabilityEvents) {
   debug.Flush();
   debug.Stop();
   std::ifstream debug_input(debug_path);
+  std::string line;
   CHECK(static_cast<bool>(std::getline(debug_input, line)));
   json debug_record = json::parse(line, nullptr, false);
   CHECK(JsonValue(debug_record, "event", "") == "first");
@@ -485,6 +536,143 @@ TEST_CASE(TestObservabilityEvents) {
   struct stat tightened{};
   CHECK(stat(loose.c_str(), &tightened) == 0 &&
         (tightened.st_mode & 0777) == 0600);
+}
+
+TEST_CASE(TestDiagnosticsReachTheDayLog) {
+  TestWorkspace workspace("diagnostics");
+  ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH",
+                    (workspace.root / "s.json").string());
+  const std::string trace = (workspace.root / "trace.jsonl").string();
+  const std::string day =
+      UagentDir(kLogsDir) + "/" + UtcStamp("%Y-%m-%d") + ".jsonl";
+  const auto lines_of = [](const std::string& path) {
+    std::ifstream input(path);
+    std::vector<json> records;
+    for (std::string line; std::getline(input, line);) {
+      records.push_back(json::parse(line, nullptr, false));
+    }
+    return records;
+  };
+  {
+    Observability observability;
+    SetObservability(&observability);
+    observability.SetRole("runtime");
+    CHECK(observability.StartDebug(trace));
+    // stderr goes to a file for the length of the call.
+    const std::string captured = (workspace.root / "stderr").string();
+    std::fflush(stderr);
+    const int saved = dup(STDERR_FILENO);
+    const int file = open(captured.c_str(), O_CREAT | O_WRONLY, 0600);
+    CHECK(saved >= 0 && file >= 0);
+    if (saved < 0 || file < 0) return;
+    dup2(file, STDERR_FILENO);
+    Diagnose(Severity::kWarning, "usage_ledger", "cannot write usage ledger",
+             {{"error", "disk full"}});
+    DebugLog("debug_only", {{"value", 1}});
+    std::fflush(stderr);
+    dup2(saved, STDERR_FILENO);
+    close(saved);
+    close(file);
+    std::ifstream printed(captured);
+    std::string first;
+    CHECK(std::getline(printed, first) && first == "cannot write usage ledger");
+    CHECK(!std::getline(printed, first));
+    observability.Shutdown();
+    SetObservability(nullptr);
+  }
+  const std::vector<json> written = lines_of(day);
+  REQUIRE(written.size() == 1);
+  const json& line = written[0];
+  CHECK(line["event"] == "usage_ledger");
+  CHECK(line["pid"] == getpid());
+  CHECK(line.contains("time"));
+  CHECK(line["data"]["level"] == "warning");
+  CHECK(line["data"]["role"] == "runtime");
+  CHECK(line["data"]["session_id"] ==
+        SessionIdFor((workspace.root / "s.json").string()));
+  CHECK(line["data"]["text"] == "cannot write usage ledger");
+  CHECK(line["data"]["data"]["error"] == "disk full");
+  // The trace has both; the debug line goes nowhere else.
+  const std::vector<json> traced = lines_of(trace);
+  CHECK(traced.size() == 2);
+  // At level off the day's file is not written; stderr still is.
+  ScopedEnv off("UAGENT_LOG_LEVEL", "off");
+  std::filesystem::remove(day);
+  {
+    Observability quiet;
+    quiet.Diagnostic(Severity::kError, "web_restart", "cannot restart", {});
+    quiet.Shutdown();
+  }
+  CHECK(!std::filesystem::exists(day));
+}
+
+TEST_CASE(TestLogsAreKeptWithinTheirSize) {
+  TestWorkspace workspace("log-size");
+  ScopedEnv limit("UAGENT_LOG_MB", "1");
+  namespace fs = std::filesystem;
+  const auto now = fs::file_time_type::clock::now();
+  // Oldest first, across two folders: 4 x 400 KiB is more than 1 MiB.
+  const fs::path files[] = {
+      fs::path(UagentDir(kArtifactsDir)) / "http-oldest",
+      fs::path(UagentDir(kMcpDir)) / "server-older.log",
+      fs::path(UagentDir(kArtifactsDir)) / "exchange-newer",
+      fs::path(UagentDir(kLogsDir)) / "2026-11-26.jsonl",
+  };
+  // What tools still use is older than all of them, and stays.
+  const fs::path in_use[] = {
+      fs::path(UagentDir(kActivityDir)) / "usage-s.jsonl",
+      fs::path(UagentDir(kActivityDir)) / "1-2.log",
+      fs::path(UagentDir(kArtifactsDir)) / "output-old",
+      fs::path(UagentDir(kMcpDir)) / "image-old.png",
+  };
+  for (size_t i = 0; i < std::size(files); ++i) {
+    std::ofstream(files[i]) << std::string(size_t{400} * 1024, 'x');
+    fs::last_write_time(files[i], now - std::chrono::hours(4 - i));
+    std::ofstream(in_use[i]) << std::string(size_t{400} * 1024, 'x');
+    fs::last_write_time(in_use[i], now - std::chrono::hours(6));
+  }
+  // Sessions keep their own rules, however large.
+  const fs::path journal =
+      fs::path(UagentDir(kHistoryDir)) / "s.json.events.jsonl";
+  std::ofstream(fs::path(UagentDir(kHistoryDir)) / "s.json") << "session";
+  std::ofstream(journal) << std::string(size_t{2} * 1024 * 1024, 'x');
+  fs::last_write_time(journal, now - std::chrono::hours(8));
+  MaintainArtifacts();
+  CHECK(!fs::exists(files[0]));
+  CHECK(!fs::exists(files[1]));
+  CHECK(fs::exists(files[2]));
+  CHECK(fs::exists(files[3]));
+  CHECK(fs::exists(journal));
+  for (const fs::path& file : in_use) CHECK(fs::exists(file));
+}
+
+TEST_CASE(TestLogLevelsWriteTheirRecords) {
+  struct Expected {
+    LogKind kind;
+    bool off, events, full, debug;
+  };
+  constexpr Expected kExpected[] = {
+      {LogKind::kJournal, false, true, true, true},
+      {LogKind::kDiagnostics, false, true, true, true},
+      {LogKind::kMcpStderr, false, true, true, true},
+      {LogKind::kCapture, false, false, true, true},
+      {LogKind::kTrace, false, false, false, true},
+  };
+  for (const LogRecord& record : kLogRecords) {
+    CHECK(std::ranges::find(kExpected, record.kind, &Expected::kind) !=
+          std::end(kExpected));
+  }
+  for (const Expected& expected : kExpected) {
+    for (const auto& [level, written] :
+         {std::pair{"off", expected.off}, std::pair{"events", expected.events},
+          std::pair{"full", expected.full},
+          std::pair{"debug", expected.debug}}) {
+      ScopedEnv setting("UAGENT_LOG_LEVEL", level);
+      CHECK(Logs(expected.kind) == written);
+    }
+    ScopedEnv unknown("UAGENT_LOG_LEVEL", "loud");
+    CHECK(Logs(expected.kind) == expected.full);
+  }
 }
 
 }  // namespace uagent

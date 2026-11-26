@@ -6,9 +6,25 @@
   max-height: var(--scroll-s);
   overflow: auto;
 }
+/* A message's files, in a row over its controls: the composer's, and the
+   box a conversation starts from. */
+.message-box > .attachments {
+  flex-wrap: nowrap;
+  max-height: none;
+  padding: var(--space-2) var(--space-4);
+  overscroll-behavior-x: contain;
+}
+.message-box .file-chip {
+  flex: none;
+  max-width: var(--pane);
+}
 .file-chip {
   padding-block: var(--space-2);
   text-decoration: none;
+}
+/* Remove at its end stands as far from the chip's side as from its ends. */
+.file-chip:has(> .icon-button:last-child) {
+  padding-right: var(--space-2);
 }
 /* raw: a chip's name, wherever a chip is drawn. */
 .file-chip > span {
@@ -99,11 +115,21 @@
   max-height: var(--pane-s);
   object-fit: contain;
 }
+/* A presented picture's box is fixed before it loads: its own shape within
+   the bounds when its size is known (width and height, --ratio), a 4:3 box
+   otherwise; the picture is contained in it. */
 .node-file > .attachment-tile {
-  max-width: 100%;
+  justify-self: start;
+  max-width: min(100%, var(--popover) * var(--ratio, 4 / 3));
 }
 .node-file > .attachment-tile img {
+  width: revert-layer;
+  max-width: 100%;
   max-height: var(--popover);
+}
+.node-file > .attachment-tile img:not([width]) {
+  width: calc(var(--pane-s) * 4 / 3);
+  height: var(--pane-s);
 }
 dialog.image-view[data-layout="panel"] {
   top: calc(var(--viewport-top) + var(--safe-top));

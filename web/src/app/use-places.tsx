@@ -9,6 +9,8 @@ import { folderOf, projectsOf } from "../shared/display.ts";
 import { scratchSpace } from "../shared/limits.ts";
 import { SpaceMenu } from "./menus.tsx";
 import { collapsed, placeKey } from "../features/sidebar/folding.ts";
+import { emptyDraft } from "../state/store.ts";
+import { useLatest } from "../shared/use-latest.ts";
 
 // A model picked before a conversation exists, and how it reads.
 export interface ModelChoice {
@@ -18,7 +20,8 @@ export interface ModelChoice {
 }
 
 export function usePlaces({
-  host: { catalogue, upsertSession, load, report },
+  host: { catalogue, upsertSession, load, report, drafts },
+  upload,
   choose,
   open,
   modal,
@@ -26,6 +29,8 @@ export function usePlaces({
   setBusy,
 }: {
   host: HostState;
+  // Into a conversation's draft, as the composer attaches.
+  upload: (files: File[], id: string) => Promise<boolean>;
   choose: (id: string, host?: string) => Promise<void>;
   open: (modal: AppModal) => void;
   modal: AppModal | null;
@@ -59,6 +64,7 @@ export function usePlaces({
   const carried = useRef("");
   // One start at a time: a double click must not race two activations.
   const starting = useRef(false);
+  const uploading = useLatest(upload);
   const startConversation = useCallback(
     async (
       folder: string,
@@ -66,6 +72,7 @@ export function usePlaces({
       text = "",
       targetHost = host,
       model?: ModelChoice,
+      files: File[] = [],
     ) => {
       if (starting.current) return;
       starting.current = true;
@@ -91,7 +98,23 @@ export function usePlaces({
               model: model.model,
               effort: model.effort,
             });
-          if (text) await command("submit", created.session, { text });
+          if (files.length) {
+            // The message waits in its draft until it is sent: a failure
+            // leaves it there to send again.
+            const id = created.session.id;
+            drafts.set((all) => ({ ...all, [id]: { ...emptyDraft(), text } }));
+            if (await uploading.current(files, id)) {
+              const sent = drafts.get()[id];
+              await command("submit", created.session, {
+                text: sent.text,
+                attachment_ids: sent.files.map(({ id, name }) => ({
+                  id,
+                  name,
+                })),
+              });
+              drafts.set((all) => ({ ...all, [id]: emptyDraft() }));
+            }
+          } else if (text) await command("submit", created.session, { text });
         } finally {
           await choose(created.session.id, targetHost);
         }
@@ -101,7 +124,7 @@ export function usePlaces({
         starting.current = false;
       }
     },
-    [upsertSession, choose, load, command, host],
+    [upsertSession, choose, load, command, host, drafts, uploading],
   );
   const newPlace = useCallback(
     (place: "conversation" | "workspace" | "folder", text = "") => {
@@ -119,8 +142,8 @@ export function usePlaces({
   );
   // Scratch is a workspace, so Local's.
   const startUnfiled = useCallback(
-    (text: string, model?: ModelChoice) =>
-      startConversation("", scratchSpace, text, "", model),
+    (text: string, model?: ModelChoice, files?: File[]) =>
+      startConversation("", scratchSpace, text, "", model, files),
     [startConversation],
   );
   const redirect: Redirect = useCallback(

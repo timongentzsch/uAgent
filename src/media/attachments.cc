@@ -7,8 +7,10 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <climits>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <list>
@@ -120,6 +122,78 @@ std::string RasterMime(std::string_view bytes) {
     }
   }
   return {};
+}
+
+bool RasterSize(std::string_view bytes, int& width, int& height) {
+  width = height = 0;
+  const auto at = [&](size_t i) {
+    return i < bytes.size()
+               ? static_cast<uint32_t>(static_cast<unsigned char>(bytes[i]))
+               : 0u;
+  };
+  const auto be16 = [&](size_t i) { return at(i) << 8 | at(i + 1); };
+  const auto le16 = [&](size_t i) { return at(i) | at(i + 1) << 8; };
+  const auto le24 = [&](size_t i) { return le16(i) | at(i + 2) << 16; };
+  const auto set = [&](uint32_t w, uint32_t h, size_t needed) {
+    if (bytes.size() < needed || !w || !h || w > INT_MAX || h > INT_MAX) {
+      return false;
+    }
+    width = static_cast<int>(w);
+    height = static_cast<int>(h);
+    return true;
+  };
+  const std::string mime = RasterMime(bytes);
+  if (mime == kPngMime) {
+    return set(be16(16) << 16 | be16(18), be16(20) << 16 | be16(22), 24);
+  }
+  if (mime == kGifMime) return set(le16(6), le16(8), 10);
+  if (mime == kWebpMime) {
+    const std::string_view chunk = bytes.substr(12, 4);
+    if (chunk == "VP8 ") {
+      return set(le16(26) & 0x3fff, le16(28) & 0x3fff, 30);
+    }
+    if (chunk == "VP8L") {
+      const uint32_t bits = le16(21) | le16(23) << 16;
+      return set((bits & 0x3fff) + 1, (bits >> 14 & 0x3fff) + 1, 25);
+    }
+    if (chunk == "VP8X") return set(le24(24) + 1, le24(27) + 1, 30);
+    return false;
+  }
+  if (mime != kJpegMime) return false;
+  // Browsers turn a JPEG by its EXIF orientation; 5 to 8 swap the sides.
+  bool turned = false;
+  for (size_t pos = 2; pos + 4 <= bytes.size();) {
+    if (at(pos) != 0xff) return false;
+    const uint32_t marker = at(pos + 1);
+    if (marker == 0xff) {
+      ++pos;
+      continue;
+    }
+    if (marker == 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
+      pos += 2;
+      continue;
+    }
+    const size_t end = pos + 2 + be16(pos + 2);
+    if (marker == 0xe1 &&
+        bytes.substr(pos + 4, 6) == std::string_view("Exif\0\0", 6)) {
+      const size_t tiff = pos + 10;
+      const bool le = bytes.substr(tiff, 2) == "II";
+      const auto u16 = [&](size_t i) { return le ? le16(i) : be16(i); };
+      const size_t ifd = tiff + (le ? le16(tiff + 4) | le16(tiff + 6) << 16
+                                    : be16(tiff + 4) << 16 | be16(tiff + 6));
+      for (size_t entry = ifd + 2, n = 0; n < u16(ifd) && entry + 12 <= end;
+           ++n, entry += 12) {
+        if (u16(entry) == 0x0112) turned = u16(entry + 8) >= 5;
+      }
+    }
+    if (marker >= 0xc0 && marker <= 0xcf && marker != 0xc4 && marker != 0xc8 &&
+        marker != 0xcc) {
+      const uint32_t h = be16(pos + 5), w = be16(pos + 7);
+      return turned ? set(h, w, pos + 9) : set(w, h, pos + 9);
+    }
+    pos = end;
+  }
+  return false;
 }
 
 // The same ftyp box with a video brand is a video container. Only image
@@ -477,6 +551,65 @@ std::pair<json, bool> ComposeSteeredContent(const std::string& input,
 }
 
 namespace {
+// ImageMagick 7 is `magick`; distributions that ship 6 (Ubuntu 24.04) have
+// `convert` and `identify`. `tool` is "identify", or empty to convert.
+CapturedProcess Magick(const std::string& tool,
+                       std::vector<std::string> arguments) {
+  // Its warnings share the pipe its answer is read from.
+  arguments.insert(arguments.begin(), "-quiet");
+  std::vector<std::string> seven{"magick"};
+  if (!tool.empty()) seven.push_back(tool);
+  seven.insert(seven.end(), arguments.begin(), arguments.end());
+  CapturedProcess run = CaptureProcess(seven);
+  if (run.error != std::strerror(ENOENT)) return run;
+  arguments.insert(arguments.begin(), tool.empty() ? "convert" : tool);
+  return CaptureProcess(arguments);
+}
+}  // namespace
+
+// Platform helpers keep image decoders out of the harness binary: no shell,
+// bounded lifetime, original retained.
+CapturedProcess ImageSize(const std::string& path, int& width, int& height) {
+  width = height = 0;
+#ifdef __APPLE__
+  auto inspected = CaptureProcess(
+      {"/usr/bin/sips", "-g", "pixelWidth", "-g", "pixelHeight", path});
+  std::istringstream lines(inspected.output);
+  std::string line;
+  while (std::getline(lines, line)) {
+    std::istringstream fields(line);
+    std::string label;
+    int value = 0;
+    if (fields >> label >> value) {
+      if (label == "pixelWidth:") width = value;
+      if (label == "pixelHeight:") height = value;
+    }
+  }
+#else
+  auto inspected =
+      Magick("identify", {"-ping", "-format", "%w %h", path + "[0]"});
+  std::istringstream(inspected.output) >> width >> height;
+#endif
+  return inspected;
+}
+
+CapturedProcess CropImage(const std::string& path, int x, int y, int width,
+                          int height, const std::string& out) {
+#ifdef __APPLE__
+  return CaptureProcess({"/usr/bin/sips", "-c", std::to_string(height),
+                         std::to_string(width), "--cropOffset",
+                         std::to_string(y), std::to_string(x), "-s", "format",
+                         "png", path, "--out", out});
+#else
+  return Magick("", {"-limit", "memory", "128MiB", "-limit", "map", "256MiB",
+                     path + "[0]", "-crop",
+                     std::to_string(width) + "x" + std::to_string(height) +
+                         "+" + std::to_string(x) + "+" + std::to_string(y),
+                     "+repage", "png:" + out});
+#endif
+}
+
+namespace {
 bool TextMime(const std::string& mime) {
   return mime.starts_with("text/") || mime == "application/json" ||
          mime == "application/xml";
@@ -487,10 +620,10 @@ bool TextMime(const std::string& mime) {
 // coder is locked down.
 bool RasterizeVector(const std::string& path, const std::string& out,
                      std::string& error) {
-  auto raster = CaptureProcess({"magick", "-limit", "memory", "128MiB",
-                                "-limit", "map", "256MiB", "-density", "192",
-                                "-background", "none", path + "[0]", "-resize",
-                                "2048x2048>", "-strip", "png:" + out});
+  auto raster =
+      Magick("", {"-limit", "memory", "128MiB", "-limit", "map", "256MiB",
+                  "-density", "192", "-background", "none", path + "[0]",
+                  "-resize", "2048x2048>", "-strip", "png:" + out});
   if (raster.Ok()) return true;
 #ifdef __APPLE__
   const std::string dir = std::filesystem::path(out).parent_path().string();
@@ -588,8 +721,7 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   const std::string key = "image|" + fingerprint;
   std::string cached;
   if (CachedPayload(key, mime, cached)) return cached;
-  // Platform helpers keep image decoders out of the harness binary: no shell,
-  // bounded lifetime, original retained. A vector original rasterizes first.
+  // A vector original rasterizes first.
   std::string path = attachment.path;
   // Scratch files live exactly as long as this function.
   ScopedTempFile raster_file(
@@ -609,27 +741,8 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
     path = raster_file.Path();
     mime = kPngMime;
   }
-#ifdef __APPLE__
-  auto inspected = CaptureProcess(
-      {"/usr/bin/sips", "-g", "pixelWidth", "-g", "pixelHeight", path});
   int width = 0, height = 0;
-  std::istringstream lines(inspected.output);
-  std::string line;
-  while (std::getline(lines, line)) {
-    std::istringstream fields(line);
-    std::string label;
-    int value = 0;
-    if (fields >> label >> value) {
-      if (label == "pixelWidth:") width = value;
-      if (label == "pixelHeight:") height = value;
-    }
-  }
-#else
-  auto inspected = CaptureProcess(
-      {"magick", "identify", "-ping", "-format", "%w %h", path + "[0]"});
-  int width = 0, height = 0;
-  std::istringstream(inspected.output) >> width >> height;
-#endif
+  const CapturedProcess inspected = ImageSize(path, width, height);
   if ((inspected.error.empty() && !inspected.Ok()) ||
       (inspected.Ok() && (width <= 0 || height <= 0))) {
     error = "image could not be decoded";
@@ -656,10 +769,10 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
 #else
     const std::string geometry = std::to_string(MaxImageDimension()) + "x" +
                                  std::to_string(MaxImageDimension()) + ">";
-    auto resized = CaptureProcess(
-        {"magick", "-limit", "memory", "128MiB", "-limit", "map", "256MiB",
-         path + "[0]", "-auto-orient", "-resize", geometry, "-quality", "85",
-         format + ":" + temporary_file.Path()});
+    auto resized =
+        Magick("", {"-limit", "memory", "128MiB", "-limit", "map", "256MiB",
+                    path + "[0]", "-auto-orient", "-resize", geometry,
+                    "-quality", "85", format + ":" + temporary_file.Path()});
 #endif
     if (!resized.Ok()) {
       error =
@@ -819,12 +932,13 @@ bool PrepareAttachments(json& messages,
         error += name + ": " + detail;
       }
       if (delivery == "File reference") {
-        prepared.push_back(
-            {{"type", "text"},
-             {"text", "[File reference: " + path +
-                          (processed ? "; earlier attachment"
-                                     : "; contents not included") +
-                          "]"}});
+        // With the reason, where there is one: the model can then act on it.
+        const std::string why = processed ? "; earlier attachment"
+                                : detail.empty()
+                                    ? "; contents not included"
+                                    : "; contents not included: " + detail;
+        prepared.push_back({{"type", "text"},
+                            {"text", "[File reference: " + path + why + "]"}});
       } else if (detail.empty()) {
         // Where it is kept, so a tool can copy it (write_file's `from`).
         prepared.push_back(

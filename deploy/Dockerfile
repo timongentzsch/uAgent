@@ -29,7 +29,7 @@ FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee
 RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
     bash ca-certificates curl git ripgrep openssh-client tini tigervnc-standalone-server \
     xauth xcompmgr nftables gpgv fonts-liberation fonts-dejavu-core fonts-noto-core \
-    fonts-noto-color-emoji libcurl4 \
+    fonts-noto-color-emoji imagemagick libcurl4 poppler-utils \
     # What Chrome needs of the system, without Chrome: chrome-update fetches
     # that onto the data volume, where it can be replaced.
     && touch /etc/default/google-chrome \

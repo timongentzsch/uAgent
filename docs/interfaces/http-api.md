@@ -31,9 +31,12 @@ Session metadata (`SessionHost::Metadata`): `id`, `generation`, `cwd`,
 `starting`, `interrupted`, `failed`, `closing`, `updating`, `deleting`,
 `waiting`, `running`, `processing`, `idle`), `presence` (`active` or `""`),
 `turn_active`, `needs_you` (a decision waits on a person, not on a parent
-agent) with its `pending_prompt`, `updated` (ms), and
-display fields that are not contract. A child whose header records its delegated
-write scope includes `agent_edits` (`none`, `folder`, or `worktree`).
+agent) with its `pending_prompt`, `updated` (ms), `tokens` (every token its
+model calls processed), `tool_calls` (its finished turns' calls plus the
+running turn's), `turn_started_ms` (0 before a turn), and display fields that
+are not contract. An agent's row also has `agent_edits` (`none`, `folder`, or
+`worktree`), `agent_name` (its item, else its brief's first line) and
+`agent_call` (the id of the `agent_start` call that started it).
 Snapshot `permissions.source` identifies the effective setting's layer. In a
 child, `parent` means inherited at launch. A live
 `permissions` command with `inspect: true` also returns the execution

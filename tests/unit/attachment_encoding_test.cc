@@ -3,6 +3,7 @@
 #include <unistd.h>
 
 #include <filesystem>
+#include <limits>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -10,6 +11,7 @@
 
 #include "include/agent/activity.h"
 #include "include/app/present.h"
+#include "include/core/capture.h"
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/limits.h"
@@ -190,6 +192,175 @@ TEST_CASE(TestAttachmentEncoding) {
   fs::remove_all(root, ec);
 }
 
+// A region of an image is cut at full detail; a plain read names the size
+// the region is given in.
+TEST_CASE(TestImageRegion) {
+  TestWorkspace workspace("image-region");
+  std::string png;
+  CHECK(
+      Base64Decode("iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAFklEQVQI"
+                   "12P8//8/AwwwQWlGRgYGBgBIDwMDBa70RgAAAABJRU5ErkJggg==",
+                   png, 1024));
+  CHECK(ToolWriteFile("small.png", png).Ok());
+  // A picture its decoder warns about (a broken colour profile) still has a
+  // size.
+  std::string warned;
+  CHECK(Base64Decode(
+      "iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAE2lDQ1B4AAB4nGNgoAwAAABA"
+      "AAFqdW5rB8/N0gAAABBJREFUeJxjEGj4AEcMyBwAlRoMAZaWcPQAAAAASUVORK5CYII=",
+      warned, 1024));
+  CHECK(ToolWriteFile("warned.png", warned).Ok());
+  int warned_width = 0, warned_height = 0;
+  if (ImageSize("warned.png", warned_width, warned_height).Ok()) {
+    CHECK(warned_width == 4 && warned_height == 2);
+  }
+  int width = 0, height = 0;
+  if (!ImageSize("small.png", width, height).error.empty()) {
+    CHECK(ToolReadImageRegion("small.png", "0,0,1,1", "cut")
+              .output.find("install ImageMagick") != std::string::npos);
+    return;
+  }
+  CHECK(ToolReadFile("small.png", 1, 1, "read").output.ends_with("; 4x2 px"));
+  const ToolResult region = ToolReadImageRegion("small.png", "2,1,5,5", "cut");
+  CHECK(region.Ok() && region.body_kind == "image");
+  CHECK(region.hint.find("Region 2,1,2,1 of small.png (4x2 px)") !=
+        std::string::npos);
+  const std::vector<Attachment> queued = Attachments().Take();
+  CHECK(queued.size() == 2 && queued[1].mime == "image/png" &&
+        ImageSize(queued[1].path, width, height).Ok() && width == 2 &&
+        height == 1);
+  CHECK(ToolReadImageRegion("small.png", "4,0,1,1", "out")
+            .output.find("outside the 4x2 px image") != std::string::npos);
+  CHECK(!ToolReadImageRegion("small.png", "1,2", "bad").Ok());
+  CHECK(ToolWriteFile("notes.txt", "text").Ok());
+  CHECK(ToolReadImageRegion("notes.txt", "0,0,1,1", "text")
+            .output.find("raster image") != std::string::npos);
+  // ImageMagick 6 has convert and identify, and no magick.
+  const char* found = getenv("PATH");
+  const std::string path = found ? found : "";
+  const std::filesystem::path six = workspace.root / "imagemagick-6";
+  std::filesystem::create_directories(six);
+  for (const char* tool : {"convert", "identify"}) {
+    for (const std::string& dir : SplitPathList(path, ':')) {
+      if (std::filesystem::exists(dir + "/" + tool)) {
+        std::filesystem::create_symlink(dir + "/" + tool, six / tool);
+        break;
+      }
+    }
+  }
+  if (!std::filesystem::exists(six / "identify")) return;
+  setenv("PATH", six.c_str(), 1);
+  const CapturedProcess size = ImageSize("small.png", width, height);
+  const ToolResult cut = ToolReadImageRegion("small.png", "1,0,2,2", "six");
+  setenv("PATH", path.c_str(), 1);
+  CHECK(size.Ok() && width == 4 && height == 2);
+  CHECK(cut.Ok());
+  CHECK(Attachments().Take().size() == 1);
+}
+
+// A PDF reads as page text through poppler; without it the file is
+// attached as before and the result says what to install.
+TEST_CASE(TestPdfPages) {
+  TestWorkspace workspace("pdf-pages");
+  const auto pdf = [](const std::string& first, const std::string& second) {
+    std::string out =
+        "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+        "2 0 obj<</Type/Pages/Kids[3 0 R 5 0 R]/Count 2>>endobj\n";
+    int object = 3;
+    for (const std::string& text : {first, second}) {
+      const std::string stream =
+          text.empty() ? "" : "BT /F1 12 Tf 10 50 Td (" + text + ") Tj ET";
+      out += std::to_string(object) +
+             " 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 100]"
+             "/Resources<</Font<</F1 7 0 R>>>>/Contents " +
+             std::to_string(object + 1) + " 0 R>>endobj\n" +
+             std::to_string(object + 1) + " 0 obj<</Length " +
+             std::to_string(stream.size()) + ">>stream\n" + stream +
+             "\nendstream endobj\n";
+      object += 2;
+    }
+    return out +
+           "7 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+           "trailer<</Root 1 0 R>>\n%%EOF\n";
+  };
+  CHECK(ToolWriteFile("paper.pdf", pdf("Page one", "Page two")).Ok());
+  CHECK(ToolWriteFile("scan.pdf", pdf("", "")).Ok());
+  const char* found = getenv("PATH");
+  const std::string path = found ? found : "";
+  setenv("PATH", workspace.root.c_str(), 1);
+  const ToolResult missing = ToolReadFile("paper.pdf", 1, 1, "missing");
+  setenv("PATH", path.c_str(), 1);
+  CHECK(missing.output.find("install poppler") != std::string::npos);
+  CHECK(Attachments().Take().size() == 1);
+  if (!CaptureProcess({"pdfinfo", "-v"}).error.empty()) return;
+  const ToolResult pages = ToolReadFile("paper.pdf", 1, 0);
+  CHECK(pages.output == "[page 1]\nPage one\n\n[page 2]\nPage two\n\n");
+  CHECK(pages.hint == "[paper.pdf pages 1-2 of 2]");
+  const ToolResult last = ToolReadFile("paper.pdf", -1, 0);
+  CHECK(last.output == "[page 2]\nPage two\n\n");
+  CHECK(last.hint == "[paper.pdf pages 2-2 of 2]");
+  CHECK(ToolReadFile("paper.pdf", 1, 1).hint == "[paper.pdf pages 1-1 of 2]");
+  CHECK(
+      ToolReadFile("paper.pdf", 2, std::numeric_limits<int64_t>::max()).hint ==
+      "[paper.pdf pages 2-2 of 2]");
+  CHECK(!ToolReadFile("paper.pdf", 3, 0).Ok());
+  const ToolResult scanned = ToolReadFile("scan.pdf", 1, 0);
+  CHECK(scanned.output == "[page 1] (no text)\n[page 2] (no text)\n");
+  CHECK(scanned.hint ==
+        "[scan.pdf pages 1-2 of 2; no text layer, likely scanned]");
+}
+
+// A picture's size comes from its header, as a browser shows it: a JPEG
+// turned by its EXIF orientation, and nothing from a file cut short.
+TEST_CASE(TestRasterSize) {
+  const auto bytes = [](std::initializer_list<int> values) {
+    std::string out;
+    for (int value : values) out.push_back(static_cast<char>(value));
+    return out;
+  };
+  const auto size = [](const std::string& file) {
+    int width = -1, height = -1;
+    return RasterSize(file, width, height)
+               ? std::to_string(width) + "x" + std::to_string(height)
+               : std::string();
+  };
+  const std::string png = std::string("\x89PNG\r\n\x1a\n\0\0\0\rIHDR", 16) +
+                          bytes({0, 0, 3, 0x20, 0, 0, 2, 0x58});
+  const std::string gif = "GIF89a" + bytes({0x20, 3, 0x58, 2, 0, 0, 0});
+  const std::string riff = "RIFF" + bytes({0, 0, 0, 0}) + "WEBP";
+  const std::string lossy = riff + "VP8 " + bytes({0, 0, 0, 0, 0, 0, 0}) +
+                            bytes({0x9d, 1, 0x2a, 0x20, 3, 0x58, 2});
+  // 800 - 1 and 600 - 1 in 14 bits each.
+  const uint32_t bits = 799 | 599u << 14;
+  const std::string lossless =
+      riff + "VP8L" + bytes({0, 0, 0, 0, 0x2f}) +
+      bytes({static_cast<int>(bits & 0xff), static_cast<int>(bits >> 8 & 0xff),
+             static_cast<int>(bits >> 16 & 0xff),
+             static_cast<int>(bits >> 24)});
+  const std::string extended = riff + "VP8X" + bytes({0, 0, 0, 0, 0, 0, 0, 0}) +
+                               bytes({0x1f, 3, 0, 0x57, 2, 0});
+  const std::string sof = bytes({0xff, 0xc0, 0, 17, 8, 2, 0x58, 3, 0x20});
+  const std::string jpeg = bytes({0xff, 0xd8}) + sof;
+  // APP1 with one IFD entry: orientation 6, a quarter turn.
+  const std::string exif = bytes({0xff, 0xe1, 0, 34}) +
+                           std::string("Exif\0\0", 6) + "MM" +
+                           bytes({0, 42, 0, 0, 0, 8, 0, 1, 1, 0x12, 0, 3,
+                                  0, 0,  0, 1, 0, 6, 0, 0, 0, 0,    0, 0});
+  const std::string turned = bytes({0xff, 0xd8}) + exif + sof;
+  for (const auto& [file, expected] :
+       std::vector<std::pair<std::string, std::string>>{{png, "800x600"},
+                                                        {gif, "800x600"},
+                                                        {lossy, "800x600"},
+                                                        {lossless, "800x600"},
+                                                        {extended, "800x600"},
+                                                        {jpeg, "800x600"},
+                                                        {turned, "600x800"}}) {
+    CHECK(size(file) == expected);
+    CHECK(size(file.substr(0, file.size() - 1)).empty());
+  }
+  CHECK(size("plain text").empty());
+}
+
 // HEIC stills and SVG diagrams enter the image pipeline; MP4 video, HTML and
 // mislabeled files do not. Sniffing and inspection need no converter.
 TEST_CASE(TestVectorAndHeicAttachments) {
@@ -282,6 +453,8 @@ TEST_CASE(TestVectorAndHeicAttachments) {
   CHECK(!error.empty());
   CHECK(JsonDump(request).find("image_url") == std::string::npos);
   CHECK(deliveries[0]["delivery"] == "File reference");
+  // The model reads why it got no picture.
+  CHECK(JsonDump(request).find("contents not included: ") != std::string::npos);
 
   std::error_code cleanup;
   fs::remove_all(root, cleanup);

@@ -22,10 +22,10 @@ class AgentLink {
   AgentLink(std::string path, std::string id, std::string parent,
             std::string kind = "agent");
 
-  // `kind` is "approval request" or "question". With no parent to take it,
-  // the agent escalates `interaction` to the person itself.
+  // `kind` is "approval request" (of `tool`) or "question" (no tool). With no
+  // parent to take it, the agent escalates `interaction` to the person itself.
   void Ask(const std::string& interaction, const std::string& kind,
-           const std::string& asks, const std::string& data,
+           const std::string& tool, const std::string& data,
            const std::string& title) const;
 
   // Mails the parent the finished turn together with its answer.

@@ -75,7 +75,7 @@ int64_t AttachmentLimitMb() { return LongSetting(Cfg("UAGENT_ATTACHMENT_MB")); }
 int64_t HistoryDays() { return LongSetting(Cfg("UAGENT_HISTORY_DAYS")); }
 int64_t HistoryFiles() { return LongSetting(Cfg("UAGENT_HISTORY_FILES")); }
 int64_t LogKeepDays() { return LongSetting(Cfg("UAGENT_LOG_DAYS")); }
-int64_t LogKeepFiles() { return LongSetting(Cfg("UAGENT_LOG_FILES")); }
+int64_t LogKeepMb() { return LongSetting(Cfg("UAGENT_LOG_MB")); }
 int64_t IdleMinutes() { return LongSetting(Cfg("UAGENT_IDLE_MINUTES")); }
 
 int64_t MaxActivities() { return LongSetting(Cfg("UAGENT_MAX_ACTIVITIES")); }

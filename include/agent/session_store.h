@@ -46,9 +46,10 @@ struct SessionInfo {
   bool custom_title = false;
   int64_t turns = 0;
   uint64_t incoming = 0;
-  double cost = 0;      // reported spend, as of the last save
-  int64_t tokens = 0;   // every token its calls processed, as of the last save
-  json todo = nullptr;  // how far its to-do list is (TodoProgress)
+  double cost = 0;     // reported spend, as of the last save
+  int64_t tokens = 0;  // every token its calls processed, as of the last save
+  int64_t tool_calls = 0;  // the tools its turns called, as of the last save
+  json todo = nullptr;     // how far its to-do list is (TodoProgress)
   int64_t bytes = 0;
   std::filesystem::file_time_type mtime;
   std::string error;
@@ -56,6 +57,9 @@ struct SessionInfo {
   // for an agent, or where it branched from, for a side chat.
   std::string parent;
   std::string agent_edits = {};  // delegated scope from the same header
+  // What people read it as (SessionName), and for an agent the agent_start
+  // call that started it.
+  std::string name = {}, agent_call = {};
   // {parent, request, asked, merged?, detached?} for a side chat, or for one
   // opened as a conversation of its own.
   json side = nullptr;
@@ -89,6 +93,8 @@ std::string ForkSourcePath(const std::string& path);
 
 // The first line when it is a valid header, else {}; reads no transcript.
 json SessionHeader(const std::string& path);
+// What people read a conversation as: an agent's name, else its title.
+std::string SessionName(const json& header);
 
 // The writer lease file that guards a session file.
 std::string SessionLockPath(const std::string& path);

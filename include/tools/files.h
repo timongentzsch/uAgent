@@ -20,6 +20,10 @@ namespace uagent {
 
 ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
                         const std::string& call_id = "");
+// The rectangle "x,y,width,height" (pixels) of an image, attached as a PNG.
+ToolResult ToolReadImageRegion(const std::string& path,
+                               const std::string& region,
+                               const std::string& call_id);
 ToolResult ToolWriteFile(const std::string& path, const std::string& content);
 ToolResult ToolWriteFileWithDisplay(const std::string& path,
                                     const std::string& content,

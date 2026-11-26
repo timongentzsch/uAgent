@@ -53,8 +53,6 @@ class TranscriptView {
   const std::map<uint64_t, TranscriptEntry>& Index() const;
   mutable std::once_flag indexed_;
   mutable std::map<uint64_t, TranscriptEntry> entries_;
-  // Borrowed from the retained agent_start results, including older pages.
-  mutable std::map<std::string_view, std::string_view> agent_labels_;
 };
 
 // Presentation only: no system prompt, provider replay, base64 or path link.

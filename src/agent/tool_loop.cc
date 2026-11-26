@@ -257,11 +257,15 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   json row = {{"activity", task.activity},
               {"view", std::move(view)},
               {"time", UtcStamp()}};
-  if (tool && tool->routine && tool->routine(arguments)) row["routine"] = true;
-  const std::string kind(StepKind(JsonValue(task.headline, "verb", "")));
-  ++work_.kinds[kind];
-  const std::string group =
-      parent.empty() ? JoinRun(call.detail_id, kind) : parent;
+  std::string group = parent;
+  // A row hidden as routine is not counted, and neither joins nor ends a run.
+  if (tool && tool->routine && tool->routine(arguments)) {
+    row["routine"] = true;
+  } else {
+    const std::string kind(StepKind(JsonValue(task.headline, "verb", "")));
+    ++work_.kinds[kind];
+    if (group.empty()) group = JoinRun(call.detail_id, kind);
+  }
   if (!group.empty()) row["group"] = group;
   conversation_.RecordDisplay(call.detail_id, row);
   Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};

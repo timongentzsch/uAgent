@@ -32,6 +32,7 @@
 #include "include/core/fd.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"
+#include "include/core/logs.h"
 #include "include/core/platform.h"
 #include "include/core/strings.h"
 #include "include/core/workspace.h"
@@ -319,6 +320,45 @@ void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
   });
 }
 
+// The oldest files a log level writes go until together they fit
+// `max_bytes`.
+void PruneLogsToSize(uintmax_t max_bytes) {
+  namespace fs = std::filesystem;
+  struct Entry {
+    fs::file_time_type modified;
+    uintmax_t size;
+    fs::path path;
+  };
+  std::vector<Entry> files;
+  uintmax_t total = 0;
+  for (const LogRecord& record : kLogRecords) {
+    if (record.folder.empty()) continue;
+    ForEachTreeEntry(UagentDir(std::string(record.folder).c_str()),
+                     [&](const fs::directory_entry& entry) {
+                       std::error_code ec;
+                       const std::string name =
+                           entry.path().filename().string();
+                       if (entry.is_symlink(ec) || !entry.is_regular_file(ec) ||
+                           !name.starts_with(record.prefix) ||
+                           !name.ends_with(record.suffix)) {
+                         return;
+                       }
+                       std::error_code time_error;
+                       Entry file{entry.last_write_time(time_error),
+                                  entry.file_size(ec), entry.path()};
+                       if (ec || time_error) return;
+                       total += file.size;
+                       files.push_back(std::move(file));
+                     });
+  }
+  std::ranges::sort(files, {}, &Entry::modified);
+  for (const Entry& file : files) {
+    if (total <= max_bytes) break;
+    std::error_code ec;
+    if (fs::remove(file.path, ec)) total -= file.size;
+  }
+}
+
 }  // namespace
 
 void PruneSessionJournalOrphans(const std::string& dir) {
@@ -344,12 +384,16 @@ void MaintainArtifacts() {
   PruneSessionJournalOrphans(history);
   PruneArtifactTree(GlobalBase() + "/" + kMemoryDir + "/.processed",
                     HistoryDays(), HistoryFiles());
-  PruneArtifactTree(UagentDir(kSessionsDir), LogKeepDays(), LogKeepFiles());
-  // Mail by age only: a count would drop mail still waiting to be read.
+  // Logs and what tools keep to work (spilled output, attached images,
+  // command logs, the spend ledger) age by days; only logs also fit a size,
+  // so a file still in use is never taken to make room.
+  for (const char* dir :
+       {kLogsDir, kMcpDir, kArtifactsDir, kSessionsDir, kActivityDir}) {
+    PruneArtifactTree(UagentDir(dir), LogKeepDays(), 0);
+  }
+  PruneLogsToSize(static_cast<uintmax_t>(LogKeepMb()) * kMiB);
+  // Mail by age only: a size limit would drop mail still waiting to be read.
   PruneArtifactTree(UagentDir(kMailDir), LogKeepDays(), 0);
-  PruneArtifactTree(UagentDir(kActivityDir), LogKeepDays(), LogKeepFiles());
-  PruneArtifactTree(UagentDir(kArtifactsDir), LogKeepDays(), LogKeepFiles());
-  PruneArtifactTree(UagentDir(kMcpDir), LogKeepDays(), LogKeepFiles());
   // A catalogue is fresh for a day; the log retention keeps one still read.
   PruneArtifactTree(UagentDir(kModelsDir), LogKeepDays(), 0);
   // A skill import that was killed leaves its staging folder; nothing else
@@ -584,8 +628,9 @@ bool LockFileExclusive(int fd) {
   return result == 0;
 }
 bool AppendPrivateLine(const std::string& path, const std::string& line,
-                       std::string& error) {
-  Fd fd(open(path.c_str(), O_CREAT | O_WRONLY | O_APPEND, kPrivateFileMode));
+                       std::string& error, size_t max_bytes) {
+  Fd fd(open(path.c_str(), O_CREAT | O_RDWR | O_APPEND | O_CLOEXEC,
+             kPrivateFileMode));
   if (!fd) {
     error = strerror(errno);
     return false;
@@ -595,7 +640,26 @@ bool AppendPrivateLine(const std::string& path, const std::string& line,
     error = strerror(errno);
     return false;
   }
-  const bool written = WriteAll(fd.Get(), line + "\n");
+  const std::string content = line + "\n";
+  struct stat status{};
+  bool written = fstat(fd.Get(), &status) == 0;
+  if (written && max_bytes > 0 &&
+      static_cast<size_t>(status.st_size) + content.size() > max_bytes) {
+    const off_t start =
+        std::max<off_t>(0, status.st_size - static_cast<off_t>(max_bytes / 2));
+    std::string tail(static_cast<size_t>(status.st_size - start), '\0');
+    const ssize_t count = pread(fd.Get(), tail.data(), tail.size(), start);
+    tail.resize(count < 0 ? 0 : static_cast<size_t>(count));
+    // The first line read may be the end of one that does not fit.
+    const size_t first_line = tail.find('\n');
+    if (start > 0) {
+      tail.erase(
+          0, first_line == std::string::npos ? tail.size() : first_line + 1);
+    }
+    written =
+        count >= 0 && ftruncate(fd.Get(), 0) == 0 && WriteAll(fd.Get(), tail);
+  }
+  written = written && WriteAll(fd.Get(), content);
   if (!written) error = strerror(errno);
   flock(fd.Get(), LOCK_UN);
   return written;

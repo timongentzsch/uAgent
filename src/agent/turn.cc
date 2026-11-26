@@ -98,7 +98,7 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
   if (origin.is_object()) {
     std::erase(arriving_mail_, JsonValue(origin, "mail", ""));
     json facts = {{"origin", JsonValue(origin, "kind", "message")}};
-    for (const char* key : {"agent", "to"}) {
+    for (const char* key : {"agent", "to", "envelope"}) {
       if (origin.contains(key)) facts[key] = origin[key];
     }
     conversation_.RecordDisplay(conversation_.LastDisplayId(), facts);
@@ -316,8 +316,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
     skill_bytes = SaturatingAdd(skill_bytes, skill.size());
   }
   size_t pending_bytes = SaturatingAdd(
-      attachment ? JsonEstimatedBytes(user_content) : user_input.size(),
-      skill_bytes);
+      attachment ? ContextBytes(user_content) : user_input.size(), skill_bytes);
   int64_t pressure = 0;
   int64_t projected_tokens = 0;
   if (ContextNeedsCompaction(pending_bytes, schema_bytes_, pressure,

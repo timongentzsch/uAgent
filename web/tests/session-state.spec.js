@@ -273,16 +273,10 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
       hasText: "Saved memory project/browser-proof",
     }),
   ).toHaveAttribute("aria-expanded", "true");
-  await expect
-    .poll(() =>
-      page
-        .locator(".transcript")
-        .evaluate((element) => Math.abs(element.scrollTop - 24)),
-    )
-    .toBeLessThan(2);
+  // A reload opens at the end, wherever the reader was.
   await expect(
     page.getByRole("button", { name: "Jump to latest" }),
-  ).toBeVisible();
+  ).toBeHidden();
   await prompt.fill("Keep this draft across rotation");
   const fontSize = await prompt.evaluate(
     (element) => getComputedStyle(element).fontSize,

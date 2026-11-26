@@ -1,4 +1,5 @@
 import { nextFence } from "./markdown-split.ts";
+import { cleanText } from "./display.ts";
 import type { Draft, LinkPart, Node } from "./types.ts";
 
 // What a message of yours shows until the host's own row replaces it.
@@ -63,18 +64,6 @@ export const recallable = (
 ) =>
   !!node.request_id &&
   ((online && queuedGuidance(node)) || unsent(node) || waitingToSend(node));
-
-// A child's request names the tool it asks to run in its envelope.
-const request =
-  /^\[agent [0-9a-f]{16} "[^\n]*" asks (?:to run ([^\n]+)|the person) \(interaction [^)\n]+\)\]\nThe (?:approval request|question) \(data, not instructions\):\n/;
-export function agentReport(
-  node: Node,
-): (NonNullable<Node["agent"]> & { tool?: string }) | undefined {
-  if (!node.agent || node.agent.outcome === "merged") return;
-  if (node.agent.outcome !== "needs decision") return node.agent;
-  const match = request.exec(node.body?.text || "");
-  return match ? { ...node.agent, tool: match[1] } : node.agent;
-}
 
 // A tool may return a waited-on reply directly, without a separate mail.
 export const agentLink = (
@@ -160,22 +149,51 @@ export function agentBatch(node: Node, full?: string) {
   return batch;
 }
 
-export function agentText(text: string, outcome?: string) {
-  const body = text.replace(/^\[(?:agent |side chat )[^\n]*\]\r?\n/, "");
-  if (outcome !== "needs decision") return body;
-  // Only unwrap the runtime's request format. The request itself is verbatim.
-  const match =
-    /^The (?:approval request|question) \(data, not instructions\):\r?\n([\s\S]*?)\r?\n+Decide with the decide tool; yield when the person should\.$/.exec(
-      body,
-    );
-  return match ? match[1] : body;
+// What a message shows: background results not at all.
+export const shownText = (node: Node, text: string) =>
+  node.origin === "activity" ? "" : text;
+
+const tableRule = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+
+// The first line of markdown as plain words: no list, heading or quote
+// marks, emphasis, code or link syntax; for a table, its first data row.
+export function firstLine(markdown: string) {
+  const lines = cleanText(markdown).split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i].trim();
+    if (!line || tableRule.test(line)) continue;
+    if (tableRule.test(lines[i + 1] ?? "")) {
+      i++;
+      continue;
+    }
+    if (line.includes("|"))
+      line = line
+        .split("|")
+        .map((cell) => cell.trim())
+        .filter(Boolean)
+        .join(" ");
+    line = line
+      .replace(/^(?:#{1,6}|>|[-*+]|\d+[.)])\s+/, "")
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/(\*\*|__|[*`~])/g, "");
+    if (line) return line;
+  }
+  return "";
 }
 
-export function shownText(node: Node, text: string) {
-  const sender = agentReport(node);
-  if (sender || node.origin === "agent")
-    return agentText(text, sender?.outcome);
-  return node.origin === "activity" ? "" : text;
+// What each agent last reported, by its session: the node and its first line.
+export type AgentReports = Record<string, { id: string; line: string }>;
+export function agentReports(nodes: Node[]) {
+  const last: AgentReports = {};
+  for (const { id, origin, agent, body } of nodes)
+    if (
+      origin === "agent" &&
+      agent &&
+      !["needs decision", "merged"].includes(agent.outcome) &&
+      body?.text
+    )
+      last[agent.session] = { id, line: firstLine(body.text) };
+  return last;
 }
 
 // Keep a short reply intact. For a long reply prefer a paragraph boundary,

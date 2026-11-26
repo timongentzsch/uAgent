@@ -81,8 +81,14 @@ class JsonEventStream {
   int64_t seq_ UAGENT_GUARDED_BY(mutex_) = 0;
 };
 
+enum class Severity { kDebug, kWarning, kError };
+
 // One line in the trace. Typed semantic events use Emit(Event).
 void DebugLog(const std::string& event, json data = json::object());
+// A warning or error of this process: `text` on stderr, and the line in the
+// trace and the day's diagnostics log.
+void Diagnose(Severity severity, const std::string& name,
+              const std::string& text, json data = json::object());
 
 }  // namespace uagent
 

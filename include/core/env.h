@@ -39,7 +39,7 @@ int64_t AttachmentLimitMb();
 int64_t HistoryDays();
 int64_t HistoryFiles();
 int64_t LogKeepDays();
-int64_t LogKeepFiles();
+int64_t LogKeepMb();
 int64_t IdleMinutes();
 // Commands one conversation runs at once.
 int64_t MaxActivities();

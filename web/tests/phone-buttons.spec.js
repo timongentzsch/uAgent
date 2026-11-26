@@ -89,6 +89,19 @@ test.describe("the pages of the list", () => {
     await roomy(page);
   });
 
+  test("the home start box with a file", async ({ page }) => {
+    await page.goto("/");
+    const box = page.locator(".start-field");
+    await expect(box.getByLabel("Start a conversation")).toBeEnabled();
+    await box.getByLabel("Attach files").setInputFiles({
+      name: "a-long-name-for-a-file-from-the-phone.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("aside"),
+    });
+    await expect(box.locator(".file-chip")).toHaveCount(1);
+    await roomy(page);
+  });
+
   test("the conversations' selection bar", async ({ page, host, request }) => {
     for (const title of ["Alpha talk", "Bravo talk"])
       await savedConversation(host, request, title);

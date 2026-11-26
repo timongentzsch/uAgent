@@ -954,8 +954,11 @@
   .text-control > textarea {
     resize: vertical;
   }
+  /* WebKit takes clicks on a file input's own button and file name, which
+     overflow the input onto the controls beside it. */
   .file-button {
     position: relative;
+    overflow: clip;
   }
   .file-button input {
     position: absolute;

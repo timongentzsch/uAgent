@@ -127,7 +127,11 @@ inline constexpr size_t kAgentNameChars = 16;
 inline constexpr size_t kSystemPromptBytes = KiB(64);
 // The journal's size before compaction, and the longest event line taken.
 inline constexpr size_t kMemoryEventJournalBytes = KiB(256);
+// A conversation's event journal; past it, the newest half is kept.
+inline constexpr size_t kSessionJournalBytes = MiB(4);
 inline constexpr size_t kMemoryEventLineBytes = 4096;
+// Journal lines a runtime holds until a session file takes them.
+inline constexpr size_t kJournalPendingLines = 4096;
 
 // Owner-only: a shared machine cannot read transcripts or credentials.
 inline constexpr int kPrivateFileMode = 0600;
@@ -159,6 +163,8 @@ inline constexpr size_t kToolTraceProtectChars = KiB(64);
 inline constexpr size_t kToolTracePruneMinChars = KiB(32);
 inline constexpr int64_t kSessionArchiveBytes = MiB(16);
 inline constexpr int64_t kReadFileMaxLines = 10000;
+// Pages of a PDF one read converts when no limit is given.
+inline constexpr int64_t kReadPdfPages = 20;
 inline constexpr int64_t kListDirScanEntries = 100000;
 // The web file browser: bytes of a file shown as text, paths a search answers.
 inline constexpr size_t kFileViewBytes = MiB(1);

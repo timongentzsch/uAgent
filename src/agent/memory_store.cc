@@ -2,14 +2,7 @@
 
 #include "include/agent/memory_store.h"
 
-#include <fcntl.h>
-#include <sys/file.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
 #include <algorithm>
-#include <cerrno>
-#include <cstring>
 #include <fstream>
 #include <regex>
 #include <string>
@@ -19,7 +12,6 @@
 
 #include "include/core/config_registry.h"
 #include "include/core/env.h"
-#include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
@@ -112,44 +104,8 @@ bool AppendBoundedMemoryEvent(const std::string& line, std::string& error) {
     error = "memory event exceeds its private record limit";
     return false;
   }
-  std::string path = MemoryEventsPath();
-  Fd fd(open(path.c_str(), O_CREAT | O_RDWR | O_APPEND | O_CLOEXEC,
-             kPrivateFileMode));
-  if (!fd) {
-    error = strerror(errno);
-    return false;
-  }
-  auto fail = [&](const std::string& message) {
-    error = message;
-    flock(fd.Get(), LOCK_UN);
-    return false;
-  };
-  if (!LockFileExclusive(fd.Get())) return fail(strerror(errno));
-  struct stat status{};
-  if (fstat(fd.Get(), &status) != 0) return fail(strerror(errno));
-  if (status.st_size > static_cast<off_t>(kMemoryEventJournalBytes)) {
-    off_t keep = static_cast<off_t>(kMemoryEventJournalBytes / 2);
-    off_t start = std::max<off_t>(0, status.st_size - keep);
-    std::string tail(static_cast<size_t>(status.st_size - start), '\0');
-    ssize_t count = pread(fd.Get(), tail.data(), tail.size(), start);
-    if (count < 0) return fail(strerror(errno));
-    tail.resize(static_cast<size_t>(count));
-    size_t first_line = tail.find('\n');
-    if (start > 0 && first_line != std::string::npos) {
-      tail.erase(0, first_line + 1);
-    }
-    if (ftruncate(fd.Get(), 0) != 0 || lseek(fd.Get(), 0, SEEK_SET) < 0 ||
-        !WriteAll(fd.Get(), tail)) {
-      return fail(strerror(errno));
-    }
-  }
-  if (!WriteAll(fd.Get(), line + "\n")) return fail(strerror(errno));
-  flock(fd.Get(), LOCK_UN);
-  if (fd.Close() != 0) {
-    error = strerror(errno);
-    return false;
-  }
-  return true;
+  return AppendPrivateLine(MemoryEventsPath(), line, error,
+                           kMemoryEventJournalBytes);
 }
 
 bool WriteMemoryEvent(const MemoryEvent& event, std::string& error) {

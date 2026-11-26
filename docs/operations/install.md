@@ -17,6 +17,16 @@ that checkout. It asks on `/dev/tty`: *container* or *here* (where `docker
 info` answers), Chrome and TigerVNC via `apt-get`, the Chrome policy, a
 `PATH` line, `uagent setup` for keys, and the web service.
 
+Reading a PDF's pages as text needs poppler (`apt install poppler-utils`,
+`brew install poppler`); the container has it. Without it the agent gets
+the PDF whole, as models that read files take it.
+
+On Linux, pictures need ImageMagick (`apt install imagemagick`; version 6
+or 7): to scale one over 2048 px or 4 MiB, to send HEIC or SVG, and to read
+part of a picture. The container has it; macOS uses its own tools. Without
+it a small picture goes out as it is, and the others reach the model as a
+file reference that says why.
+
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `UAGENT_INSTALL` | asked; else `here` | `container` or `here` |

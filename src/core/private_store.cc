@@ -84,8 +84,11 @@ json ReadPrivateArtifact(const std::string& path, size_t offset) {
     return {{"error", "retained body unavailable"}};
   }
   size_t size = 0;
-  Fd file =
-      OpenOwnedRegular((base / file_path.filename()).string(), SIZE_MAX, &size);
+  const std::string owned = (base / file_path.filename()).string();
+  Fd file = OpenOwnedRegular(owned, SIZE_MAX, &size);
+  if (!file && !PathExists(owned)) {
+    return {{"error", "removed by the cleanup (logs.keepDays, logs.keepMb)"}};
+  }
   if (!file) return {{"error", "retained body unavailable"}};
   offset = std::min(offset, size);
   // Look ahead so the page boundary can be checked against the next byte.

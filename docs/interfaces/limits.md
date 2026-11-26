@@ -77,7 +77,9 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kAgentNameChars` | `16` |  |
 | `kSystemPromptBytes` | `64 KiB` | The assembled system message, and what an external editor may return. |
 | `kMemoryEventJournalBytes` | `256 KiB` | The journal's size before compaction, and the longest event line taken. |
+| `kSessionJournalBytes` | `4 MiB` | A conversation's event journal; past it, the newest half is kept. |
 | `kMemoryEventLineBytes` | `4096` |  |
+| `kJournalPendingLines` | `4096` | Journal lines a runtime holds until a session file takes them. |
 | `kPrivateFileMode` | `0600` | Owner-only: a shared machine cannot read transcripts or credentials. |
 | `kPrivateDirMode` | `0700` |  |
 | `kGroupOtherModeBits` | `0077` | The group and other permission bits; a private file has none set. |
@@ -96,6 +98,7 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kToolTracePruneMinChars` | `32 KiB` |  |
 | `kSessionArchiveBytes` | `16 MiB` |  |
 | `kReadFileMaxLines` | `10000` |  |
+| `kReadPdfPages` | `20` | Pages of a PDF one read converts when no limit is given. |
 | `kListDirScanEntries` | `100000` |  |
 | `kFileViewBytes` | `1 MiB` | The web file browser: bytes of a file shown as text, paths a search answers. |
 | `kFileFindMatches` | `200` |  |

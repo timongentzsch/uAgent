@@ -42,7 +42,8 @@ count, outcome), `diff` (person only), an `artifact` (spilled log), a
 `FileEffect` for `/undo`, the to-do list, and `background` (an activity id).
 
 Built-in tools and discovered MCP tools share a transcript row. The headline
-and result facts stay visible when folded. The body uses the tool's recorded
+and result facts stay visible when folded; it names an agent by its `name`
+and an activity by its description or command, never by an id. The body uses the tool's recorded
 parts for fields, code, links, sources and agent reports. Calls with a
 retained exchange expose their original request and response in the inspector.
 A patch records its child receipt IDs in execution order so reopening it
@@ -284,6 +285,10 @@ unless its entry sets `"trust": true` and the tool declares
   timed out; an interrupt cancels it the same way.
 - Without an enforceable sandbox where one is required, a command does not
   spawn (`SandboxWrapperFor` returns an error).
+- `read_path` converts with helpers it finds on `PATH`: images are cut and
+  scaled by `sips` on macOS and ImageMagick elsewhere, and a PDF's pages
+  become text through poppler's `pdfinfo` and `pdftotext`. Without poppler
+  a PDF is attached whole and the result says what to install.
 - File-tool approval is defense in depth: an approved unsandboxed command
   reaches the same paths. Nothing is re-run after a crash.
 

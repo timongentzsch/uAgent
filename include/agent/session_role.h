@@ -11,7 +11,8 @@ namespace uagent {
 inline constexpr const char* kRouteParent = "parent";
 
 // {parent (session id), edits (none|worktree|folder), approval at spawn, depth,
-// budget, streak}.
+// budget, streak, name (its item, else its brief's first line), call (the
+// agent_start call's id)}.
 inline json AgentOf(const json& session) {
   return JsonValue(session, "agent", json::object());
 }

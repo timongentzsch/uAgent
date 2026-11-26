@@ -27,6 +27,7 @@
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
+#include "include/tools/image_result.h"
 
 namespace uagent {
 
@@ -130,20 +131,61 @@ ToolResult FileOpenFailure(const std::string& path) {
   return ToolFailure(FileToolError(error), "cannot open " + path);
 }
 
+void AppendUtf8(std::string& out, uint32_t code) {
+  if (code < 0x80) {
+    out += static_cast<char>(code);
+    return;
+  }
+  if (code < 0x800) {
+    out += static_cast<char>(0xC0 | code >> 6);
+  } else {
+    if (code < 0x10000) {
+      out += static_cast<char>(0xE0 | code >> 12);
+    } else {
+      out += static_cast<char>(0xF0 | code >> 18);
+      out += static_cast<char>(0x80 | (code >> 12 & 0x3F));
+    }
+    out += static_cast<char>(0x80 | (code >> 6 & 0x3F));
+  }
+  out += static_cast<char>(0x80 | (code & 0x3F));
+}
+
+// Whether `text` is UTF-8; `cut` accepts a sequence cut off at the end.
+bool Utf8(std::string_view text, bool cut) {
+  for (size_t at = 0; at < text.size();) {
+    const unsigned char lead = Byte(text[at]);
+    const size_t width = lead < 0x80   ? 1
+                         : lead < 0xC2 ? 0
+                         : lead < 0xE0 ? 2
+                         : lead < 0xF0 ? 3
+                         : lead < 0xF5 ? 4
+                                       : 0;
+    if (width == 0) return false;
+    for (size_t next = 1; next < width; ++next) {
+      if (at + next == text.size()) return cut;
+      if ((Byte(text[at + next]) & 0xC0) != 0x80) return false;
+    }
+    at += width;
+  }
+  return true;
+}
+
+enum class TextEncoding { kUtf8, kUtf16Le, kUtf16Be };
+
 // Scan skipped lines without retaining them; never allocate a complete giant
 // line merely to truncate it. Cancellation is checked once per input chunk.
+// UTF-16 input is decoded to UTF-8 chunk by chunk.
 class FileLines {
  public:
-  explicit FileLines(std::istream& input) : input_(input) {}
+  FileLines(std::istream& input, TextEncoding encoding)
+      : input_(input), encoding_(encoding) {}
 
   bool Next(std::string& line, size_t cap, bool skip, bool& limited) {
     line.clear();
     bool found = false;
     while (!AbortRequested()) {
       if (begin_ == end_) {
-        input_.read(buffer_, sizeof buffer_);
-        begin_ = 0;
-        end_ = static_cast<size_t>(input_.gcount());
+        Fill();
         if (end_ == 0) return found;
       }
       const char* start = buffer_ + begin_;
@@ -171,11 +213,213 @@ class FileLines {
   }
 
  private:
+  void Fill() {
+    begin_ = end_ = 0;
+    if (encoding_ == TextEncoding::kUtf8) {
+      input_.read(buffer_, sizeof buffer_);
+      end_ = static_cast<size_t>(input_.gcount());
+      return;
+    }
+    // A two-byte unit becomes at most three bytes, so half a buffer fits.
+    char raw[sizeof buffer_ / 2];
+    std::string text;
+    while (text.empty()) {
+      input_.read(raw, sizeof raw);
+      const size_t size = static_cast<size_t>(input_.gcount()) & ~size_t{1};
+      if (size == 0) break;
+      for (size_t at = 0; at < size; at += 2) {
+        const uint32_t first = Byte(raw[at]), second = Byte(raw[at + 1]);
+        const uint32_t unit = encoding_ == TextEncoding::kUtf16Le
+                                  ? first | second << 8
+                                  : first << 8 | second;
+        uint32_t code = unit;
+        if (high_ && unit >= 0xDC00 && unit < 0xE000) {
+          code = 0x10000 + ((high_ - 0xD800) << 10) + (unit - 0xDC00);
+        } else {
+          if (high_) AppendUtf8(text, 0xFFFD);
+          if (unit >= 0xD800 && unit < 0xDC00) {
+            high_ = unit;
+            continue;
+          }
+          if (unit >= 0xDC00 && unit < 0xE000) code = 0xFFFD;
+        }
+        high_ = 0;
+        AppendUtf8(text, code);
+      }
+    }
+    std::memcpy(buffer_, text.data(), text.size());
+    end_ = text.size();
+  }
+
   std::istream& input_;
+  TextEncoding encoding_;
+  uint32_t high_ = 0;  // a UTF-16 high surrogate awaiting its pair
   char buffer_[8192];
   size_t begin_ = 0;
   size_t end_ = 0;
 };
+
+// A notebook field that is a string or a list of them, as one string.
+std::string NotebookText(const json& owner, const char* key) {
+  const json value = JsonValue(owner, key, json());
+  if (value.is_string()) return value.get<std::string>();
+  std::string text;
+  for (const json& part : value.is_array() ? value : json::array()) {
+    if (part.is_string()) text += part.get<std::string>();
+  }
+  return text;
+}
+
+// A cell's source and its text outputs; rich outputs are only named.
+std::string NotebookCell(const json& cell, int64_t number) {
+  std::string text = "[cell " + std::to_string(number) + " " +
+                     JsonValue(cell, "cell_type", "") + "]\n";
+  const auto add = [&text](const std::string& part) {
+    if (part.empty()) return;
+    text += part;
+    if (text.back() != '\n') text += '\n';
+  };
+  add(NotebookText(cell, "source"));
+  for (const json& output : JsonValue(cell, "outputs", json::array())) {
+    const std::string type = JsonValue(output, "output_type", "");
+    if (type == "stream") add("[output]\n" + NotebookText(output, "text"));
+    if (type == "error") {
+      add("[error] " + JsonValue(output, "ename", "") + ": " +
+          JsonValue(output, "evalue", ""));
+    }
+    const json* data = JsonObject(output, "data");
+    if (!data) continue;
+    for (const auto& item : data->items()) {
+      add(item.key() == "text/plain"
+              ? "[output]\n" + NotebookText(*data, "text/plain")
+              : "[" + item.key() + " output]");
+    }
+  }
+  return text;
+}
+
+// A notebook's cells from `offset` (negative: the last cells); nullopt for a
+// file that is not one.
+std::optional<ToolResult> ReadNotebook(const std::string& path, int64_t offset,
+                                       int64_t limit) {
+  const json notebook =
+      json::parse(ReadFile(path, EditFileBytes()).value_or(""), nullptr, false);
+  const json* cells = JsonArray(notebook, "cells");
+  if (!cells) return std::nullopt;
+  const auto total = static_cast<int64_t>(cells->size());
+  if (total == 0) return ListResult("(empty notebook)", 0, "cell");
+  if (offset < 0) offset = std::max<int64_t>(1, total + offset + 1);
+  if (offset < 1) offset = 1;
+  if (offset > total) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "offset " + std::to_string(offset) +
+                           " is beyond the last cell (" +
+                           std::to_string(total) + ")");
+  }
+  if (limit <= 0) limit = total;
+  const size_t budget = ReadFileBytes();
+  std::string out;
+  int64_t last = offset - 1;
+  bool cut = false;
+  while (last < total && last - offset + 1 < limit) {
+    std::string cell =
+        NotebookCell((*cells)[static_cast<size_t>(last)], last + 1);
+    if (cell.size() > budget - out.size()) {
+      if (out.empty()) {
+        out = Utf8Prefix(std::move(cell), budget);
+        ++last;
+        cut = true;
+      }
+      break;
+    }
+    out += cell;
+    ++last;
+  }
+  ToolResult result = ListResult(std::move(out), last - offset + 1, "cell");
+  result.hint = "[" + path + " cells " + std::to_string(offset) + "-" +
+                std::to_string(last) +
+                (cut            ? "; cell cut at the output byte limit"
+                 : last < total ? "; more available"
+                                : " of " + std::to_string(total)) +
+                "]";
+  return result;
+}
+
+// A PDF's text by page through poppler; today's attachment when that is not
+// installed or cannot read the file.
+ToolResult ReadPdf(const std::string& path, int64_t offset, int64_t limit,
+                   const std::string& call_id) {
+  const CapturedProcess info = CaptureProcess({"pdfinfo", path});
+  int64_t total = 0;
+  // Its warnings share the pipe, and the line may be the first.
+  const std::string lines = "\n" + info.output;
+  if (size_t at = lines.find("\nPages:"); at != std::string::npos) {
+    std::istringstream(lines.substr(at + 7)) >> total;
+  }
+  if (!info.Ok() || total <= 0) {
+    ToolResult attached = Attachments().Add(path, call_id);
+    if (attached.Ok()) {
+      attached.output += info.error.empty()
+                             ? "; its text could not be read"
+                             : "; install poppler (poppler-utils on "
+                               "Debian/Ubuntu) to read its pages as text";
+    }
+    return attached;
+  }
+  if (offset < 0) offset = std::max<int64_t>(1, total + offset + 1);
+  if (offset < 1) offset = 1;
+  if (offset > total) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "offset " + std::to_string(offset) +
+                           " is beyond the last page (" +
+                           std::to_string(total) + ")");
+  }
+  const int64_t asked =
+      offset - 1 +
+      std::min(total - offset + 1, limit > 0 ? limit : kReadPdfPages);
+  const CapturedProcess text =
+      CaptureProcess({"pdftotext", "-q", "-f", std::to_string(offset), "-l",
+                      std::to_string(asked), "-enc", "UTF-8", path, "-"});
+  if (!text.Ok()) {
+    return ToolFailure(ToolErrorCode::kInternal,
+                       "pdftotext failed; ask for fewer pages");
+  }
+  const size_t budget = ReadFileBytes();
+  std::string out;
+  int64_t last = offset - 1;
+  bool cut = false, any_text = false;
+  for (size_t begin = 0; last < asked && begin < text.output.size();) {
+    size_t end = text.output.find('\f', begin);
+    if (end == std::string::npos) end = text.output.size();
+    const std::string_view words =
+        std::string_view(text.output).substr(begin, end - begin);
+    begin = end + 1;
+    const bool blank = Trim(std::string(words)).empty();
+    any_text |= !blank;
+    std::string page = "[page " + std::to_string(last + 1) + "]" +
+                       (blank ? " (no text)\n" : "\n" + std::string(words));
+    if (page.back() != '\n') page += '\n';
+    if (page.size() > budget - out.size()) {
+      if (out.empty()) {
+        out = Utf8Prefix(std::move(page), budget);
+        ++last;
+        cut = true;
+      }
+      break;
+    }
+    out += page;
+    ++last;
+  }
+  if (last < offset) {
+    return ToolFailure(ToolErrorCode::kInternal, "pdftotext returned no pages");
+  }
+  ToolResult result = ListResult(std::move(out), last - offset + 1, "page");
+  result.hint = "[" + path + " pages " + std::to_string(offset) + "-" +
+                std::to_string(last) + " of " + std::to_string(total) +
+                (cut ? "; page cut at the output byte limit" : "") +
+                (any_text ? "" : "; no text layer, likely scanned") + "]";
+  return result;
+}
 
 }  // namespace
 
@@ -184,12 +428,55 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
   if (auto invalid = ValidatePathTarget(path, PathTarget::kReadableFile)) {
     return std::move(*invalid);
   }
-  if (!LikelyTextFile(path)) {
-    if (offset != 1 || limit != 0) {
-      return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "omit offset and limit for images/documents");
+  if (path.ends_with(".ipynb")) {
+    if (auto notebook = ReadNotebook(path, offset, limit)) {
+      return std::move(*notebook);
     }
-    return Attachments().Add(path, call_id);
+  }
+  if (AttachmentMime(path) == "application/pdf") {
+    return ReadPdf(path, offset, limit, call_id);
+  }
+  errno = 0;
+  std::ifstream f(path);
+  if (!f) return FileOpenFailure(path);
+  char mark[3] = {};
+  f.read(mark, sizeof mark);
+  const std::string_view bom(mark, static_cast<size_t>(f.gcount()));
+  TextEncoding encoding = TextEncoding::kUtf8;
+  std::streamoff start = 0;
+  if (bom.starts_with("\xFF\xFE")) {
+    encoding = TextEncoding::kUtf16Le;
+  } else if (bom.starts_with("\xFE\xFF")) {
+    encoding = TextEncoding::kUtf16Be;
+  } else if (bom == "\xEF\xBB\xBF") {
+    start = 3;
+  }
+  if (encoding != TextEncoding::kUtf8) {
+    start = 2;
+  } else if (!LikelyTextFile(path)) {
+    // A range on media is ignored. A region of an image needs its size.
+    ToolResult attached = Attachments().Add(path, call_id);
+    int width = 0, height = 0;
+    if (attached.Ok() && !RasterMime(ReadFile(path, 64).value_or("")).empty() &&
+        ImageSize(path, width, height).Ok() && width > 0 && height > 0) {
+      attached.output +=
+          "; " + std::to_string(width) + "x" + std::to_string(height) + " px";
+    }
+    return attached;
+  }
+  f.clear();
+  f.seekg(start);
+  std::string line, out;
+  bool output_limited = false, line_truncated = false, latin1 = false;
+  if (offset < 0) {  // the last -offset lines
+    FileLines counter(f, encoding);
+    int64_t count = 0;
+    bool skipped = false;
+    while (counter.Next(line, 0, true, skipped)) ++count;
+    if (AbortRequested()) return ToolCancelled("error: read cancelled by user");
+    offset = std::max<int64_t>(1, count + offset + 1);
+    f.clear();
+    f.seekg(start);
   }
   if (limit == 0) limit = ReadFileLines();  // 0 = unset
   // A negative limit is the internal "as much as allowed" idiom; only a
@@ -197,19 +484,21 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
   int64_t requested_lines = limit;
   if (limit <= 0 || limit > kReadFileMaxLines) limit = kReadFileMaxLines;
   if (offset < 1) offset = 1;
-  errno = 0;
-  std::ifstream f(path);
-  if (!f) return FileOpenFailure(path);
-  std::string line, out;
   int64_t total = 0, shown = 0, first = 0, last = 0;
-  bool output_limited = false, line_truncated = false;
-  FileLines lines(f);
+  FileLines lines(f, encoding);
   const size_t read_bytes = ReadFileBytes();
   while (shown < limit && lines.Next(line, read_bytes - out.size(),
                                      total + 1 < offset, output_limited)) {
     if (AbortRequested()) return ToolCancelled("error: read cancelled by user");
     ++total;
     if (total >= offset) {
+      // Text that is not UTF-8 is most likely Latin-1.
+      if (!Utf8(line, output_limited)) {
+        std::string decoded;
+        for (const char raw : line) AppendUtf8(decoded, Byte(raw));
+        line = std::move(decoded);
+        latin1 = true;
+      }
       if (output_limited || line.size() >= read_bytes - out.size()) {
         if (out.empty()) {
           out = Utf8Prefix(std::move(line), read_bytes);
@@ -253,6 +542,9 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
     header += "; limit " + std::to_string(kReadFileMaxLines) + " of " +
               std::to_string(requested_lines) + " requested";
   }
+  // Edits match bytes, which differ from decoded text outside ASCII.
+  if (encoding != TextEncoding::kUtf8) header += "; decoded from UTF-16";
+  if (latin1) header += "; decoded from Latin-1";
   ToolResult result = ListResult(std::move(out), last - first + 1, "line");
   const std::string range = first == last ? "Line " + std::to_string(first)
                                           : "Lines " + std::to_string(first) +
@@ -267,6 +559,58 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
   result.hint = header + "]";
   if (!output_limited) result.read_range = ReadRange{path, first, last};
   return result;
+}
+
+ToolResult ToolReadImageRegion(const std::string& path,
+                               const std::string& region,
+                               const std::string& call_id) {
+  if (auto invalid = ValidatePathTarget(path, PathTarget::kReadableFile)) {
+    return std::move(*invalid);
+  }
+  int x = -1, y = -1, w = 0, h = 0;
+  char comma[3] = {};
+  std::istringstream fields(region);
+  fields >> x >> comma[0] >> y >> comma[1] >> w >> comma[2] >> h;
+  if (!fields || x < 0 || y < 0 || w <= 0 || h <= 0 ||
+      std::string_view(comma, 3) != ",,,") {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "region is x,y,width,height in pixels");
+  }
+  if (RasterMime(ReadFile(path, 64).value_or("")).empty()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "region needs a raster image");
+  }
+  int width = 0, height = 0;
+  const CapturedProcess size = ImageSize(path, width, height);
+  if (!size.error.empty()) {
+    return ToolFailure(ToolErrorCode::kUnavailable,
+                       "cannot read the image; install ImageMagick on Linux");
+  }
+  if (width <= 0 || height <= 0) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "image could not be decoded");
+  }
+  const std::string full =
+      std::to_string(width) + "x" + std::to_string(height) + " px";
+  if (x >= width || y >= height) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "region starts outside the " + full + " image");
+  }
+  w = std::min(w, width - x);
+  h = std::min(h, height - y);
+  ScopedTempFile crop(
+      (std::filesystem::temp_directory_path() / "uagent-region-XXXXXX")
+          .string());
+  if (!crop || !CropImage(path, x, y, w, h, crop.Path()).Ok()) {
+    return ToolFailure(ToolErrorCode::kInternal, "cannot cut the region");
+  }
+  const std::string cut = ReadFile(crop.Path(), MiB(size_t{64})).value_or("");
+  return ToolAttachedFile(cut, "region", ".png",
+                          "Region " + std::to_string(x) + "," +
+                              std::to_string(y) + "," + std::to_string(w) +
+                              "," + std::to_string(h) + " of " +
+                              DisplayPath(path) + " (" + full + ")",
+                          call_id, kArtifactsDir);
 }
 
 ToolResult ToolWriteFile(const std::string& path, const std::string& content) {

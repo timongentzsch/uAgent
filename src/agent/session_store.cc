@@ -176,14 +176,14 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
   if (const json* moves = JsonArray(record.state.display, "file_moves")) {
     header["has_file_moves"] = !moves->empty();
   }
-  header["incoming"] =
-      JsonValue(JsonValue(record.state.display, "statistics", json::object()),
-                "incoming", uint64_t{0});
+  const json statistics =
+      JsonValue(record.state.display, "statistics", json::object());
+  header["incoming"] = JsonValue(statistics, "incoming", uint64_t{0});
+  header["tool_calls"] = JsonValue(statistics, "tool_calls", int64_t{0});
   // Spend is read across many sessions (the conversation list), so it rides
   // in the header instead of needing the whole state parsed.
   header["cost"] = record.state.usage.cost;
-  header["tokens"] = SaturatingNonnegativeAdd(
-      record.state.usage.PromptTokens(), record.state.usage.GeneratedTokens());
+  header["tokens"] = record.state.usage.Tokens();
   // A listing reads the same header for progress and side-chat ownership.
   const json* facts = JsonObject(record.state.display, "facts");
   if (facts) {
@@ -334,6 +334,11 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
     return fail("session payload is invalid or incomplete");
   }
   return {{}, std::move(record)};
+}
+
+std::string SessionName(const json& header) {
+  return JsonValue(AgentOf(header), "name",
+                   OneLine(JsonValue(header, kSessionHeaderTitle, "")));
 }
 
 json SessionHeader(const std::string& path) {
@@ -502,9 +507,12 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.incoming = JsonValue(header, "incoming", uint64_t{0});
         item.cost = JsonValue(header, "cost", 0.0);
         item.tokens = JsonValue(header, "tokens", int64_t{0});
+        item.tool_calls = JsonValue(header, "tool_calls", int64_t{0});
         item.todo = JsonValue(header, "todo", json(nullptr));
         const json agent = AgentOf(header);
         item.agent_edits = JsonValue(agent, "edits", "");
+        item.name = SessionName(header);
+        item.agent_call = JsonValue(agent, "call", "");
         item.side = JsonValue(header, "side", json(nullptr));
         if (!item.side.contains("asked")) item.side = nullptr;
         item.parent =

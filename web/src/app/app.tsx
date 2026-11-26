@@ -297,10 +297,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
   const opening = booting && !!selected;
   const running = !!session && isRunning(session, online);
   useWakeLock(running);
-  const { updateDraft, attachAnnotated, upload } = useDraftUploads({
-    host,
-    session,
-  });
+  const { updateDraft, attachAnnotated, upload } = useDraftUploads({ host });
   const setDraft = useCallback(
     (value: Draft, id = selected) => updateDraft(id, () => value),
     [updateDraft, selected],
@@ -367,6 +364,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
       : "";
   const places = usePlaces({
     host,
+    upload,
     choose,
     open,
     modal,

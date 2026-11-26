@@ -303,6 +303,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                                                  "-" + std::to_string(request)},
                            {"step", step},
                            {"purpose", purpose}};
+  if (reply_as_step_) api_.exchange_context["step_reply"] = true;
   std::string started_at = UtcStamp();
   auto last_progress = std::chrono::steady_clock::now() -
                        std::chrono::milliseconds(kUsageProgressIntervalMs);

@@ -93,6 +93,13 @@ TEST_CASE(TestTurnStatus) {
     emit(EventId::kReasoningDelta, {{"text", "token "}});
   }
   CHECK(projection.Revision() == before);
+  // A turn that waits for its agents says whom, until the wait ends.
+  emit(EventId::kResponseFinished);
+  emit(EventId::kMessageChanged, {{"waiting_for", "Waiting for Hold brief"}});
+  CHECK(projection.Status()["phase"] == "agents");
+  CHECK(projection.Status()["turn_status"] == "Waiting for Hold brief");
+  emit(EventId::kMessageChanged, {{"waiting_for", ""}});
+  CHECK(projection.Status()["phase"] == "working");
   emit(EventId::kTurnStopped);
   CHECK(projection.Status()["phase"] == "finishing");
   CHECK(!emit(EventId::kToolStarted, first));

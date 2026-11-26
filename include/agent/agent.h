@@ -329,6 +329,8 @@ class Agent {
                             const std::vector<ToolCall>& calls);
   StepFlow FinishWithProse(TurnExecution& state, StepState& loop);
   StepFlow HoldAnswer(TurnExecution& state, StepState& loop);
+  // Shows the last reply as a held step of the work, or as the answer again.
+  void HoldReply(bool held);
   // Waits for the agents `owed` names under a row, with no model call; who
   // still owes a report after.
   std::vector<std::string> AwaitAgents(
@@ -457,6 +459,9 @@ class Agent {
   ToolRefresher refresh_tools_;
   ReportJudge judge_report_;
   AgentWait agent_wait_;
+  // The reply being written streams as a step of the work: agents this turn
+  // started owe a report, so it would be held.
+  bool reply_as_step_ = false;
   ProjectInstructions project_instructions_;
   std::vector<Skill> skills_;
   // Read once: a later edit must not rewrite a running conversation's prefix.

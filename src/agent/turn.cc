@@ -379,6 +379,8 @@ void Agent::Turn(const std::string& user_input, json user_content,
       conversation_.Push(HarnessMessage(std::exchange(loop.note, {})),
                          MessageKind::kInternal);
     }
+    reply_as_step_ = agent_wait_ && !state.agent_calls.empty() &&
+                     !agent_wait_(state.agent_calls, {}, true).empty();
     ChatResult response = Chat("turn", loop.step, schemas);
     if (noted) {
       conversation_.Erase(conversation_.Size() - 1, conversation_.Size());
@@ -458,6 +460,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
                : ExecuteToolCalls(calls, response.served_by, state, loop);
     if (flow == StepFlow::kEndTurn) break;
   }
+  reply_as_step_ = false;
   AnswerAtLimit(state, loop);
   FinishTurn(state, loop.step);
 }

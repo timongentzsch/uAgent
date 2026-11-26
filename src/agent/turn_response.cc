@@ -269,8 +269,10 @@ void Agent::PushAssistantMessage(ChatResult& response,
 
 // Plain prose and no call: the turn is done unless steering reopened it.
 Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
-  // Mail that arrived during the final model call reopens the turn too.
+  // Mail that arrived during the final model call reopens the turn too; a
+  // reply written as a step then stays one.
   DeliverMail(true);
+  if (reply_as_step_ && SteeringYieldRequested()) HoldReply(true);
   if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
   if (SteeringState().Requested()) return InterruptTurn(state);
   if (StepFlow held = HoldAnswer(state, loop); held != StepFlow::kProceed) {
@@ -280,19 +282,33 @@ Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
   return StepFlow::kEndTurn;
 }
 
+void Agent::HoldReply(bool held) {
+  conversation_.RecordDisplay(conversation_.LastDisplayId(), {{"held", held}});
+  for (json& node : LastNodes(conversation_)) {
+    Emit(Event{EventId::kMessageChanged, {{"node", std::move(node)}}});
+  }
+}
+
 std::vector<std::string> Agent::AwaitAgents(
     const std::vector<std::string>& owed, const std::set<std::string>& calls,
     std::chrono::steady_clock::time_point until, bool on_mail) {
-  const std::string id = RecordWorkNotice(
+  const json row = RecordWorkNotice(
       {{"view",
         {{"verb", {kWaitingFor, kWaitedFor}}, {"target", NameList(owed)}}},
-       {"state", "running"}})["id"];
+       {"state", "running"}});
+  const std::string id = row["id"];
+  // The status line says who the turn waits for.
+  Emit(Event{
+      EventId::kMessageChanged,
+      {{"node", EntryNode(row)},
+       {"waiting_for", std::string(kWaitingFor) + " " + NameList(owed)}}});
   std::vector<std::string> left = agent_wait_(calls, until, on_mail);
   conversation_.RecordDisplay(
       id, {{"state", AbortRequested() ? "cancelled" : "ok"}});
   Emit(Event{EventId::kMessageChanged,
              {{"node", EntryNode(JsonValue(conversation_.DisplayFacts(),
-                                           id.c_str(), json::object()))}}});
+                                           id.c_str(), json::object()))},
+              {"waiting_for", ""}}});
   return left;
 }
 
@@ -314,21 +330,14 @@ Agent::StepFlow Agent::HoldAnswer(TurnExecution& state, StepState& loop) {
     return StepFlow::kProceed;
   }
   ++loop.holds;
-  const std::string held = conversation_.LastDisplayId();
-  const auto publish = [&](bool on) {
-    conversation_.RecordDisplay(held, {{"held", on}});
-    for (json& node : LastNodes(conversation_)) {
-      Emit(Event{EventId::kMessageChanged, {{"node", std::move(node)}}});
-    }
-  };
-  publish(true);
+  HoldReply(true);
   const std::vector<std::string> left = AwaitAgents(
       owed, state.agent_calls,
       std::min(state.deadline, DeadlineAfter(AgentsWaitSeconds())), true);
   // Escape or the person's message ends the hold: the answer stands.
   if (AbortRequested() || SteeringState().Requested() ||
       SteeringYieldRequested()) {
-    publish(false);
+    HoldReply(false);
     if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
     return InterruptTurn(state);
   }

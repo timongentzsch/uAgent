@@ -512,8 +512,14 @@ export const test = base.extend({
   titles: [false, { option: true }],
   // A device that chose Places for the list, for tests about places.
   places: [false, { option: true }],
+  // How long a turn waits for its agents at most, in seconds; 0: the host's.
+  agentsWait: [0, { option: true }],
   page: failOnPageErrors,
-  host: async ({ noModel, noProvider, autoReview, titles }, use, testInfo) => {
+  host: async (
+    { noModel, noProvider, autoReview, titles, agentsWait },
+    use,
+    testInfo,
+  ) => {
     const path = testInfo.outputPath("host.json");
     const child = spawn("python3", [
       "../tests/web_host.py",
@@ -529,6 +535,7 @@ export const test = base.extend({
       ...(noProvider ? ["--no-provider"] : []),
       ...(autoReview ? ["--auto-review"] : []),
       ...(titles ? ["--titles"] : []),
+      ...(agentsWait ? ["--agents-wait", String(agentsWait)] : []),
     ]);
     const exited = once(child, "exit");
     let output = "",

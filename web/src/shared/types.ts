@@ -595,7 +595,9 @@ export type ExecutionPhase =
   | "responding"
   | "tool"
   | "finishing"
-  | "decision";
+  | "decision"
+  // The turn waits for the agents it started; turn_status names them.
+  | "agents";
 export interface Snapshot {
   epoch?: string;
   cursor: number;

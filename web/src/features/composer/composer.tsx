@@ -496,6 +496,7 @@ function Composer({
             sides={sides}
             agents={agents}
             running={running}
+            waiting={state?.phase === "agents" ? state.turn_status : undefined}
             started={state?.turn_started_ms}
             pending={!!pending}
             stopped={continuing ? stopLabel : undefined}

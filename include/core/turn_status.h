@@ -51,6 +51,8 @@ class TurnStatus {
   std::map<std::string, std::string> hosted_;
   json retry_ = nullptr;
   json status_ = nullptr;
+  // "Waiting for <agents>" while the turn waits for them; "" otherwise.
+  std::string waiting_;
 };
 
 }  // namespace uagent

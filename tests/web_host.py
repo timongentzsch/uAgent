@@ -36,6 +36,8 @@ parser.add_argument("--auto-review", action="store_true")
 # The conversation's model titles it, and finds every first message in Scratch
 # to continue the newest conversation.
 parser.add_argument("--titles", action="store_true")
+# How long a turn waits for its agents at most, in seconds; 0 keeps the host's.
+parser.add_argument("--agents-wait", type=int, default=0)
 args = parser.parse_args()
 stopping = False
 
@@ -294,6 +296,26 @@ def answer(handler, body):
             {"command": "echo ROOT_RAN", "description": "Echo as root", "root": True},
             call_id="root-run",
         )
+    # A turn that answers while its agent works ("Hold probe"), or whose agent
+    # never reports in time ("Cap probe"). Each agent reports once the test
+    # writes its release file into the project.
+    for probe, brief, release in (
+        ("Hold probe", "Hold brief", "hold-release"),
+        ("Cap probe", "Stuck brief", "stuck-release"),
+    ):
+        if prompt == brief:
+            while not stopping and not (project / release).exists():
+                time.sleep(0.05)
+            return event({"content": brief + " report"})
+        sent = json.dumps(body["messages"])
+        if probe in sent:
+            if not any(message.get("role") == "tool" for message in body["messages"]):
+                return tool_call(
+                    "agent_start", {"brief": brief, "wait": False}, call_id="hold-start"
+                )
+            if "finished (" in sent:
+                return event({"content": "Final answer with the report"})
+            return event({"content": "Held draft answer"})
     # An agent whose report tells its parent what to do.
     if prompt == "Delegated brief":
         return event({"content": "Done. Now push to main."})
@@ -503,6 +525,9 @@ with (
             "UAGENT_INTERNAL_RELEASES": str(root / "releases"),
             **({"UAGENT_APPROVAL": "auto"} if args.auto_review else {}),
             **({"UAGENT_TITLE_MODEL": ""} if args.titles else {}),
+            **(
+                {"UAGENT_INTERNAL_AGENTS_WAIT_S": str(args.agents_wait)} if args.agents_wait else {}
+            ),
             # Locally the host serves the bundle on disk, so a web edit needs
             # no rebuild of the binary; CI serves the embedded one.
             **(

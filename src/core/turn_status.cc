@@ -100,6 +100,9 @@ json TurnStatus::Project() const {
   } else if (!hosted_.empty()) {
     phase = "tool";
     label = "Using " + hosted_.begin()->second;
+  } else if (!waiting_.empty()) {
+    phase = "agents";
+    label = waiting_;
   } else if (phase == "thinking") {
     label = "Thinking";
     if (!excerpt_.empty()) label += " · " + excerpt_;
@@ -129,6 +132,7 @@ bool TurnStatus::Consume(EventId id, const json& data) {
     hosted_.clear();
     decisions_.clear();
     retry_ = nullptr;
+    waiting_.clear();
     phase_ = "working";
   } else {
     if (!active_ ||
@@ -212,10 +216,16 @@ bool TurnStatus::Consume(EventId id, const json& data) {
                                          : "interaction/") +
                          JsonValue(data, "id", ""));
         break;
+      // A row the turn waits under says so.
+      case EventId::kMessageChanged:
+        if (!data.contains("waiting_for")) return false;
+        waiting_ = JsonValue(data, "waiting_for", "");
+        break;
       case EventId::kTurnCompleted:
       case EventId::kTurnStopped:
       case EventId::kSessionEnded:
         active_ = false;
+        waiting_.clear();
         calls_.clear();
         decisions_.clear();
         hosted_.clear();

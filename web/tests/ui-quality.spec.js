@@ -483,8 +483,11 @@ test("settings dividers leave room around wrapped fields", async ({
           .map((field) => {
             const box = field.getBoundingClientRect();
             const content = [
-              ...field.querySelectorAll(".row-text, .row-value"),
-            ].map((node) => node.getBoundingClientRect());
+              // A phone's value is laid out as the row's own children.
+              ...field.querySelectorAll(".row-text, .row-value > *"),
+            ]
+              .map((node) => node.getBoundingClientRect())
+              .filter((rect) => rect.height > 0);
             return Math.min(
               ...content.flatMap((rect) => [
                 rect.top - box.top,

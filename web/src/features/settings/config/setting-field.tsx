@@ -1,4 +1,4 @@
-import { Undo2 } from "lucide-preact";
+import { ChevronDown, Undo2 } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { permissionLabel, permissionLabels } from "../../../shared/display.ts";
 import type { ConfigChange, ConfigSetting } from "../../../shared/types.ts";
@@ -150,12 +150,15 @@ export function SettingField({
       title="Model, variant and effort"
       disabled={disabled}
       trigger={
-        <span
-          class="setting-summary truncate"
-          data-default={held ? undefined : ""}
-        >
-          {held || below}
-        </span>
+        <>
+          <span
+            class="setting-summary truncate"
+            data-default={held ? undefined : ""}
+          >
+            {held || below}
+          </span>
+          <ChevronDown />
+        </>
       }
     >
       {(close) => (
@@ -216,10 +219,6 @@ export function SettingField({
       data-setting={setting.name}
       data-row={setting.key}
       title={setting.key}
-      // A value that may be long gets its own line on a phone.
-      data-wide={
-        setting.type === "boolean" || setting.choices?.length ? undefined : ""
-      }
     >
       <Row label={setting.label} detail={detail}>
         {!setting.locked && own !== undefined && (

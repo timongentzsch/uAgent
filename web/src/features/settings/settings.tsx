@@ -228,24 +228,34 @@ export default function Settings(props: SettingsProps) {
             >
               {!phone && <h3 class="settings-pane-title">{topic.label}</h3>}
               {groups.length > 0 && folder && (
-                <div
-                  class="segmented settings-scope"
-                  role="group"
-                  aria-label="Where it applies"
-                >
-                  <Button
-                    aria-pressed={scope === "user"}
-                    onClick={() => setScope("user")}
+                <>
+                  <div
+                    class="segmented settings-scope"
+                    role="group"
+                    aria-label="Where it applies"
                   >
-                    All conversations
-                  </Button>
-                  <Button
-                    aria-pressed={scope === "project"}
-                    onClick={() => setScope("project")}
-                  >
-                    <span class="truncate">This folder · {nameOf(folder)}</span>
-                  </Button>
-                </div>
+                    <Button
+                      aria-pressed={scope === "user"}
+                      onClick={() => setScope("user")}
+                    >
+                      All conversations
+                    </Button>
+                    <Button
+                      aria-pressed={scope === "project"}
+                      onClick={() => setScope("project")}
+                    >
+                      This folder
+                    </Button>
+                  </div>
+                  {/* Which folder: its name may be long, so it has a line. */}
+                  <p class="group-footer small settings-scope-for">
+                    <span class="truncate">
+                      {scope === "project"
+                        ? `Conversations in ${nameOf(folder)}`
+                        : "Every conversation on this host"}
+                    </span>
+                  </p>
+                </>
               )}
               {groups.length > 0 && (
                 <ConfigNotices
@@ -317,7 +327,10 @@ function SearchResults({
         <Row
           key={entry.address}
           label={entry.label}
-          detail={[entry.detail, entry.topic].filter(Boolean).join(" · ")}
+          // A topic is named once: its own row says nothing more.
+          detail={[entry.detail, entry.topic !== entry.label && entry.topic]
+            .filter(Boolean)
+            .join(" · ")}
           onClick={() => open(entry)}
         />
       ))}

@@ -148,9 +148,14 @@ export function ProvidersField({
           <Row
             key={name}
             label={name}
-            detail={`${text(entry.base_url) || "No address"} · ${keyOf(entry)}`}
+            detail={[
+              text(entry.base_url) || "No address",
+              keyOf(entry),
+              WIRES.find(([id]) => id === wireOf(entry))?.[1],
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           >
-            {WIRES.find(([id]) => id === wireOf(entry))?.[1]}
             <Button
               size="compact"
               aria-label={`Edit ${name}`}

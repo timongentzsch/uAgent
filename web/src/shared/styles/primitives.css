@@ -1481,6 +1481,15 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
   }
+  /* A group's rows are parted by lines that start and end where their text
+     does, so captions, text, fields and lines share one edge. */
+  .group-rows > :not(:first-child) {
+    border-top: 0;
+    background-image: linear-gradient(var(--line), var(--line));
+    background-size: calc(100% - 2 * var(--inset-x)) var(--line-width);
+    background-position: var(--inset-x) 0;
+    background-repeat: no-repeat;
+  }
   .group-footer {
     margin: var(--space-3) 0 0;
     padding: var(--space-2) var(--inset-x);
@@ -1546,13 +1555,6 @@
     flex-shrink: 0;
     color: var(--muted);
   }
-  .row-chevron {
-    transition: rotate var(--motion-fast) var(--ease-standard);
-  }
-  [aria-expanded="true"] > .row-chevron,
-  details[open] > summary::before {
-    rotate: 90deg;
-  }
   .destructive-row .row-label {
     color: var(--removed);
   }
@@ -1570,6 +1572,66 @@
     .value-select select:hover {
       color: var(--text);
     }
+  }
+  /* On a phone a row's value is a field under its text, as wide as the text,
+     so a description keeps the line; a reset stays at the label's end and a
+     switch or an action beside the label. */
+  @media (max-width: 600px) {
+    .row:has(
+        > .row-value
+          > :is(.text-control, .sheet-control, .segmented, .setting-summary)
+      ) {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      column-gap: var(--gap);
+      row-gap: var(--space-3);
+    }
+    .row:has(
+        > .row-value
+          > :is(.text-control, .sheet-control, .segmented, .setting-summary)
+      )
+      > .row-value {
+      display: contents;
+    }
+    .row-value
+      > :is(.text-control, .sheet-control, .segmented, .setting-summary) {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
+    .row-value > .sheet-control > button {
+      width: 100%;
+    }
+    .row-value > .sheet-control > button,
+    .value-select select {
+      justify-content: flex-start;
+      padding-inline: var(--space-4);
+      border-color: var(--field-border);
+      background: var(--raised);
+      color: var(--text);
+      text-align: start;
+      text-align-last: start;
+    }
+    /* The value takes the line, so a chevron ends the field. */
+    .row-value > .sheet-control > button > span {
+      flex: 1;
+      text-align: start;
+    }
+    .text-control.value-select {
+      width: 100%;
+    }
+    .row-value > .segmented {
+      display: grid;
+      grid-auto-columns: minmax(0, 1fr);
+      grid-auto-flow: column;
+    }
+  }
+  .row-chevron {
+    transition: rotate var(--motion-fast) var(--ease-standard);
+  }
+  [aria-expanded="true"] > .row-chevron,
+  details[open] > summary::before {
+    rotate: 90deg;
   }
   .empty-state {
     display: grid;

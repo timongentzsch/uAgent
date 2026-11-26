@@ -33,13 +33,16 @@ export function McpServers({
   const { run, error } = useAction();
   if (scope === "project" && session?.host)
     return (
-      <Group>
+      <Group title="MCP servers">
         <Row label="Project MCP is unavailable for remote folders" />
       </Group>
     );
   if (!session)
     return (
-      <Group footer="Servers start with a conversation, so their state is that conversation's.">
+      <Group
+        title="MCP servers"
+        footer="Servers start with a conversation, so their state is that conversation's."
+      >
         <Row label="Open a conversation to see its MCP servers" />
       </Group>
     );

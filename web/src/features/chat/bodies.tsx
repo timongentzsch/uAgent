@@ -1,10 +1,9 @@
-import { AgentAssignment } from "../../shared/agent-assignment.tsx";
-import { AgentSender } from "./agent-sender.tsx";
+import { AgentSessions } from "./agent-sessions.tsx";
+import { AgentEntry } from "../../shared/turn-status.tsx";
 import { MessageText } from "./message-text.tsx";
 import {
   agentLink,
   agentBatch,
-  agentText,
   messageExcerpt,
 } from "../../shared/message-view.ts";
 import { Fragment } from "preact";
@@ -19,7 +18,7 @@ import {
 import { Button, LoadError, Skeleton } from "../../shared/ui.tsx";
 import DiffView from "../../shared/diff-view.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
-import { capitalize, cleanText, shortAgentName } from "../../shared/display.ts";
+import { capitalize, cleanText } from "../../shared/display.ts";
 import type {
   ActivityTarget,
   BodyKind,
@@ -261,7 +260,8 @@ export function NodeBody({
 }) {
   const { routes, command } = useApi();
   const report = useContext(HostContext)?.report;
-  const { inspect, openFile } = useContext(MessageActions);
+  const { inspect, openFile, open } = useContext(MessageActions);
+  const agents = useContext(AgentSessions);
   const load = useNodeReader(session);
   const body = node.body;
   const parts = node.parts || [];
@@ -412,37 +412,42 @@ export function NodeBody({
           <pre class="node-text plain">{text}</pre>
         </details>
       )}
-      {replies.map(({ link, assignment, state, report }, index) => (
-        <div class="node-agent" key={link?.id || index}>
-          {link ? (
-            <AgentSender
-              id={String(link.id)}
-              title={assignment}
-              outcome={state}
-              live
-              online={online}
-            />
-          ) : (
-            <strong>{shortAgentName(assignment || state || "Agent")}</strong>
-          )}
-          {batch && (
-            <AgentAssignment
-              title={assignment}
-              name={shortAgentName(assignment)}
-            />
-          )}
-          {!link && assignment && state && (
-            <small class="muted">{capitalize(state)}</small>
-          )}
-          {report && (
-            <AgentReply
-              text={agentText(report, state)}
-              refs={!!openFile}
-              assets={assets}
-            />
-          )}
-        </div>
-      ))}
+      {replies.map(({ link, assignment, state, report: reply }, index) => {
+        const child = link && agents.sessions.get(String(link.id));
+        return (
+          <div class="node-agent" key={link?.id || index}>
+            {child && open && report ? (
+              <ul class="activity-list">
+                <AgentEntry
+                  agent={child}
+                  online={online}
+                  report={report}
+                  open={() => open(child.id)}
+                />
+              </ul>
+            ) : (
+              <span>
+                {link && open ? (
+                  <Button
+                    variant="quiet"
+                    class="sender-name"
+                    aria-label={`Open agent · ${cleanText(assignment)}`}
+                    onClick={() => open(String(link.id))}
+                  >
+                    {cleanText(assignment || "Agent")}
+                  </Button>
+                ) : (
+                  <strong>{cleanText(assignment || "Agent")}</strong>
+                )}
+                {state && <small class="muted"> {capitalize(state)}</small>}
+              </span>
+            )}
+            {reply && (
+              <AgentReply text={reply} refs={!!openFile} assets={assets} />
+            )}
+          </div>
+        );
+      })}
       {loaded && !full.value?.complete && (
         <p class="small muted">Only a preview was retained.</p>
       )}

@@ -24,8 +24,8 @@ for, or fails against, a running runtime. Attached clients never take it.
 
 The runtime saves when a user message enters the transcript, after each
 input it handles (a turn, a rename, a control request), and at shutdown
-(`Application::SaveSession`). Each save also flushes the journal; one whose
-bytes match the last write is skipped (`SavedFile`).
+(`Application::SaveSession`); one whose bytes match the last write is
+skipped (`SavedFile`). Each save also appends the journal's new events.
 
 ## Data and formats
 
@@ -35,8 +35,8 @@ A session file lives in `history/` and holds two lines:
    (`kSessionFormat`, 3), `cwd`, `model`, `session_id`, `turns`, `title`,
    `custom_title`, `parent_session_id`, `forked_at_turn`, `forked_at_time`;
    and optional `host`, `agent`, `side`, `memory: false` and `suggestion`.
-   Listings use header fields for activity, cost, token counts and to-do
-   progress. `has_file_moves` tells the file resolver whether the body
+   Listings use header fields for activity, cost, token and tool-call
+   counts and to-do progress. `has_file_moves` tells the file resolver whether the body
    contains workspace history.
 2. The state object: `messages`, `message_kinds` (same length),
    `archive`, `archive_dropped_segments`, `context_tokens`,
@@ -58,7 +58,7 @@ Files beside `<name>.json`, all private:
 | Suffix | Content |
 | --- | --- |
 | `.lock` | the writer lease |
-| `.events.jsonl` | the event journal |
+| `.events.jsonl` | the event journal (`logs.level` events and above) |
 | `.edits/` | undo blobs, `index.json`, stored diffs |
 | `.assets/` | uploads, each `<id>.data` with its record `<id>.json` |
 | `.plan.md` | plan mode's plan |
@@ -70,9 +70,9 @@ a projection (`JournalProjection`) of turn, model request, tool, activity,
 capability, configuration and prompt metadata: names, outcomes, digests,
 sizes, usage. A `request.completed` line holds what one model request's
 context came to (`context_tokens`, bytes per part) and what it used.
-It never holds prompts, answers, reasoning or tool output. At most 512
-records and 256 KiB (`SessionJournal::kMaxEvents`, `kMaxBytes`); a flush
-appends, and rewrites only after lines left the ring or a load.
+It never holds prompts, answers, reasoning or tool output. The file covers
+the whole conversation; memory holds only events not yet appended. Past
+4 MiB (`kSessionJournalBytes`) an append first keeps the newest half.
 
 **Archive.** At turn end the tool trace, and on compaction the replaced
 messages, become archive segments (`{turn, reason, messages,
@@ -142,9 +142,9 @@ to find the workspace where it was recorded. [File lookup API](../interfaces/htt
 
 - Crash mid-save: the temporary file is left beside the target and the
   last complete file loads.
-- Torn journal: only a last line that fails to parse is dropped. A corrupt
-  line elsewhere fails the load with a notice; the conversation still loads,
-  since the journal is not replay authority.
+- Torn journal: an unterminated last line is cut off when the journal is
+  read. A corrupt line elsewhere gives a notice at load; the conversation
+  still loads and the journal goes on, since it is not replay authority.
 - Crash after mail was taken but before a save: `RecoverMail` moves `cur/`
   back to `new/` at the next start, and the mail is delivered again.
 - Activities, PTYs and output buffers do not survive the runtime, and a
@@ -158,9 +158,13 @@ Retention: once a day (`kMaintenanceIntervalHours`), a top-level runtime's
 bootstrap calls `MaintainArtifacts`. Files in `history/` older than
 `history.days` go, then the oldest beyond `history.files`; sidecars age by
 their own mtime and do not count against the file limit. Orphaned journals,
-and the socket and lease of a runtime that was killed, are removed. Log
-trees follow `logs.keepDays` and `logs.keepFiles` (mail by age only); see
-[Settings](../interfaces/settings.md).
+and the socket and lease of a runtime that was killed, are removed. Files
+in the log folders (`logs/`, `sessions/`, `activity/`, `artifacts/`,
+`mcp/`) older than `logs.keepDays` go, then the oldest logs until together
+they fit `logs.keepMb`; what tools still use, and mail, go by age only. A capture or
+exchange the cleanup removed reads as such, and a tool exchange falls back
+to what the transcript holds. Every log is in [Logging](logging.md); see
+also [Settings](../interfaces/settings.md).
 
 ## Source and tests
 

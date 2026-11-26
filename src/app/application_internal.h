@@ -28,6 +28,8 @@ class Application {
  private:
   int LoadInitialAttachments();
   void ReloadConfigAtTurnBoundary();
+  // What `logs.level` records from now on.
+  void ApplyLogLevel();
   void RunTurns(const std::string& input, json content = nullptr,
                 const json& images = json::array());
   // Returns the message the person's answer starts the next turn with.

@@ -31,6 +31,7 @@
 #include "include/app/update.h"
 #include "include/app/workspace_files.h"
 #include "include/browser/browser.h"
+#include "include/core/debug.h"
 #include "include/core/detail.h"
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
@@ -372,7 +373,8 @@ int Master::Run() {
                     {"epoch", epoch_}};
   if (!WritePrivateFile(directory_ + "/discovery.json", JsonDump(discovery),
                         error)) {
-    fprintf(stderr, "cannot publish web discovery\n");
+    Diagnose(Severity::kError, "web_discovery", "cannot publish web discovery",
+             {{"error", error}});
     return 1;
   }
   Pipe stop;
@@ -793,7 +795,8 @@ bool Master::RegisterAssetRoutes(std::string& error) {
       }
       std::string plain;
       if (!Gunzip(asset, plain)) {
-        fprintf(stderr, "web asset %s does not inflate\n", path.c_str());
+        Diagnose(Severity::kError, "web_asset",
+                 "web asset " + path + " does not inflate", {{"path", path}});
         Error(response, "asset unavailable", 500);
         return;
       }
@@ -933,7 +936,8 @@ int MasterMain(const WebOptions& options, char** argv) {
   if (!reexec) return code;
   lease.Reset();
   execv(ExecutablePath().c_str(), argv);
-  fprintf(stderr, "cannot restart the web host: %s\n", strerror(errno));
+  Diagnose(Severity::kError, "web_restart",
+           std::string("cannot restart the web host: ") + strerror(errno));
   return 1;
 }
 }  // namespace uagent::web

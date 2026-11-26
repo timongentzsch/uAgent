@@ -28,7 +28,7 @@ bool MailAllowed(const Mail& mail, const std::string& own_path,
          SessionIdFor(mail.sender_path) == mail.from &&
          MayMail(SessionParty(mail.sender_path),
                  SessionParty(own_path, AgentOf(role)),
-                 mail.body.contains("agent"));
+                 mail.body.contains("state"));
 }
 }  // namespace
 
@@ -62,14 +62,20 @@ bool Agent::DeliverMail() {
     // that turn sends is one hop further along.
     json origin = {
         {"kind", "message"}, {"mail", mail.id}, {"hops", mail.hops + 1}};
-    if (mail.body.contains("agent")) {
+    if (mail.body.contains("agent")) origin["agent"] = mail.body["agent"];
+    size_t envelope = JsonValue(mail.body, "envelope", size_t{0});
+    // A report carries its state; a note is other mail with its sender.
+    if (mail.body.contains("state")) {
       origin["kind"] = "agent";
-      origin["agent"] = mail.body["agent"];
       if (judge_report_ &&
           JsonValue(mail.body, "state", "") != "needs decision") {
-        text = judge_report_(mail.sender_path, text, turn_id_);
+        std::string judged = judge_report_(mail.sender_path, text, turn_id_);
+        // A withheld report is the harness's note, shown whole.
+        if (judged != text) envelope = 0;
+        text = std::move(judged);
       }
     }
+    if (envelope > 0) origin["envelope"] = envelope;
     Arrive(text, std::move(origin));
     DebugLog("mail_delivered", {{"id", mail.id},
                                 {"from", mail.from},

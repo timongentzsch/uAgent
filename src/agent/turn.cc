@@ -98,7 +98,7 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
   if (origin.is_object()) {
     std::erase(arriving_mail_, JsonValue(origin, "mail", ""));
     json facts = {{"origin", JsonValue(origin, "kind", "message")}};
-    for (const char* key : {"agent", "to"}) {
+    for (const char* key : {"agent", "to", "envelope"}) {
       if (origin.contains(key)) facts[key] = origin[key];
     }
     conversation_.RecordDisplay(conversation_.LastDisplayId(), facts);

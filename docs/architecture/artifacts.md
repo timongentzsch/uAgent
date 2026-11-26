@@ -263,7 +263,8 @@ slide file with a CSS `selector` captures that element at its drawn size.
 folder listing what a path is. An artifact becomes a result part
 `{kind: "artifact", type, path, cover, count}` that the conversation shows
 as a live card; any other file is copied into the conversation's asset
-store as a snapshot. When the agent opens its own page with the browser
+store as a snapshot, or names the copy already there when its name and
+bytes are unchanged. When the agent opens its own page with the browser
 tool, the helper resolves `window.uagentChecked` after load; the service
 reads the `uagent page:` console lines it logged, or, if the window is not
 the artboard's size, reloads the page at that size in a throwaway context

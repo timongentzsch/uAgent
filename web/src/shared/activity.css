@@ -140,54 +140,77 @@
   white-space: nowrap;
 }
 
-.agent-bar,
-.agent-tabs {
+.agent-stack {
+  border-top: var(--border);
+  padding-block: var(--inset-x);
+}
+/* One grid for the stack: icon, name, step, figures, Stop line up across
+   rows whatever the names. */
+.agent-rows {
+  display: grid;
+  grid-template-columns: auto fit-content(40%) minmax(0, 1fr) auto auto;
+  column-gap: var(--gap);
+}
+.agent-rows > li,
+.agent-rows .activity-open {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+}
+.agent-rows .activity-open {
+  grid-column: 1 / 5;
+}
+.agent-step {
+  min-width: 0;
   display: flex;
   align-items: center;
-  min-width: 0;
   gap: var(--space-2);
 }
-.agent-bar {
-  border-top: var(--border);
+/* Figures are short and never cut. */
+.activity-text > small.agent-figures {
+  white-space: normal;
+  overflow: visible;
 }
-.agent-roster .work-band {
-  width: var(--space-12);
-  margin-inline-end: 0;
+.agent-facts {
+  display: flex;
+  gap: var(--space-2);
+  font-variant-numeric: tabular-nums;
 }
-.agent-tabs {
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: thin;
+.agent-facts > * + *::before {
+  content: "· ";
 }
-.agent-bar .sheet-control,
-.agent-tab {
-  flex: none;
+/* Narrow: what fits, the elapsed time dropping first, then the tokens. */
+@container column (max-width: 43rem) {
+  .agent-time {
+    display: none;
+  }
 }
-.agent-roster,
-.agent-tab {
+@media (max-width: 600px) {
+  .agent-tokens {
+    display: none;
+  }
+}
+.agents-button,
+.agent-more {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  max-width: var(--pane-s);
 }
-.agent-entry {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+.agents-button .work-band {
+  width: var(--space-12);
+  margin-inline-end: 0;
 }
-.agent-entry .activity-text {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--gap);
+.agent-status {
+  flex: none;
 }
-.agent-entry > .agent-assignment {
-  grid-column: 1 / -1;
-  padding-inline: var(--pad);
+.agent-group .activity-open {
+  padding-block: var(--space-3);
 }
-.agent-assignment > summary {
-  align-items: baseline;
+.agent-group > .section-title {
+  margin-top: var(--space-4);
 }
-.agent-assignment[open] .truncate {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.agent-task {
+  margin: 0 0 var(--space-2);
+  padding-inline: var(--inset-x);
 }

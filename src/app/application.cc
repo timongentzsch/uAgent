@@ -20,6 +20,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/logs.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -44,8 +45,7 @@ Application::Application(AppContext& context)
       saved_revision_(agent_.Revision()),
       config_problem_(context.config_manager.Problem()),
       channel_(context.channel) {
-  agent_.RetainExchanges(channel_ || context_.options.prompt.empty() ||
-                         !session_file_.empty());
+  ApplyLogLevel();
   message_subscription_ =
       context_.observability.Subscribe([this](const AppEvent& event) {
         // A suggested place reaches clients with the first event after it was
@@ -113,6 +113,11 @@ int Application::LoadInitialAttachments() {
   return 0;
 }
 
+void Application::ApplyLogLevel() {
+  agent_.RetainExchanges(Logs(LogKind::kCapture));
+  context_.observability.EnableJournal(Logs(LogKind::kJournal));
+}
+
 void Application::ReloadConfigAtTurnBoundary() {
   std::optional<ConfigReload> reload =
       context_.config_manager.Reload(runtime_.config);
@@ -128,6 +133,7 @@ void Application::ReloadConfigAtTurnBoundary() {
   if (!reload) return;
   runtime_.config = reload->active;
   api_.config = reload->active;
+  ApplyLogLevel();
   Emit(Event{EventId::kConfigChanged,
              {{"changed", reload->applied},
               {"deferred", reload->deferred},
@@ -246,7 +252,8 @@ void Application::Teardown(const char* reason) {
     std::string error;
     if (!context_.observability.Journal().Flush(
             session_file_ + kSessionJournalSuffix, error)) {
-      fprintf(stderr, "cannot save session journal: %s\n", error.c_str());
+      Diagnose(Severity::kWarning, "session_journal",
+               "cannot save session journal: " + error);
     }
   }
   context_.observability.Flush();

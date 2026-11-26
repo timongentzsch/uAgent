@@ -72,6 +72,7 @@ inline constexpr const char* kMcpDir = "mcp";
 inline constexpr const char* kModelsDir = "models";
 inline constexpr const char* kConfigDir = "config";
 inline constexpr const char* kMailDir = "mail";
+inline constexpr const char* kLogsDir = "logs";
 // Named workspaces, one folder each.
 inline constexpr const char* kSpacesDir = "spaces";
 // The workspace a conversation starts in until it is filed.
@@ -215,8 +216,10 @@ class FolderLock {
 std::string ReadFileTail(const std::string& path, int64_t bytes,
                          int64_t* start = nullptr);
 
+// Past `max_bytes` (0: unbounded) the file first keeps its newest whole
+// lines that fit in half of it.
 bool AppendPrivateLine(const std::string& path, const std::string& line,
-                       std::string& error);
+                       std::string& error, size_t max_bytes = 0);
 
 // Atomically drains a small private append-only file. The locked inode is
 // truncated, not unlinked, so earlier openers never append to a lost file.

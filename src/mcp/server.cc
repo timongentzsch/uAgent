@@ -21,6 +21,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/logs.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -111,7 +112,7 @@ std::string McpLogPath(const std::string& name) {
 }
 
 std::string McpStderrHint(const std::string& name) {
-  return " (stderr: " + McpLogPath(name) + ")";
+  return Logs(LogKind::kMcpStderr) ? " (stderr: " + McpLogPath(name) + ")" : "";
 }
 
 bool McpFillBuffer(McpServer& s, bool eof_is_fatal) {
@@ -166,7 +167,7 @@ bool McpSpawn(McpServer& s, const std::vector<std::string>& wrapper,
   Fd errfd;
   std::jthread log_thread;
   int errp[2];
-  if (pipe(errp) == 0) {
+  if (Logs(LogKind::kMcpStderr) && pipe(errp) == 0) {
     Fd err_read(errp[0]), err_write(errp[1]);
     fcntl(err_read.Get(), F_SETFD, FD_CLOEXEC);
     fcntl(err_write.Get(), F_SETFD, FD_CLOEXEC);

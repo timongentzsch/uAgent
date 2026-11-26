@@ -19,47 +19,32 @@
 .message.mail {
   color: var(--muted);
 }
-.message-byline,
-.agent-sender {
+.message-byline {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--gap);
   min-width: 0;
 }
-.message-byline {
-  justify-content: space-between;
-  align-items: center;
-}
-.message-byline .agent-sender {
-  flex: 1;
-}
-.agent-sender .sender-name,
+.sender-name,
+.review-decision,
 .message-expand {
   justify-content: start;
   padding-inline: 0;
   text-align: start;
 }
-.agent-sender .sender-name {
+.sender-name {
   display: inline;
   font-weight: var(--weight-strong);
   overflow-wrap: anywhere;
 }
-.parent-speaker {
-  margin: 0;
-  color: var(--muted);
-}
 .sender-heading {
+  flex: 1;
   margin: 0;
   min-width: 0;
   max-width: 100%;
   font: inherit;
-}
-.sender-name span:first-child {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 .message-expand {
   color: var(--muted);

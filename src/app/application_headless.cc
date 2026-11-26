@@ -70,7 +70,8 @@ json Application::ReportUsage(const std::string& ledger) {
   if (ledger.empty()) return used;
   std::string failure;
   if (!AppendPrivateLine(ledger, JsonDump(used), failure)) {
-    fprintf(stderr, "cannot write usage ledger: %s\n", failure.c_str());
+    Diagnose(Severity::kWarning, "usage_ledger",
+             "cannot write usage ledger: " + failure);
   }
   return used;
 }

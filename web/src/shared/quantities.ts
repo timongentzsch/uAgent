@@ -34,6 +34,15 @@ export const cacheHit = (usage: Usage) => {
 // "1 tool", "3 tools": a count with its noun, "searches" when named.
 export const plural = (value: number, noun: string, many = `${noun}s`) =>
   `${count(value)} ${value === 1 ? noun : many}`;
+// What an agent's work comes to: "68 calls" and "648k", or with `unit` "648k
+// tokens". Either is empty until there is some.
+export const figures = (
+  { tool_calls, tokens }: { tool_calls?: number; tokens?: number },
+  unit = false,
+) => ({
+  calls: tool_calls ? plural(tool_calls, "call") : "",
+  tokens: tokens ? (unit ? plural(tokens, "token") : count(tokens)) : "",
+});
 export const bytes = (value: number) =>
   Number.isFinite(value) && value >= 0
     ? scaled(value, ["B", "kB", "MB", "GB", "TB", "PB", "EB"], " ")

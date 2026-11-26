@@ -3081,6 +3081,25 @@ test("a document's pages are the browser's: any block has its page, and a link o
   await expect.poll(() => onSheet(end)).toBe(true);
 });
 
+test("a document that grows once drawn keeps its pages: a thumbnail's first count is not the document's", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  // As a picture that arrives late: every drawing of the page starts at one.
+  await writeFiles(join(host.project, "docs"), {
+    "late.html": paper(
+      "Late",
+      '<p>First.</p><div id="late"></div>' +
+        '<script>setTimeout(() => (document.getElementById("late").style.height = "300mm"), 200)</script>',
+    ),
+  });
+  const files = await openFiles(app, session, "docs/late.html");
+  const thumbnail = files.frameLocator(".page-legend-item:first-child iframe");
+  await expect(thumbnail.locator("#late")).not.toHaveCSS("height", "0px");
+  await expect(viewerOf(files).count).toHaveText(/^1 \/ [2-9]$/);
+});
+
 test("a document's forced breaks, dead links and wide lines: the pages are those it has, and a link turns to its own", async ({
   page: app,
   session,

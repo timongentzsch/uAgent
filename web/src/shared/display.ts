@@ -86,23 +86,3 @@ export const servedByRows = (
       .filter(Boolean)
       .join(" · "),
   ]);
-
-const agentTopic = /^([^:\n]{1,44}):(?:\s|$)/u;
-
-export function agentAssignmentText(assignment: string) {
-  return cleanText(assignment).trim().replace(agentTopic, "").trim();
-}
-
-// Assignment prompts often start with a topic ("fstab: validate syntax…").
-// Keep the original text for inspection; the conversation control needs a name.
-export function shortAgentName(assignment: string) {
-  const first = cleanText(assignment).trim().split("\n", 1)[0] || "Agent";
-  const topic = agentTopic.exec(first)?.[1];
-  if (topic) return topic.trim();
-  if (first.length <= 40) return first;
-  const words = first
-    .slice(0, 38)
-    .replace(/\s+\S*$/, "")
-    .trimEnd();
-  return (words || first.slice(0, 38)) + "…";
-}

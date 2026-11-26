@@ -119,6 +119,10 @@ TEST_CASE(TestGrepTool) {
   auto activity_tools = BuiltinTools(supervisor, root);
   const Tool* wait_tool = FindTool(activity_tools, "activity");
   CHECK(wait_tool != nullptr);
+  // A headline names an activity by what it runs, never by its id.
+  CHECK(wait_tool && ToolSummary(*wait_tool, {{"operation", "wait"},
+                                              {"ids", {activity_ids[0]}}}) ==
+                         "Waited for sleep 0.05; echo activity-one");
   ToolResult waited = wait_tool->run({{"operation", "wait"},
                                       {"ids", {activity_ids[0]}},
                                       {"mode", "all"},

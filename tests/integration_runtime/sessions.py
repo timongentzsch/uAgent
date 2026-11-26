@@ -443,6 +443,24 @@ def test_input_idle_background_completion_starts_a_turn(root, home, *, binary):
         assert_true(len(server.requests) == 3, server.requests)
 
 
+def test_log_level_decides_what_a_turn_leaves_on_disk(root, home, *, binary):
+    for level in ("off", "events", "full"):
+        case_home = home / level
+        responses = [tool_call("run", {"command": "printf logged"}), event({"content": "done"})]
+        with Server(responses) as server:
+            env = base_env(case_home, server.url)
+            env["UAGENT_LOG_LEVEL"] = level
+            result = run(root, env, "-p", "run it", binary=binary)
+            assert_true(result.returncode == 0, result.stderr)
+        uagent = case_home / ".uagent"
+        journals = list(uagent.rglob("*.events.jsonl"))
+        captures = list(uagent.glob("artifacts/http-*"))
+        exchanges = list(uagent.glob("artifacts/exchange-*"))
+        assert_true(bool(journals) == (level != "off"), (level, journals))
+        assert_true(bool(captures) == (level == "full"), (level, captures))
+        assert_true(bool(exchanges) == (level == "full"), (level, exchanges))
+
+
 def test_headless_run_continues_with_c(root, home, *, binary):
     def second(_, body):
         sent = json.dumps(body["messages"])

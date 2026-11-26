@@ -481,8 +481,10 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
   }
   if (JsonValue(metadata, "origin", "") != "tool" &&
       JsonValue(metadata, "origin", "") != "merge") {
-    SetBody(node, entry.kind == "assistant" ? "markdown" : "text",
-            EntryText(facts, sequence, message));
+    std::string text = EntryText(facts, sequence, message);
+    // Mail's label is the model's; its sender is the node's `agent`.
+    text.erase(0, JsonValue(metadata, "envelope", size_t{0}));
+    SetBody(node, entry.kind == "assistant" ? "markdown" : "text", text);
   }
   if (const json* parts = JsonArray(message, "content")) {
     if (const auto images = std::ranges::count_if(*parts, [](const json& part) {

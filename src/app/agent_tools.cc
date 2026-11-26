@@ -78,6 +78,17 @@ std::optional<SessionInfo> Find(const std::string& own, const std::string& id) {
   return std::nullopt;
 }
 
+// What an agent started on `text` (its item, else its brief) is called.
+std::string NameOf(const std::string& text) {
+  return Utf8Prefix(FirstLine(text), 120);
+}
+
+// A headline names the conversation `id` of this folder, else says the id.
+std::string AgentName(const std::string& id) {
+  const std::optional<SessionInfo> info = Find(OwnSessionFile(), id);
+  return info ? info->name : id;
+}
+
 // Who started `info` as its agent: a side chat belongs to its conversation
 // but is the person's, not an agent of it.
 std::string AgentParent(const SessionInfo& info) {
@@ -114,7 +125,7 @@ bool Working(const SessionInfo& info) {
 }
 
 struct Launch {
-  std::string edits{}, model{};
+  std::string edits{}, model{}, call{};
   double budget = 0;
 };
 
@@ -160,18 +171,19 @@ std::string Start(const std::string& own, const Launch& launch,
                          {"runtime", target.runtime},
                          {"cwd", target.cwd}};
   }
+  const std::string name = NameOf(child.item.empty() ? brief : child.item);
   options.session = {{"agent",
                       {{"parent", SessionIdFor(own)},
                        {"edits", launch.edits},
                        {"approval", ApprovalModeName(CurrentApprovalMode())},
                        {"depth", AgentDepth() + 1},
-                       {"budget", launch.budget}}}};
+                       {"budget", launch.budget},
+                       {"name", name},
+                       {"call", launch.call}}}};
   if (!launch.model.empty()) options.overrides["UAGENT_MODEL"] = launch.model;
   std::string error;
-  session::Connection connection = session::Open(
-      ExecutablePath(), cwd, child.path,
-      Utf8Prefix(FirstLine(child.item.empty() ? brief : child.item), 120),
-      options, error);
+  session::Connection connection =
+      session::Open(ExecutablePath(), cwd, child.path, name, options, error);
   if (!connection.socket) return error;
   error = SendWhenReady(
       connection, child.path,
@@ -283,7 +295,8 @@ ToolResult StartAgents(const Api& api,
   const std::string own = OwnSessionFile();
   if (own.empty()) return Unavailable("this conversation is not saved yet");
   Launch launch{.edits = JsonValue(a, "edits", "none"),
-                .model = Trim(JsonValue(a, "model", ""))};
+                .model = Trim(JsonValue(a, "model", "")),
+                .call = context.call_id};
   if (JsonValue(AgentOf(SessionHeader(own)), "edits", "folder") == "none" &&
       launch.edits != "none") {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -436,7 +449,7 @@ ToolResult SendTo(const json& a, const ToolContext& context) {
   }
   ToolResult delivered = ToolSuccess("sent");
   delivered.parts = json::array(
-      {LinkPart("agent", id, info->title), FieldsPart({{"Delivery", "Sent"}})});
+      {LinkPart("agent", id, info->name), FieldsPart({{"Delivery", "Sent"}})});
   delivered.body_kind = "link";
   return delivered;
 }
@@ -572,8 +585,7 @@ ToolResult Agents(const json& a) {
       const std::string state = RuntimeStatus(info.path);
       list += Row(info, state) + "\n";
       if (list.size() <= kPreviewChars) {
-        json link =
-            LinkPart("agent", SessionIdFor(info.path), OneLine(info.title));
+        json link = LinkPart("agent", SessionIdFor(info.path), info.name);
         link["state"] = state;
         parts.push_back(std::move(link));
       }
@@ -672,7 +684,7 @@ ToolResult Decide(const json& a) {
                    {"Interaction", JsonValue(a, "interaction_id", "")}});
   if (!reason.empty()) rows.push_back({"Reason", reason});
   receipt.parts = json::array(
-      {LinkPart("agent", id, info->title), FieldsPart(std::move(rows))});
+      {LinkPart("agent", id, info->name), FieldsPart(std::move(rows))});
   receipt.body_kind = "fields";
   return receipt;
 }
@@ -723,9 +735,21 @@ Tool AgentStartTool(const Api& api, std::function<std::string()> own_model,
     }
     return preview;
   };
+  // Each agent by its name, known from the arguments before any starts.
   tool.headline = [](const json& a) {
-    return Headline{"Starting agent", "Started agent",
-                    FirstLine(JsonValue(a, "brief", ""))};
+    const json* items = JsonArray(a, "items");
+    std::string names;
+    for (const json& item : items ? *items : json::array({nullptr})) {
+      if (!names.empty()) names += ", ";
+      names += NameOf(item.is_string() ? item.get<std::string>()
+                                       : JsonValue(a, "brief", ""));
+    }
+    const size_t count = items ? items->size() : 1;
+    const std::string agents =
+        count == 1 ? "agent" : Plural(count, "agent") + ":";
+    return Headline{
+        JsonValue(a, "wait", true) ? "Waiting for" : "Starting " + agents,
+        "Started " + agents, names};
   };
   return tool;
 }
@@ -750,7 +774,7 @@ Tool AgentSendTool() {
     return "to: " + JsonValue(a, "id", "") + "\n\n" + JsonValue(a, "text", "");
   };
   tool.headline = [](const json& a) {
-    return Headline{"Messaging", "Messaged", JsonValue(a, "id", "")};
+    return Headline{"Messaging", "Messaged", AgentName(JsonValue(a, "id", ""))};
   };
   tool.present = [](const json& a) { return GenericInputParts(a, {"id"}); };
   return tool;
@@ -793,13 +817,14 @@ Tool AgentsTool() {
   };
   tool.headline = [](const json& a) {
     const std::string action = JsonValue(a, "action", "");
-    const std::string target = JsonValue(a, "id", JsonValue(a, "query", ""));
     if (action == "list") return Headline{"Listing", "Listed", "agents"};
+    const std::string part = JsonValue(a, "part", "");
+    if (action == "read" && part == "search") {
+      return Headline{"Searching agents for", "Searched agents for",
+                      JsonValue(a, "query", "")};
+    }
+    const std::string target = AgentName(JsonValue(a, "id", ""));
     if (action == "read") {
-      const std::string part = JsonValue(a, "part", "");
-      if (part == "search") {
-        return Headline{"Searching agents for", "Searched agents for", target};
-      }
       return Headline{"Reading", "Read", part + " from " + target};
     }
     if (action == "stop") return Headline{"Stopping", "Stopped", target};
@@ -840,7 +865,7 @@ Tool DecideTool() {
   tool.headline = [](const json& a) {
     return Headline{
         "Deciding", "Decided",
-        JsonValue(a, "decision", "") + " " + JsonValue(a, "id", "")};
+        JsonValue(a, "decision", "") + " " + AgentName(JsonValue(a, "id", ""))};
   };
   tool.present = [](const json& a) {
     return GenericInputParts(a, {"id", "decision", "interaction_id", "reason"});

@@ -18,6 +18,7 @@
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/private_store.h"
 #include "include/core/runtime_config.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
@@ -522,6 +523,14 @@ TEST_CASE(TestSavedTranscriptIndex) {
     });
   }
   for (auto& reader : readers) CHECK(reader.get());
+  // An exchange file the cleanup removed falls back to the inline record.
+  const std::string removed = UagentDir(kArtifactsDir) + "/exchange-gone";
+  CHECK(JsonValue(ReadPrivateArtifact(removed, 0), "error", "")
+            .starts_with("removed by the cleanup"));
+  conversation.RecordDisplay("t-call-2", {{"output", "retained output"},
+                                          {"exchange", exchange},
+                                          {"exchange_path", removed}});
+  CHECK(view.Exchange("t-call-2")["text"] == JsonDump(exchange));
   std::map<std::string, std::string> actual;
   uint64_t before = 0;
   for (int i = 0; i < 4; ++i) {

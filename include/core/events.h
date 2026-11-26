@@ -126,38 +126,22 @@ using EventSubscriber = std::function<void(const AppEvent&)>;
 
 class TurnStatus;
 
-// Bounded metadata-only journal beside the session snapshot; it never enters
-// model context. Locked: any thread appends while the main one saves.
+// Metadata-only journal beside the session snapshot; it never enters model
+// context. The file is the journal: memory holds only the lines not yet
+// appended to it. Locked: any thread appends while the main one saves.
 class SessionJournal {
  public:
   void SetEnabled(bool enabled);
   void Append(const Event& event, const EventPolicy& policy) noexcept;
+  // Continues the journal at `path`: lines recorded before follow its own.
   bool Load(const std::string& path, std::string& error);
-  bool Flush(const std::string& path, std::string& error) const;
-  size_t Size() const;
+  bool Flush(const std::string& path, std::string& error);
 
  private:
-  static constexpr size_t kMaxEvents = 512;
-  static constexpr size_t kMaxBytes = size_t{256} * 1024;
-
-  void ClearLocked() UAGENT_REQUIRES(mutex_);
-  void PushLocked(std::string line) UAGENT_REQUIRES(mutex_);
-
-  mutable std::mutex mutex_;
-
-  std::deque<std::string> lines_ UAGENT_GUARDED_BY(mutex_);
-  size_t bytes_ UAGENT_GUARDED_BY(mutex_) = 0;
+  std::mutex mutex_;
+  std::deque<std::string> pending_ UAGENT_GUARDED_BY(mutex_);
   int64_t sequence_ UAGENT_GUARDED_BY(mutex_) = 0;
   bool enabled_ UAGENT_GUARDED_BY(mutex_) = true;
-  // Counts every change to the lines; where and at which count they were
-  // last written, so a save that follows no event writes nothing.
-  uint64_t changes_ UAGENT_GUARDED_BY(mutex_) = 0;
-  mutable uint64_t flushed_changes_ UAGENT_GUARDED_BY(mutex_) = 0;
-  mutable std::string flushed_path_ UAGENT_GUARDED_BY(mutex_);
-  // Lines added since the last flush, and whether the file holds lines the
-  // ring no longer does (or a torn one), which only a rewrite can fix.
-  mutable size_t unflushed_ UAGENT_GUARDED_BY(mutex_) = 0;
-  mutable bool rewrite_ UAGENT_GUARDED_BY(mutex_) = true;
 };
 
 // Owns the public JSONL, private debug JSONL and journal sinks. Subscribers
@@ -175,7 +159,10 @@ class Observability {
   void Unsubscribe(uint64_t subscription);
   void EnableJournal(bool enabled) { journal_.SetEnabled(enabled); }
   void Emit(Event event) noexcept;
-  void Diagnostic(const std::string& name, json data = json::object()) noexcept;
+  // What the process is (web, runtime, headless, agent), for its diagnostics.
+  void SetRole(std::string role);
+  void Diagnostic(Severity severity, const std::string& name,
+                  const std::string& text, json data) noexcept;
 
   DebugSink& DebugOutput() { return debug_; }
   SessionJournal& Journal() { return journal_; }
@@ -185,6 +172,8 @@ class Observability {
 
  private:
   DebugSink debug_;
+  // ~/.uagent/logs/<UTC day>.jsonl, opened by the first warning or error.
+  DebugSink diagnostics_;
   JsonEventStream json_;
   SessionJournal journal_;
   std::unique_ptr<TurnStatus> activity_;
@@ -197,6 +186,7 @@ class Observability {
   uint64_t app_sequence_ UAGENT_GUARDED_BY(mutex_) = 0;
   uint64_t next_subscription_ UAGENT_GUARDED_BY(mutex_) = 1;
   bool shutdown_ UAGENT_GUARDED_BY(mutex_) = false;
+  std::string role_ UAGENT_GUARDED_BY(mutex_) = "uagent";
 };
 
 // Set once by main; the pointer never owns the runtime.

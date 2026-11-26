@@ -23,7 +23,7 @@ from integration_support import (
     tool_results,
     wait_until,
 )
-from session_support import SessionClient, runtime_directory, stop_sessions
+from session_support import SessionClient, runtime_directory
 from web_support import web_host
 
 ASKS = re.compile(r"\[agent ([0-9a-f]{16}) .*? \(interaction ([^)]+)\)\]")
@@ -359,8 +359,6 @@ def test_agents_wait_returns_when_an_agent_not_waited_for_reports(root, home, *,
         waits = [results_of(body) for body in parents if len(results_of(body)) == 2]
         assert_true(waits, parents)
         assert_true(waits[0][1] == "completed: BRIEF slow\n", waits[0])
-    # Its report also wakes the parent as a runtime: that ends here.
-    stop_sessions(home, settle=1)
 
 
 def parent_file(home):
@@ -731,8 +729,6 @@ def test_a_decision_its_parent_yields_or_leaves_reaches_the_person(root, home, *
             client.send("reply", interaction_id=late["id"], text="n")
         finally:
             client.close()
-    # The agents' reports wake their parent as a runtime: all end here.
-    stop_sessions(home, settle=1)
 
 
 def test_a_mandatory_decision_skips_the_parent(root, home, *, binary):
@@ -755,8 +751,6 @@ def test_a_mandatory_decision_skips_the_parent(root, home, *, binary):
             client.send("reply", interaction_id=waiting["id"], text="n")
         finally:
             client.close()
-    # The agent's report wakes its parent as a runtime: both end here.
-    stop_sessions(home, settle=1)
 
 
 def test_a_person_writing_into_an_agents_turn_decides_it(root, home, *, binary):

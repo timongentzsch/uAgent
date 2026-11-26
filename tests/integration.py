@@ -261,7 +261,7 @@ def run_case(root, name, binary):
 
 
 def run_case_body(root, name, binary):
-    from session_support import stop_sessions
+    from session_support import SETTLE_SECONDS, runtime_directory, stop_sessions
 
     print(f"running {name}", flush=True)
     case_root = root / name
@@ -288,8 +288,11 @@ def run_case_body(root, name, binary):
         return "failed"
     finally:
         signal.alarm(0)
+        # A runtime the case started can wake another as it ends: closed
+        # until none has appeared for a while.
         for fixture_home in {home} | fixture_homes(home) | fixture_homes(case_root):
-            stop_sessions(fixture_home)
+            ran = runtime_directory(fixture_home).exists()
+            stop_sessions(fixture_home, settle=budget(SETTLE_SECONDS) if ran else 0)
 
 
 if __name__ == "__main__":

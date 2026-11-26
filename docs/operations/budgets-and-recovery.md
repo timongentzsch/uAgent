@@ -126,6 +126,9 @@ uagent --debug -p "…"                 # ~/.uagent/sessions/<UTC stamp>-<pid>.j
 uagent --debug=/tmp/run.jsonl -p "…"
 ```
 
+`--debug` sets `logs.level` to debug for that run; the setting at debug
+traces every runtime to the default path.
+
 One JSON object per line: `seq`, `time`, `elapsed_ms`, `pid`, `event`,
 `data`. `agent_init` holds the tool schemas and instruction sources;
 `model_request` holds the full message list after any shrink and the new
@@ -135,7 +138,7 @@ holds content, reasoning, tool calls, usage, timings, `http_status`,
 faults, approvals and tool starts. Child agents and the runtimes a run
 starts append to the same file. The trace holds prompts, file content and
 tool output: it is sensitive and is pruned with the log trees
-(`logs.keepDays`). `/http` shows the captured HTTP attempts of a running
+(`logs.keepDays`, `logs.keepMb`). `/http` shows the captured HTTP attempts of a running
 conversation without a trace.
 
 ## When it goes wrong

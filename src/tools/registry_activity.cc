@@ -150,16 +150,23 @@ void RegisterActivityTool(std::vector<Tool>& tools,
     }
     return std::nullopt;
   };
-  activity.headline = [](const json& a) {
+  // An activity by what it runs: its description, else its command.
+  activity.headline = [&supervisor](const json& a) {
+    const auto named = [&](int64_t id) {
+      const std::optional<Activity> job = supervisor.Find(id);
+      if (!job) return "activity " + std::to_string(id);
+      return job->display_label.empty()
+                 ? Utf8Trunc(FirstLine(job->cmd), kStatusLabelBytes)
+                 : job->display_label;
+    };
     const std::string operation = JsonValue(a, "operation", "");
-    const std::string target =
-        "activity " + std::to_string(JsonValue(a, "id", int64_t{0}));
+    const std::string target = named(JsonValue(a, "id", int64_t{0}));
     if (operation == "list") return Headline{"Listing", "Listed", "activities"};
     if (operation == "wait") {
       const json* ids = JsonArray(a, "ids");
       return Headline{"Waiting for", "Waited for",
                       ids && ids->size() == 1 && (*ids)[0].is_number_integer()
-                          ? "activity " + (*ids)[0].dump()
+                          ? named((*ids)[0].get<int64_t>())
                       : ids && !ids->empty() ? Plural(ids->size(), "activity")
                                              : "activities"};
     }

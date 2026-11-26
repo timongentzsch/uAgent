@@ -190,10 +190,14 @@ bool SessionHost::RefreshCatalogue(bool force) {
     session.host = item.host;
     session.parent = item.parent;
     session.agent_edits = item.agent_edits;
+    session.agent_name = item.name;
+    session.agent_call = item.agent_call;
     session.side = item.side;
     session.model = item.model;
     session.cost = item.cost;
     session.turns = item.turns;
+    session.tokens = item.tokens;
+    session.tool_calls = item.tool_calls;
     session.todo = item.todo;
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
@@ -317,6 +321,7 @@ bool SessionHost::HasWorker(const std::string& id) const {
 json SessionHost::Metadata(const HostSession& session) const {
   // A decision routed to an agent's parent does not wait on a person.
   const bool waits = WaitsOnPerson(session.pending);
+  const json* usage = JsonObject(session.state, "usage");
   json metadata = {
       {"id", session.id},
       {"task_id", session.task_id},
@@ -343,6 +348,16 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"cost", JsonValue(JsonValue(session.state, "usage", json::object()),
                          "cost", session.cost)},
       {"turns", JsonValue(session.state, "turns", session.turns)},
+      {"tokens", usage ? UsageFromJson(*usage).Tokens() : session.tokens},
+      // The running turn's calls join the statistics when it ends.
+      {"tool_calls",
+       JsonValue(JsonValue(session.state, "statistics", json::object()),
+                 "tool_calls", session.tool_calls) +
+           (session.turn_active
+                ? JsonValue(session.state, "turn_tool_calls", int64_t{0})
+                : 0)},
+      {"turn_started_ms",
+       JsonValue(session.state, "turn_started_ms", int64_t{0})},
       {"todo", session.state.contains("todo")
                    ? TodoProgress(JsonValue(session.state, "todo", json()))
                    : session.todo},
@@ -352,6 +367,8 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"updated", session.updated}};
   if (!session.agent_edits.empty()) {
     metadata["agent_edits"] = session.agent_edits;
+    metadata["agent_name"] = session.agent_name;
+    metadata["agent_call"] = session.agent_call;
   }
   return metadata;
 }

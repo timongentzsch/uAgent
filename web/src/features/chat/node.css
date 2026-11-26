@@ -30,6 +30,28 @@ div.node-row > .row-chevron {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* An agent's icon, name and word lead its row and are cut last: the name
+   shortens, the headline gives way. */
+.node-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  min-width: 0;
+  max-width: 60%;
+}
+.node-lead > .truncate {
+  min-width: 0;
+}
+@container column (max-width: 43rem) {
+  .node-word.agent-figures {
+    display: none;
+  }
+}
+/* Its icon and word keep their size. */
+.node-lead > :not(.truncate) {
+  flex: none;
+}
 /* The word takes at most two fifths of the row; the headline keeps the rest. */
 .node-word {
   flex: 0 1 auto;
@@ -189,9 +211,16 @@ div.node-row > .row-chevron {
   background: var(--surface);
 }
 .artifact-card-cover {
+  display: grid;
   justify-self: start;
   min-height: 0;
   padding: 0;
+}
+/* "Preview unavailable" lies over the cover's box. */
+.artifact-card-cover > * {
+  position: relative;
+  grid-area: 1 / 1;
+  place-self: center;
 }
 .node-file > figcaption {
   display: flex;

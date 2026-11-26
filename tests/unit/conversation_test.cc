@@ -18,6 +18,7 @@
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/private_store.h"
 #include "include/core/runtime_config.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
@@ -522,6 +523,14 @@ TEST_CASE(TestSavedTranscriptIndex) {
     });
   }
   for (auto& reader : readers) CHECK(reader.get());
+  // An exchange file the cleanup removed falls back to the inline record.
+  const std::string removed = UagentDir(kArtifactsDir) + "/exchange-gone";
+  CHECK(JsonValue(ReadPrivateArtifact(removed, 0), "error", "")
+            .starts_with("removed by the cleanup"));
+  conversation.RecordDisplay("t-call-2", {{"output", "retained output"},
+                                          {"exchange", exchange},
+                                          {"exchange_path", removed}});
+  CHECK(view.Exchange("t-call-2")["text"] == JsonDump(exchange));
   std::map<std::string, std::string> actual;
   uint64_t before = 0;
   for (int i = 0; i < 4; ++i) {
@@ -1296,6 +1305,31 @@ TEST_CASE(TestViewKeepsTheHeadOfALargeTurn) {
   CHECK(view["nodes"].size() <= kViewNodes);
   CHECK(view["more"] == true);
   CHECK(view["before"] == view["nodes"][1]["sequence"]);
+}
+
+// An attached picture fills the window by what a provider bills for it, not
+// by its base64 payload; text counts exactly as JsonEstimatedBytes does.
+TEST_CASE(TestContextBytesCountsAnImageFlat) {
+  const json text =
+      json::array({{{"role", "system"}, {"content", "You help."}},
+                   {{"role", "user"}, {"content", "What is on it?"}},
+                   {{"role", "assistant"},
+                    {"content", nullptr},
+                    {"tool_calls", json::array({{{"id", "call-1"}}})}}});
+  CHECK(ContextBytes(text) == JsonEstimatedBytes(text));
+  json image = text;
+  image[1]["content"] =
+      json::array({{{"type", "text"}, {"text", "What is on it?"}},
+                   {{"type", "image_url"},
+                    {"image_url",
+                     {{"url", "data:image/png;base64," +
+                                  std::string(MiB(1) + KiB(400), 'A')}}}}});
+  CHECK(JsonEstimatedBytes(image) > MiB(1));
+  CHECK(EstimatedTokens(ContextBytes(image)) < 3000);
+  // Staged, not yet encoded, it costs the same.
+  image[1]["content"][1] = {
+      {"type", "attachment"}, {"path", "/tmp/a.png"}, {"mime", "image/png"}};
+  CHECK(EstimatedTokens(ContextBytes(image)) > 1500);
 }
 
 }  // namespace uagent

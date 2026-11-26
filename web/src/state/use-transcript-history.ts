@@ -1,11 +1,23 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "preact/hooks";
-import {
-  bookmarks,
-  storeBookmark,
-  type Bookmark,
-} from "./transcript-bookmarks.ts";
+import { dropOldest, maxTranscriptBookmarks } from "../shared/limits.ts";
 import { motionEase, motionMs } from "../shared/motion.ts";
 import { useLatest } from "../shared/use-latest.ts";
+
+// Where each transcript was left while the app runs: following its end, or a
+// message (and the paragraph inside it) with its offset. A page that loads
+// opens every transcript at its end.
+type Bookmark = {
+  follow: boolean;
+  message?: string;
+  inner?: string;
+  offset?: number;
+};
+const bookmarks = new Map<string, Bookmark>();
+function storeBookmark(key: string, value: Bookmark) {
+  bookmarks.delete(key);
+  bookmarks.set(key, value);
+  dropOldest(bookmarks, maxTranscriptBookmarks);
+}
 
 type Anchor = {
   node: HTMLElement;

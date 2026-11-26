@@ -34,6 +34,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/logs.h"
 #include "include/core/project.h"
 #include "include/core/runtime_config.h"
 #include "include/core/sandbox.h"
@@ -329,6 +330,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     return Failure(std::move(error), exit_code);
   }
 
+  if (options.debug) options.overrides["UAGENT_LOG_LEVEL"] = "debug";
   ConfigManager config_manager = ConfigManager::Capture(options.overrides);
   RuntimeConfig config = config_manager.Initialize();
   // Made once the settings are in effect, so the gateway's sandbox preset is
@@ -350,10 +352,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   // Housekeeping over the whole artifact tree is a session's, not something
   // each child it starts repeats.
   if (AgentDepth() == 0) MaintainArtifactsDaily();
-  if (!options.debug) {
-    options.debug_path = SettingText(Cfg("UAGENT_DEBUG_LOG"));
-    options.debug = !options.debug_path.empty();
-  }
+  options.debug = options.debug || Logs(LogKind::kTrace);
 
   auto context =
       std::make_unique<AppContext>(std::move(config), std::move(config_manager),

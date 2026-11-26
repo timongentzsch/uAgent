@@ -129,6 +129,8 @@ inline constexpr std::string_view kSandboxLevels[] = {"readonly", "default",
                                                       "relaxed", "off"};
 inline constexpr std::string_view kDetailLevels[] = {"minimal", "default",
                                                      "full"};
+inline constexpr std::string_view kLogLevels[] = {"off", "events", "full",
+                                                  "debug"};
 
 // Sent when a route has no credential; local OpenAI-compatible servers accept
 // any bearer value, and "no key configured" checks compare against it.
@@ -699,10 +701,20 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "days of session, activity, mail and MCP logs kept"),
         "Logs kept"),
     registry::Named(
-        registry::Int("logs.keepFiles", "UAGENT_LOG_FILES", {}, 200, 1, 100000,
+        registry::Int("logs.keepMb", "UAGENT_LOG_MB", {}, 1024, 1, 1048576,
                       ReloadPolicy::kNextUserTurn, "retention",
-                      "most files kept per log folder"),
-        "Log files kept"),
+                      "mebibytes of logs kept; the oldest go first"),
+        "Log space"),
+    registry::Named(
+        registry::Choice(
+            registry::Str("logs.level", "UAGENT_LOG_LEVEL", {}, "full",
+                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                          "retention",
+                          "what the agent records of its work: off, events "
+                          "(journal, MCP stderr), full (also requests and "
+                          "tool exchanges) or debug (also the trace)"),
+            kLogLevels),
+        "Log level"),
 
     registry::PerConversation(registry::Named(
         registry::Choice(
@@ -749,12 +761,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
             ReloadPolicy::kNextUserTurn, Sensitivity::kPublic, "behaviour",
             "comma-separated sensitive variables approved shells may inherit"),
         "Shell variables allowed"),
-    registry::Terminal(registry::Named(
-        registry::Str("debug.log", "UAGENT_DEBUG_LOG", {}, "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "behaviour",
-                      "write a sensitive reconstructable JSONL trace"),
-        "Debug log")),
     registry::Terminal(registry::Named(
         registry::Bul("terminal.plain", "UAGENT_PLAIN", {}, false,
                       ReloadPolicy::kRestartRequired, "behaviour",

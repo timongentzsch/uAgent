@@ -177,14 +177,6 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
       bytes_ += usage.bytes;
     }
   }
-  if (tool_copy) EvictToolCopies(folder, bytes.size());
-  AssetUsage usage = InspectAssets(folder, true);
-  if (!usage.valid || usage.count >= kMaxSessionAssets ||
-      bytes.size() >
-          kSessionAssetBytes - std::min(usage.bytes, kSessionAssetBytes) ||
-      bytes.size() > kGlobalAssetBytes - std::min(bytes_, kGlobalAssetBytes)) {
-    return {{}, "attachment storage limit reached", 413};
-  }
   std::string mime = RasterMime(bytes);
   if (mime.empty()) mime = SvgMime(bytes);
   const bool image = !mime.empty();
@@ -202,30 +194,64 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
       mime = kOctetStreamMime;
     }
   }
+  // The size lets a page reserve a picture's box before it loads.
+  json facts = {{"name", name},
+                {"mime", mime},
+                {"image", image},
+                {"bytes", bytes.size()}};
+  if (int width = 0, height = 0; RasterSize(bytes, width, height)) {
+    facts["width"] = width;
+    facts["height"] = height;
+  }
+  const auto result = [&](const std::string& id) -> AssetStoreResult {
+    json value = facts;
+    value["id"] = id;
+    return {std::move(value), {}, 200};
+  };
+  // A file kept again unchanged is the asset it was. An upload, committed
+  // only when sent, and an evictable copy always get their own.
+  const std::string hash = HashHex(bytes);
+  std::error_code ec;
+  if (committed && !tool_copy) {
+    for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
+      auto data = entry.path();
+      if (data.extension() != ".json") continue;
+      const json record = ReadJsonFile(data.string(), kAssetRecordBytes);
+      data.replace_extension(".data");
+      // The hash is not collision-proof, so the bytes are compared too.
+      if (JsonValue(record, "hash", "") == hash &&
+          JsonValue(record, "name", "") == name &&
+          JsonValue(record, "committed", false) &&
+          !JsonValue(record, "tool_copy", false) &&
+          JsonValue(record, "shared", false) == shared &&
+          ReadFile(data.string(), bytes.size() + 1) == bytes) {
+        return result(data.stem().string());
+      }
+    }
+  }
+  if (tool_copy) EvictToolCopies(folder, bytes.size());
+  AssetUsage usage = InspectAssets(folder, true);
+  if (!usage.valid || usage.count >= kMaxSessionAssets ||
+      bytes.size() >
+          kSessionAssetBytes - std::min(usage.bytes, kSessionAssetBytes) ||
+      bytes.size() > kGlobalAssetBytes - std::min(bytes_, kGlobalAssetBytes)) {
+    return {{}, "attachment storage limit reached", 413};
+  }
   std::string id = RandomToken(16), stem = folder + "/" + id, error;
   if (id.empty() || !WritePrivateFile(stem + ".data", bytes, error)) {
     return {{}, "cannot persist upload", 500};
   }
   bytes_ += bytes.size();
-  if (!WritePrivateFile(stem + ".json",
-                        JsonDump({{"mime", mime},
-                                  {"name", name},
-                                  {"image", image},
-                                  {"extension", ".data"},
-                                  {"bytes", bytes.size()},
-                                  {"committed", committed},
-                                  {"tool_copy", tool_copy},
-                                  {"shared", shared}}),
-                        error)) {
+  json record = facts;
+  record.update({{"extension", ".data"},
+                 {"hash", hash},
+                 {"committed", committed},
+                 {"tool_copy", tool_copy},
+                 {"shared", shared}});
+  if (!WritePrivateFile(stem + ".json", JsonDump(record), error)) {
     return {{}, "cannot persist upload metadata", 500};
   }
-  return {{{"id", id},
-           {"name", name},
-           {"mime", mime},
-           {"image", image},
-           {"bytes", bytes.size()}},
-          {},
-          200};
+  return result(id);
 }
 
 std::string AssetStore::Claim(const std::string& session_path, const json& ids,

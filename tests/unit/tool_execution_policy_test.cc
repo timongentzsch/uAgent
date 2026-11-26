@@ -405,6 +405,12 @@ TEST_CASE(TestPayloadToolsRequireTheirPayload) {
   CHECK(agents &&
         RequiredApproval(*agents, {{"action", "delete"}, {"id", "x"}}) ==
             ApprovalClass::kMandatoryHuman);
+  // An agent's rows are one step of the work, not a file looked at.
+  CHECK(
+      agents &&
+      StepKind(
+          agents->headline({{"action", "read"}, {"part", "rows"}, {"id", "x"}})
+              .past) == "step");
 }
 
 TEST_CASE(TestScheduleTool) {

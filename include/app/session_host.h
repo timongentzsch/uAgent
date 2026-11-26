@@ -94,12 +94,12 @@ struct HostSession {
   SessionStatus status = SessionStatus::kSaved;
   // `parent` is the conversation an agent or side chat belongs to, `model`
   // the file's.
-  std::string parent, agent_edits, model;
+  std::string parent, agent_edits, agent_name, agent_call, model;
   json side = nullptr;
   json suggestion = nullptr;
   // Spend, turns and to-do progress as last saved, until its runtime says.
   double cost = 0;
-  int64_t turns = 0;
+  int64_t turns = 0, tokens = 0, tool_calls = 0;
   json todo = nullptr;
   json state = json::object(), pending = nullptr;
   std::map<std::string, json> active_exchanges;

@@ -239,11 +239,7 @@ export const steered = [
 // the agent beside its text, and finished background work.
 export const arrivals = [
   {
-    ...turn(
-      "m-82",
-      82,
-      '[agent child "Find flights" finished (completed)]\nTwo flights found.',
-    ),
+    ...turn("m-82", 82, "Two flights found."),
     origin: "agent",
     agent: { session: "child", title: "Find flights", outcome: "completed" },
   },

@@ -34,6 +34,7 @@ extern char** environ;
 #include "include/core/build.h"
 #include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
@@ -212,7 +213,7 @@ int HeadlessMain(Options options, char* executable,
                  Observability& observability) {
   const bool json_stream = options.json_stream;
   const bool json_envelope = options.json;
-  observability.EnableJournal(false);  // headless runs keep no journal
+  observability.SetRole(AgentDepth() > 0 ? "agent" : "headless");
   if (json_stream && !observability.StartJsonStream()) {
     fprintf(stderr, "cannot initialize JSON event stream\n");
     return 1;
@@ -293,7 +294,12 @@ int Main(int argc, char** argv) {
   if (parsed.options.show_system_prompt) {
     return ShowSystemPrompt(std::move(parsed.options), argv[0], observability);
   }
-  if (parsed.options.web) return WebMain(parsed.options, argv);
+  if (parsed.options.web) {
+    observability.SetRole("web");
+    // The host is no conversation: it has no journal to keep.
+    observability.EnableJournal(false);
+    return WebMain(parsed.options, argv);
+  }
   if (parsed.options.prompt.empty() && !parsed.options.json &&
       !parsed.options.json_stream) {
     ResolveTerminalProfile(parsed.options);

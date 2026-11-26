@@ -40,12 +40,7 @@ constexpr int64_t kDefaultResponseReserveDivisor = 4;
 bool HoldsImage(const json& messages) {
   return std::ranges::any_of(messages, [](const json& message) {
     const json* parts = JsonArray(message, "content");
-    return parts && std::ranges::any_of(*parts, [](const json& part) {
-             const std::string type = JsonValue(part, "type", "");
-             return type == "image_url" ||
-                    (type == "attachment" &&
-                     JsonValue(part, "mime", "").starts_with("image/"));
-           });
+    return parts && std::ranges::any_of(*parts, IsImagePart);
   });
 }
 
@@ -279,6 +274,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                                   : JsonEstimatedBytes(schemas);
   const size_t message_bytes = JsonEstimatedBytes(messages);
   const size_t estimated_bytes = SaturatingAdd(message_bytes, schema_bytes);
+  const size_t context_bytes =
+      SaturatingAdd(ContextBytes(messages), schema_bytes);
   if (Debug().Enabled()) {
     DebugModelRequest(request, step, purpose, schemas, schema_bytes, messages,
                       message_bytes, request_messages, !projected.is_null());
@@ -314,7 +311,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   size_t pending_response_bytes = 0;
   size_t published_response_bytes = 0;
   bool progress_pending = false;
-  auto emit_progress = [this, estimated_bytes, &published_usage,
+  auto emit_progress = [this, context_bytes, &published_usage,
                         &published_response_bytes,
                         &parts](const json& reported, size_t response_bytes) {
     Usage provisional = session_usage_, current;
@@ -323,7 +320,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     // Context is the current request plus streamed content, not cumulative
     // billing tokens. Keep the same estimate when a provider reports no usage.
     int64_t context =
-        ContextTokens(SaturatingAdd(estimated_bytes, response_bytes));
+        ContextTokens(SaturatingAdd(context_bytes, response_bytes));
     Emit(Event{EventId::kUsageUpdated,
                {{"usage", UsageJson(provisional)},
                 {"context_tokens", context},
@@ -377,7 +374,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   // report below the estimate says nothing the estimate should lose.
   if (std::string_view(purpose) == "turn" && usage.PromptTokens() > 0) {
     context_offset_ = std::max<int64_t>(
-        0, usage.PromptTokens() - EstimatedTokens(estimated_bytes));
+        0, usage.PromptTokens() - EstimatedTokens(context_bytes));
   }
   json metrics = {{"model_calls", 1}, {"model_ms", result.duration_ms}};
   if (result.first_token_ms >= 0) {
@@ -392,6 +389,23 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     metrics["served_by"] = {{result.served_by, {{"model_calls", 1}}}};
   }
   conversation_.AddStatistics(metrics);
+  Emit(Event{EventId::kRequestCompleted,
+             {{"turn", turn_id_},
+              {"step", step},
+              {"request", request},
+              {"purpose", purpose},
+              {"response_id", result.response_id},
+              {"status", result.interrupted     ? "interrupted"
+                         : result.error.empty() ? "ok"
+                                                : "failed"},
+              {"http_status", result.http_status},
+              {"duration_ms", result.duration_ms},
+              {"ttft_ms", result.first_token_ms},
+              {"messages", messages.size()},
+              {"request_bytes", estimated_bytes},
+              {"context_tokens", ContextTokens(context_bytes)},
+              {"context_parts", JsonValue(parts, "parts", json::object())},
+              {"usage", UsageJson(usage)}}});
   if (Debug().Enabled()) DebugModelResponse(request, step, purpose, result);
   return result;
 }
@@ -591,7 +605,7 @@ json Agent::ContextParts() const {
   const json& messages = conversation_.Messages();
   for (size_t index = 0; index < messages.size(); ++index) {
     const json& message = messages[index];
-    const size_t size = JsonEstimatedBytes(message);
+    const size_t size = ContextBytes(message);
     // Of the message, `own` bytes are `part`'s and the rest `rest`'s.
     auto split = [&](const char* part, size_t own, const char* rest) {
       own = std::min(own, size);
@@ -609,7 +623,7 @@ json Agent::ContextParts() const {
         if (const json* content = JsonArray(message, "content")) {
           for (const json& part : *content) {
             if (JsonValue(part, "type", "") != "text") {
-              files += JsonEstimatedBytes(part);
+              files += ContextBytes(part);
             }
           }
         }

@@ -176,6 +176,7 @@ add_library(
   src/core/fs.cc
   src/core/workspace.cc
   src/core/library.cc
+  src/core/logs.cc
   src/core/mailbox.cc
   src/core/platform_posix.cc
   src/core/private_store.cc

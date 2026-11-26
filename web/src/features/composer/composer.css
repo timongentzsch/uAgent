@@ -38,16 +38,6 @@
     max-width: 100%;
   }
 }
-.composer .attachments {
-  flex-wrap: nowrap;
-  max-height: none;
-  padding: var(--space-2) var(--space-4);
-  overscroll-behavior-x: contain;
-}
-.composer .file-chip {
-  flex: none;
-  max-width: var(--pane);
-}
 /* A pending decision holds the input; Permissions can still settle it. */
 .composer-actions[data-held] > :not(.permission-control) {
   opacity: var(--opacity-disabled);

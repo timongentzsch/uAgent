@@ -1696,23 +1696,36 @@ TEST_CASE(TestSessionMail) {
   CHECK(!MayMail(SessionParty(stranger), SessionParty(origin), true));
   SetApprovalMode(before);
 
-  // The label says who wrote, from how the sender stands to the recipient.
+  // The label says who wrote, from how the sender stands to the recipient;
+  // the body says how long it is and who sent it, as data.
   auto received = [](const SessionMail& mail) {
     CHECK(SendSessionMail(mail).empty());
     const std::vector<Mail> taken =
         TakeMail(SessionIdFor(mail.to_path), [](const Mail&) { return true; });
     return taken.size() == 1 && taken[0].sender_path == mail.from_path
-               ? JsonValue(taken[0].body, "text", "")
-               : std::string();
+               ? taken[0].body
+               : json();
   };
-  CHECK(received({.from_path = parent, .to_path = child, .text = "go on"}) ==
-        "[parent guidance]\ngo on");
-  CHECK(received({.from_path = sibling, .to_path = child, .text = "hello"}) ==
-        "[session T (" + SessionIdFor(sibling) + ")]\nhello");
-  CHECK(received({.from_path = child,
-                  .to_path = parent,
-                  .text = "[event] done",
-                  .report = true}) == "[event] done");
+  json guidance =
+      received({.from_path = parent, .to_path = child, .text = "go on"});
+  CHECK(guidance["text"] == "[parent guidance]\ngo on");
+  CHECK(guidance["envelope"] == std::string("[parent guidance]\n").size());
+  CHECK(guidance["agent"] == json({{"session", SessionIdFor(parent)},
+                                   {"title", "T"},
+                                   {"outcome", "note"}}));
+  const std::string label = "[session T (" + SessionIdFor(sibling) + ")]\n";
+  json note =
+      received({.from_path = sibling, .to_path = child, .text = "hello"});
+  CHECK(note["text"] == label + "hello");
+  CHECK(note["envelope"] == label.size());
+  CHECK(!note.contains("state"));
+  json report = received({.from_path = child,
+                          .to_path = parent,
+                          .text = "done",
+                          .envelope = "[event]\n",
+                          .report = true});
+  CHECK(report["text"] == "[event]\ndone");
+  CHECK(!report.contains("agent"));
   CHECK(!SendSessionMail({.from_path = stranger, .to_path = child}).empty());
   // Hops come from the mail that started the turn: sessions answering each
   // other stop at kMailMaxHops.

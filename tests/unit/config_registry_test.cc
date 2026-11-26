@@ -43,7 +43,7 @@ constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_HISTORY_DAYS", HistoryDays},
     {"UAGENT_HISTORY_FILES", HistoryFiles},
     {"UAGENT_LOG_DAYS", LogKeepDays},
-    {"UAGENT_LOG_FILES", LogKeepFiles},
+    {"UAGENT_LOG_MB", LogKeepMb},
     {"UAGENT_IDLE_MINUTES", IdleMinutes},
     {"UAGENT_MAX_ACTIVITIES", MaxActivities},
     {"UAGENT_TOOL_CONCURRENCY", ToolConcurrency},

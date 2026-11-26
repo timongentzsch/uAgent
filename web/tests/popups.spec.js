@@ -49,20 +49,17 @@ const composer = (page, name) =>
   page.locator(".composer").getByRole("button", { name, exact: true }).click();
 
 // Each popup by its name, and how it is opened from a conversation.
-// The conversation's totals, the way to these two, show beside a wide input.
-const WIDE = new Set(["Conversation statistics", "Raw context"]);
+// The conversation's totals, the way to raw context, show beside a wide input.
+const WIDE = new Set(["Raw context"]);
 // The list is a drawer only where it does not fit beside the conversation.
 const NARROW = new Set(["Conversations"]);
 const POPUPS = {
   Conversations: showList,
   Settings: (page) => headerAction(page, "Settings"),
   Browser: (page) => headerAction(page, "Open browser"),
-  "Conversation statistics": (page) =>
-    composer(page, "Conversation statistics"),
   "Raw context": openRawContext,
   "Model and effort": (page) => composer(page, "Model and effort"),
   Approval: (page) => composer(page, "Approval"),
-  Tools: (page) => fromMenu(page, "Tools", true),
   "Rename conversation": (page) => fromMenu(page, "Rename"),
   "Delete conversation?": (page) => fromMenu(page, "Delete", true),
   "sample.png": async (page) => {

@@ -199,6 +199,14 @@ reach_hint() {
   echo "A pairing link works once, within $pairing_minutes minutes; $1 --web prints a new one."
 }
 
+# This machine's time zone name, for the container's browser; empty when it
+# cannot be read.
+host_zone() {
+  { timedatectl show -p Timezone --value 2>/dev/null ||
+      cat /etc/timezone 2>/dev/null ||
+      readlink /etc/localtime 2>/dev/null | sed -n 's|.*/zoneinfo/||p'; } | head -n 1
+}
+
 # The container's agent is UID 10001; you keep access to what it makes.
 workspace_folder() {
   mkdir -p "$1"
@@ -230,6 +238,7 @@ if [ "$choice" = container ]; then
       if [ -f "$deploy/.env" ]; then
         workspaces=$(sed -n 's/^UAGENT_WORKSPACES=//p' "$deploy/.env")
         kept_port=$(sed -n 's/^UAGENT_WEB_PORT=//p' "$deploy/.env")
+        kept_zone=$(sed -n 's/^UAGENT_TZ=//p' "$deploy/.env")
         port=${UAGENT_WEB_PORT:-${kept_port:-$port}}
       elif reply "Folder the agent works in, all it sees of this machine [$workspaces]:" &&
            [ -n "$answer" ]; then
@@ -238,6 +247,8 @@ if [ "$choice" = container ]; then
       workspace_folder "$workspaces"
       printf 'UAGENT_VERSION=%s\nUAGENT_WORKSPACES=%s\nUAGENT_WEB_PORT=%s\n' \
         "$version" "$workspaces" "$port" >"$deploy/.env"
+      zone=${kept_zone:-$(host_zone)}
+      [ -z "$zone" ] || echo "UAGENT_TZ=$zone" >>"$deploy/.env"
     fi
   fi
 fi

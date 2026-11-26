@@ -200,6 +200,13 @@ class InstallerTest(unittest.TestCase):
         self.assertIn("@198.51.100.2, then open the link there", remote.stdout)
         self.assertIn("docs/operations/remote-access.md", remote.stdout)
 
+    def test_the_container_gets_this_machines_time_zone(self):
+        self.fake("timedatectl", "#!/bin/sh\necho Europe/Berlin\n")
+        result = self.install(UAGENT_INSTALL="container")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        env = (self.home / ".local/share/uagent/container/deploy/.env").read_text()
+        self.assertIn("UAGENT_TZ=Europe/Berlin\n", env)
+
 
 if __name__ == "__main__":
     unittest.main()

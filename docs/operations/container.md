@@ -58,10 +58,13 @@ installer command and no **Update** button. The data volume is kept.
 Compose reads `.env` beside `compose.yaml` for substitution. A file
 `.env.appliance` one directory up (the checkout root, or
 `~/.local/share/uagent/container/`) is passed whole into the `uagent`
-container's environment: settings such as `UAGENT_WEB_ORIGIN`, provider
-keys, and `TZ` and `LANGUAGE` (`Europe/Berlin`, `de`), which the browser
-service passes to Chrome so pages see that clock and language rather than
-UTC and English. Keep the file private.
+container's environment: settings such as `UAGENT_WEB_ORIGIN` and provider
+keys. Keep the file private. The clock and language pages see are
+`UAGENT_TZ` and `UAGENT_LANGUAGE` below, set as `TZ` and `LANGUAGE` in the
+container, which the browser service passes to Chrome; they replace `TZ`
+and `LANGUAGE` in `.env.appliance`. The installer writes `UAGENT_TZ` from
+this machine's zone (`timedatectl`, `/etc/timezone` or the `/etc/localtime`
+link) when it can read one.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
@@ -71,6 +74,8 @@ UTC and English. Keep the file private.
 | `UAGENT_NETWORK` | `private` | `open` loads no rules |
 | `UAGENT_NETWORK_ALLOW` | empty | private destinations the agent may reach |
 | `UAGENT_CHROME` | `auto` | `off` starts no Chrome updater |
+| `UAGENT_TZ` | empty (UTC) | time zone of the agent's browser, such as `Europe/Berlin` |
+| `UAGENT_LANGUAGE` | empty (English) | languages of the agent's browser, such as `de` or `de:en` |
 | `UAGENT_PIDS_LIMIT` | `4096` | processes and threads of `uagent` |
 | `UAGENT_MEM_LIMIT` | `0` (none) | memory limit, such as `4g`; size it with `deploy/footprint.sh` |
 | `UAGENT_CPUS` | `0` (none) | CPU limit, such as `4` |

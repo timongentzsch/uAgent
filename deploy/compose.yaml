@@ -59,6 +59,10 @@ services:
     environment:
       UAGENT_WEB_PORT: ${UAGENT_WEB_PORT:-8080}
       UAGENT_CHROME: ${UAGENT_CHROME:-auto}
+      # The clock and language pages see (Europe/Berlin, de); empty: UTC and
+      # English.
+      TZ: ${UAGENT_TZ:-}
+      LANGUAGE: ${UAGENT_LANGUAGE:-}
     volumes:
       - uagent-data:/data
       - ${UAGENT_WORKSPACES:-../workspaces}:/workspaces

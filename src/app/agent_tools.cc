@@ -389,9 +389,10 @@ ToolResult StartAgents(const Api& api,
     // Said where it applies: waiting costs nothing, polling does.
     json started = {
         {"next", std::string(items ? "Each" : "It") +
-                     " reports when its turn ends, and that report starts "
-                     "your next turn. Unless other work is waiting, end this "
-                     "turn with one line saying what you started."}};
+                     " reports when its turn ends. To have that in this "
+                     "turn, call agents with action wait once your own work "
+                     "is done; else end this turn with one line saying what "
+                     "you started, and the report starts your next."}};
     if (items) {
       started["agents"] = json::array();
       for (const Child& row : rows) {

@@ -66,7 +66,8 @@ constexpr const char kBase[] =
     "yourself, and claim success only with tool evidence.\n\n"
     "## Answer\nLead with the outcome and anything blocking it. If a check "
     "failed or you could not verify something, say so plainly. Write "
-    "Markdown, with math in $…$ or $$…$$; cite code as path:line.";
+    "Markdown, math in $…$ or $$…$$, diagrams in mermaid; cite code as "
+    "path:line.";
 
 constexpr std::string_view kSections[] = {"## Evidence",   "## Tools",
                                           "## Scratch",    "## Changes",

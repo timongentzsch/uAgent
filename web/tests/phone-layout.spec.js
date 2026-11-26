@@ -721,6 +721,10 @@ test.describe("phone header", () => {
     await page.goto(`/#session=${session.id}`);
     await online(page);
     const head = page.locator(".conversation-head");
+    // A live conversation takes the new title in its own time.
+    await expect(head.locator("h1")).toHaveText(
+      "A title long enough that it cannot fit the width of a phone header",
+    );
     const totals = head.getByRole("button", {
       name: "Context and usage",
       exact: true,

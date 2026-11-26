@@ -316,6 +316,12 @@ EOF
     command=uagent
     offer_path
   fi
+  # Without questions, nothing asked for a provider.
+  if [ "$interactive" = no ] &&
+     ! compose exec -T uagent uagent --control '{"kind":"provider"}' 2>/dev/null |
+       grep -q '"configured":true'; then
+    echo "No model provider is set yet: run $command setup in a terminal, or set one in Settings in the web interface."
+  fi
   echo "Open the link below to pair this browser; to pair another device later: $command --web"
   compose exec -T uagent uagent --web
   reach_hint "$command"

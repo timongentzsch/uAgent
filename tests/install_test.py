@@ -169,6 +169,7 @@ class InstallerTest(unittest.TestCase):
         result = self.install(UAGENT_INSTALL="container")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("to pair another device later: uagent --web", result.stdout)
+        self.assertIn("No model provider is set yet: run uagent setup", result.stdout)
         # Not running: says how to start it; running: the container's, without
         # a terminal here.
         stopped = self.run_command("--version")

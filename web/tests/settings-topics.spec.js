@@ -301,3 +301,45 @@ for (const [width, height] of [
           .toEqual([]);
       });
   });
+
+// A long name in a row's detail is cut or wrapped inside the row's box, and
+// a cut one leaves the row as tall as before.
+for (const [width, height] of [
+  [1280, 800],
+  [390, 844],
+])
+  test(`a long conversation name stays inside its row at ${width} px`, async ({
+    page,
+    session,
+    command,
+  }) => {
+    await page.setViewportSize({ width, height });
+    const row = dialog(page)
+      .getByRole("navigation", { name: "Settings topics" })
+      .getByRole("button", { name: /^This conversation/ });
+    const measure = async (name) => {
+      await page.goto(`/#session=${session.id}&settings=`);
+      await page.reload();
+      await expect(row).toContainText(name);
+      return row.evaluate((node) => {
+        const box = node.getBoundingClientRect();
+        const detail = node.querySelector(".row-detail .truncate");
+        return {
+          height: box.height,
+          right: box.right,
+          detail: detail.getBoundingClientRect().right,
+          cut: detail.scrollWidth > detail.clientWidth,
+        };
+      });
+    };
+    const short = await measure("(no messages)");
+    await command("rename", {
+      session_id: session.id,
+      generation: session.generation || "",
+      title: `Compare the image in the protosphinx ${"X position ".repeat(12)}`,
+    });
+    const long = await measure("protosphinx");
+    expect(long.cut).toBe(true);
+    expect(long.detail).toBeLessThanOrEqual(long.right);
+    expect(long.height).toBeCloseTo(short.height, 0);
+  });

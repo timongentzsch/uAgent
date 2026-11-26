@@ -1532,15 +1532,17 @@
     flex: none;
     color: var(--muted);
   }
+  /* One column as wide as the row leaves it: a long label or detail wraps or
+     is cut there, never widening the row past its box. */
   .row-text {
     flex: 1;
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     min-width: 0;
   }
-  .row-label {
-    overflow-wrap: anywhere;
-  }
+  .row-label,
   .row-detail {
+    min-width: 0;
     overflow-wrap: anywhere;
   }
   .row-value {

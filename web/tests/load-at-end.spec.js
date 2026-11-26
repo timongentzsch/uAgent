@@ -3,6 +3,7 @@ import {
   expect,
   DEV_SERVER_URL,
   fakeStream,
+  leaveEnd,
   mockHost,
   online,
 } from "./fixtures.js";
@@ -213,16 +214,7 @@ test("the cards of a conversation ask for its preview address once", async ({
 
 const jump = (page) => page.getByRole("button", { name: "Jump to latest" });
 const scrollUp = async (page) => {
-  const box = page.locator(".transcript");
-  await expect
-    .poll(() =>
-      box.evaluate(
-        (node) => node.scrollHeight - node.clientHeight - node.scrollTop,
-      ),
-    )
-    .toBeLessThanOrEqual(2);
-  await box.hover();
-  await page.mouse.wheel(0, -400);
+  await leaveEnd(page.locator(".transcript"));
   await expect(jump(page)).toBeVisible();
 };
 
@@ -247,6 +239,20 @@ test("a reload opens a conversation left mid-way at its end", async ({
   await expect(jump(page)).toBeHidden();
 });
 
+// The reader's place: the first row showing and how far its top is from
+// the transcript's.
+const place = (page) =>
+  page.locator(".transcript").evaluate((node) => {
+    const top = node.getBoundingClientRect().top;
+    const row = [...node.querySelectorAll("[data-message-id]")].find(
+      (row) => row.getBoundingClientRect().bottom > top,
+    );
+    return {
+      id: row.dataset.messageId,
+      offset: Math.round(row.getBoundingClientRect().top - top),
+    };
+  });
+
 test("switching back in the app returns to where the reader was", async ({
   page,
 }) => {
@@ -254,8 +260,7 @@ test("switching back in the app returns to where the reader was", async ({
   release();
   await page.goto(new URL(`/#session=${ID}`, DEV_SERVER_URL).href);
   await scrollUp(page);
-  const box = page.locator(".transcript");
-  const left = await box.evaluate((node) => node.scrollTop);
+  const left = await place(page);
   await page
     .getByRole("button", { name: /^Other/ })
     .first()
@@ -267,9 +272,7 @@ test("switching back in the app returns to where the reader was", async ({
     .click();
   await expect(page.locator('[data-message-id="p-end"]')).toBeAttached();
   await expect(jump(page)).toBeVisible();
-  await expect
-    .poll(() => box.evaluate((node) => node.scrollTop))
-    .toBeCloseTo(left, 0);
+  await expect.poll(() => place(page)).toEqual(left);
 });
 
 test("a reload reads the open conversation once", async ({ page }) => {

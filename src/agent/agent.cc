@@ -540,8 +540,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
 
 size_t Agent::RequestContextBytes(size_t schema_bytes,
                                   const json* messages) const {
-  size_t bytes =
-      JsonEstimatedBytes(messages ? *messages : conversation_.Messages());
+  size_t bytes = ContextBytes(messages ? *messages : conversation_.Messages());
   return SaturatingAdd(bytes, schema_bytes);
 }
 

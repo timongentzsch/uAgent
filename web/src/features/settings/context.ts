@@ -1,6 +1,7 @@
 import { createContext } from "preact";
 import type { ComponentChildren, RefObject } from "preact";
 import { useContext } from "preact/hooks";
+import type { Panel } from "../../shared/settings-topics.ts";
 import type { Dispatch, StateUpdater } from "preact/hooks";
 import type {
   Catalogue,
@@ -27,6 +28,14 @@ export interface SettingsProps {
   logout: () => Promise<void>;
   instructions: (close: () => void) => ComponentChildren;
   library: (kind: "memory" | "skill") => void;
+  // Panels other features draw: `go` moves Settings to an address, `row`
+  // is the one it was asked to show.
+  panels: Partial<
+    Record<
+      Panel,
+      (go: (address: string) => void, row?: string) => ComponentChildren
+    >
+  >;
   // Counts every saved change, whoever made it.
   version: number;
   // Where it opens: "approvals/rules", a topic and a row in it.

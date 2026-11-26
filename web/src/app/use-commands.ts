@@ -96,11 +96,11 @@ export function useCommands({
   const screens: Record<string, () => void> = {
     "/context": () => showContext(),
     "/config": () => open({ type: "settings" }),
-    "/detail": () => open({ type: "settings", address: "device/detail" }),
+    "/detail": () => open({ type: "settings", address: "conversation/view" }),
     "/permissions": () =>
       open({ type: "settings", address: "approvals/rules" }),
     "/mcp": () => open({ type: "settings", address: "tools/mcp-servers" }),
-    "/tools": () => setModal({ type: "tools", session_id: selected }),
+    "/tools": () => open({ type: "settings", address: "conversation/tools" }),
     "/rename": () => session && setModal({ type: "rename", session }),
     "/memory": () => showLibrary("memory"),
     "/skills": () => showLibrary("skill"),

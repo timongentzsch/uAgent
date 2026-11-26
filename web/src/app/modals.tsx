@@ -22,7 +22,6 @@ import {
   Actions,
   Group,
   Button,
-  EmptyState,
   Input,
   Notice,
 } from "../shared/ui.tsx";
@@ -37,15 +36,16 @@ import MoveConversation from "../features/chat/move-conversation.tsx";
 import Inspector from "../features/chat/inspector.tsx";
 import Raw from "../features/chat/raw.tsx";
 import Instructions from "../features/settings/instructions.tsx";
-import Tools from "../features/settings/tools.tsx";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { useConversation, useHostContext } from "../state/host-context.ts";
 import { isSideChat, sessionById } from "../state/attention.ts";
 import type { Places } from "./use-places.tsx";
+import type { DetailControl } from "./menus.tsx";
+import { settingsPanels } from "./settings-panels.tsx";
 
 const browserDialog = () => import("../features/browser/browser.tsx");
 
-type Preferences = Pick<
+type Preferences = { detail: DetailControl } & Pick<
   ComponentProps<typeof Settings>,
   | "install"
   | "setInstall"
@@ -97,7 +97,7 @@ export default function Modals({
     | "setNewHost"
   >;
 }) {
-  const preferences = useContext(PreferencesContext)!;
+  const { detail, ...preferences } = useContext(PreferencesContext)!;
   const {
     projects,
     folder,
@@ -138,17 +138,13 @@ export default function Modals({
   const mcp = useSnapshots(store, (all) =>
     modal?.type === "settings" ? all[selected]?.state?.mcp : undefined,
   );
-  const toolsSessionId = modal?.type === "tools" ? modal.session_id : "";
-  const toolsMetadata = useSnapshots(
-    store,
-    (all) => all[toolsSessionId]?.metadata,
+  const conversation = useSnapshots(store, (all) =>
+    modal?.type === "settings" ? all[selected]?.state : undefined,
   );
-  const toolsPending = useSnapshots(
+  const pending = useSnapshots(
     store,
-    (all) => !!all[toolsSessionId]?.pending,
+    (all) => modal?.type === "settings" && !!all[selected]?.pending,
   );
-  const toolsSession =
-    toolsMetadata || sessionById(catalogue.sessions, toolsSessionId);
   const close = () => setModal(null);
   const instructions = (close: () => void) => (
     <Modal title="Instructions" size="l" layout="sheet" close={close}>
@@ -180,9 +176,9 @@ export default function Modals({
                   : isSideChat(modal.session)
                     ? "Delete this side chat?"
                     : "Delete conversation?"
-                : "unit" in modal && modal.unit
+                : modal.type === "statistics"
                   ? `${modal.unit} statistics`
-                  : "Context and usage"
+                  : ""
           }
           layout={modal.type === "statistics" ? "sheet" : "content"}
           close={close}
@@ -458,22 +454,14 @@ export default function Modals({
             refresh={refresh}
             selected={selected}
             session={session}
+            panels={settingsPanels({
+              session,
+              state: conversation,
+              detail,
+              pending,
+            })}
             instructions={instructions}
           />
-        </Modal>
-      )}
-      {modal?.type === "tools" && (
-        <Modal title="Tools" size="l" layout="sheet" close={close}>
-          {toolsSession ? (
-            <Tools
-              session={toolsSession}
-              online={online}
-              busy={!!toolsSession.turn_active || toolsPending}
-              changed={() => load(toolsSessionId)}
-            />
-          ) : (
-            <EmptyState>Open a conversation to choose its tools.</EmptyState>
-          )}
         </Modal>
       )}
       {viewed && (

@@ -23,7 +23,7 @@ import type {
   Outgoing,
 } from "../../shared/types.ts";
 import type { ComponentChildren, TargetedKeyboardEvent } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Square } from "lucide-preact";
 import { emptyDraft } from "../../state/store.ts";
 import { useStoreValue } from "../../state/value-store.ts";
@@ -73,7 +73,6 @@ function Composer({
   jump,
   unseen = 0,
   openInspector,
-  showStatistics,
   openBrowser,
   stopped,
   resume,
@@ -96,7 +95,6 @@ function Composer({
   jump: () => void;
   unseen?: number;
   openInspector: (target: InspectorTarget) => void;
-  showStatistics: () => void;
   openBrowser: () => void;
   stopped?: string;
   resume?: () => void;
@@ -109,7 +107,11 @@ function Composer({
   choose: (id: string) => void;
 }) {
   const { routes } = useApi();
-  const { online, connection, report } = useHostContext();
+  const { online, connection, report, setModal } = useHostContext();
+  const settings = useCallback(
+    (address: string) => setModal({ type: "settings", address }),
+    [setModal],
+  );
   const narrow = useNarrowColumn();
   const { drafts, setDraft, upload, busy, act, following } = useConversation();
   const draft = useStoreValue(drafts, (all) => all[session.id] ?? EMPTY_DRAFT);
@@ -450,12 +452,14 @@ function Composer({
             state={state}
             online={online}
             running={running || !!pending}
+            settings={settings}
           />
           <ApprovalControl
             session={session}
             permission={state?.permissions}
             online={online}
             report={report}
+            settings={settings}
           />
           <IconButton
             class="composer-primary"
@@ -528,7 +532,7 @@ function Composer({
             <SessionSummary
               state={state}
               queued={queued.length ? 0 : session.guidance}
-              open={showStatistics}
+              open={() => settings("conversation/context")}
             />
           </div>
         )}

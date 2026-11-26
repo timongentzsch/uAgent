@@ -263,10 +263,6 @@ export default function ChatPage({
     jumpToLatest();
     load(selected).catch(report);
   }, [jumpToLatest, load, selected, report]);
-  const showStatistics = useCallback(
-    () => setModal({ type: "statistics", session_id: selected }),
-    [setModal, selected],
-  );
   const openBrowser = useCallback(
     () => setModal({ type: "browser", handoff: true }),
     [setModal],
@@ -390,7 +386,6 @@ export default function ChatPage({
       unseen={unseen}
       jump={jump}
       openInspector={setInspector}
-      showStatistics={showStatistics}
       openBrowser={openBrowser}
       stopped={stopped}
       resume={actions.resume}

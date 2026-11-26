@@ -3,9 +3,10 @@ import { useState } from "preact/hooks";
 import { useAction } from "./use-action.ts";
 import { useResource } from "./use-resource.ts";
 import { useApi } from "../state/api.ts";
-import { Field, Select, LoadError } from "./ui.tsx";
+import { Button, Field, Select, LoadError } from "./ui.tsx";
+import { valueSources } from "./display.ts";
 import { SearchSelect } from "./search-select.tsx";
-import { ModelLoading, ModelActions, ModelDefaults } from "./loading.tsx";
+import { ModelLoading, ModelActions } from "./loading.tsx";
 
 export default function ModelPicker({
   session,
@@ -15,6 +16,7 @@ export default function ModelPicker({
   close,
   selection,
   save,
+  settings,
 }: {
   session: SessionRef & { cwd?: string };
   state?: State;
@@ -25,12 +27,12 @@ export default function ModelPicker({
   selection?: string;
   save?: (value: string, model: string, effort: string) => unknown;
   close: () => void;
+  // Opens Settings at an address; a conversation's picker links its default.
+  settings?: (address: string) => void;
 }) {
   const { command } = useApi();
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState(state?.effort || "default");
-  // The first choice is for every conversation to come.
-  const [forAll, setForAll] = useState(!save && state?.route === "");
   const action = useAction();
   const {
     value: catalog,
@@ -69,8 +71,7 @@ export default function ModelPicker({
     },
     [session.id, session.cwd],
   );
-  if (!catalog && !loadError)
-    return <ModelLoading close={close} defaults={!save} />;
+  if (!catalog && !loadError) return <ModelLoading close={close} />;
   const selected = catalog?.models.find((item) => item.value === model);
   const efforts = [
     ...new Set([
@@ -120,7 +121,22 @@ export default function ModelPicker({
           {!!catalog.unavailable?.length && (
             <p class="muted small">
               No list from {catalog.unavailable.join(", ")}: check its address
-              and key under Providers in Settings.
+              and key under{" "}
+              {settings ? (
+                <Button
+                  variant="quiet"
+                  size="compact"
+                  onClick={() => {
+                    close();
+                    settings("models/providers");
+                  }}
+                >
+                  Providers in Settings
+                </Button>
+              ) : (
+                "Providers"
+              )}
+              .
             </p>
           )}
           <div class="field-row">
@@ -137,12 +153,22 @@ export default function ModelPicker({
               </Select>
             </Field>
           </div>
-          {!save && (
-            <ModelDefaults
-              checked={forAll}
-              disabled={action.busy}
-              change={setForAll}
-            />
+          {settings && (
+            <div class="default-source">
+              <small class="muted">
+                {valueSources[state?.route_source ?? ""]}
+              </small>
+              <Button
+                variant="quiet"
+                size="compact"
+                onClick={() => {
+                  close();
+                  settings("models/model");
+                }}
+              >
+                Change the default
+              </Button>
+            </div>
           )}
           {loadError && <LoadError error={loadError} retry={retry} />}
           {action.error && <LoadError error={action.error} />}
@@ -169,7 +195,9 @@ export default function ModelPicker({
               operation: "select",
               model,
               effort,
-              default: forAll,
+              // Nothing configured yet: the first choice is the default, as
+              // the terminal's /model makes it.
+              default: state?.route === "",
             });
             if (result.pending)
               throw new Error(

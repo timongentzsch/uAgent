@@ -41,7 +41,9 @@ function Totals({
       <SessionSummary
         state={state}
         queued={queued ? 0 : session.guidance}
-        open={() => setModal({ type: "statistics", session_id: session.id })}
+        open={() =>
+          setModal({ type: "settings", address: "conversation/context" })
+        }
       />
     </span>
   );

@@ -1,23 +1,9 @@
 import { SearchSelect } from "./search-select.tsx";
-import {
-  Actions,
-  Button,
-  Field,
-  Placeholder,
-  Select,
-  Row,
-  Switch,
-} from "./ui.tsx";
+import { Actions, Button, Field, Placeholder, Select } from "./ui.tsx";
 
 // Loading states that must exist before their feature's code loads.
 
-export function ModelLoading({
-  close,
-  defaults = true,
-}: {
-  close: () => void;
-  defaults?: boolean;
-}) {
+export function ModelLoading({ close }: { close: () => void }) {
   return (
     <div class="model-form">
       <Placeholder label="Loading models…">
@@ -33,36 +19,9 @@ export function ModelLoading({
             <Select aria-label="Effort" />
           </Field>
         </div>
-        {defaults && (
-          <ModelDefaults checked={false} disabled change={() => {}} />
-        )}
       </Placeholder>
       <ModelActions close={close} />
     </div>
-  );
-}
-
-export function ModelDefaults({
-  checked,
-  disabled,
-  change,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  change: (checked: boolean) => void;
-}) {
-  return (
-    <Row
-      label="Also use for new conversations"
-      detail="Otherwise only this conversation changes."
-    >
-      <Switch
-        label="Also use for new conversations"
-        checked={checked}
-        disabled={disabled}
-        onChange={change}
-      />
-    </Row>
   );
 }
 

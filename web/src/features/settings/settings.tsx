@@ -14,7 +14,6 @@ import {
   type Panel,
   type Topic,
 } from "../../shared/settings-topics.ts";
-import { RemoteHostsPane } from "../sidebar/hosts.tsx";
 import { SettingsContext, type SettingsProps } from "./context.ts";
 import {
   ConfigNotices,
@@ -48,7 +47,10 @@ export default function Settings(props: SettingsProps) {
   const moved = usePushDirection(place.topic !== undefined);
   useDismiss(phone && place.topic !== undefined, () => go());
   const body = useRef<HTMLDivElement>(null);
-  const topics = TOPICS.map(({ id }) => id);
+  // This conversation is there while one is open.
+  const topics = TOPICS.map(({ id }) => id).filter(
+    (id) => id !== "conversation" || session,
+  );
   const current: Topic = place.topic ?? topics[0];
   const drilled = phone && place.topic !== undefined;
   const topic = topicOf(current)!;
@@ -86,7 +88,7 @@ export default function Settings(props: SettingsProps) {
     groups.includes(setting.group),
   );
   const folded = listed.filter((setting) => setting.advanced).length;
-  const panels: Record<Panel, () => ComponentChildren> = {
+  const panels: Partial<Record<Panel, () => ComponentChildren>> = {
     rules: () => <PermissionsPane />,
     "mcp-servers": () => (
       <McpServers
@@ -138,7 +140,6 @@ export default function Settings(props: SettingsProps) {
       </Group>
     ),
     devices: () => <DevicesPane />,
-    hosts: () => <RemoteHostsPane />,
     about: () => <AboutPane />,
     file: () => <SettingsFile config={config} scope={scope} online={online} />,
   };
@@ -173,6 +174,7 @@ export default function Settings(props: SettingsProps) {
           topics={topics}
           current={phone ? undefined : current}
           select={(id) => go(id)}
+          details={{ conversation: session?.title || "Conversation" }}
           class={moved && "push"}
         />
         {(!phone || drilled) && (
@@ -216,7 +218,10 @@ export default function Settings(props: SettingsProps) {
               if (!("group" in part))
                 return (
                   <div key={part.panel} data-row={part.panel}>
-                    {panels[part.panel]()}
+                    {(
+                      panels[part.panel] ??
+                      (() => props.panels[part.panel]?.(go, place.row))
+                    )()}
                   </div>
                 );
               const own = listed.filter(

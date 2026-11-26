@@ -261,6 +261,8 @@ SnapshotResult SessionHost::SavedSnapshot(std::shared_ptr<HostSession> session,
     const EffectiveConfigSnapshot configured = config.Read();
     const std::string route = configured.Get("UAGENT_MODEL");
     state["route"] = route.empty() ? record.metadata.model : route;
+    state["route_source"] =
+        JsonValue(configured.sources, "UAGENT_MODEL", "default");
     state["permissions"] = ApprovalState(configured, record.metadata.agent);
   } else if (PathExists(session->path)) {
     return {{{"error", loaded.status.message}}, 422};

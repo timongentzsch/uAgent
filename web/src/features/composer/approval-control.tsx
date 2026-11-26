@@ -1,12 +1,18 @@
 import { Shield } from "lucide-preact";
-import { Field, Select, DataText, LoadError } from "../../shared/ui.tsx";
+import {
+  Button,
+  Field,
+  Select,
+  DataText,
+  LoadError,
+} from "../../shared/ui.tsx";
 import { SheetButton } from "../../shared/sheet.tsx";
 import { useResource } from "../../shared/use-resource.ts";
 import { useApi } from "../../state/api.ts";
 import type { Session, State, Report } from "../../shared/types.ts";
 import {
   agentScope,
-  approvalSources,
+  valueSources,
   permissionLabel,
   permissionLabels,
   permissionNotes,
@@ -51,17 +57,20 @@ export default function ApprovalControl({
   permission,
   online,
   report,
+  settings,
 }: {
   session: Session;
   permission?: State["permissions"];
   online: boolean;
   report: Report;
+  // Opens Settings at an address: the default's row.
+  settings: (address: string) => void;
 }) {
   const { command } = useApi();
   const effective =
     permission?.effective ??
     (permission?.mode === "default" ? permission.default : permission?.mode);
-  const source = approvalSources[permission?.source ?? ""];
+  const source = valueSources[permission?.source ?? ""];
   const effectiveLabel = permissionLabel(effective);
   return (
     <SheetButton
@@ -83,7 +92,6 @@ export default function ApprovalControl({
           <Field
             label="This conversation's approval mode"
             help={[
-              source,
               agentScope(session.agent_edits),
               permissionNotes[effective ?? "ask"] ?? permissionNotes.ask,
               "Changes to protected settings and startup files, unsandboxed commands and root commands require your approval.",
@@ -113,6 +121,19 @@ export default function ApprovalControl({
           {session.presence === "active" && (
             <CommandAccess session={session} effective={effective} />
           )}
+          <div class="default-source">
+            <small class="muted">{source}</small>
+            <Button
+              variant="quiet"
+              size="compact"
+              onClick={() => {
+                close();
+                settings("approvals/approval.mode");
+              }}
+            >
+              Change the default
+            </Button>
+          </div>
         </>
       )}
     </SheetButton>

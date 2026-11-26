@@ -93,7 +93,7 @@ export function TerminalMenu({
 
 // The level a conversation's work is drawn at, whether thinking is, and how
 // this device changes either.
-interface DetailControl {
+export interface DetailControl {
   levels: readonly string[];
   level: string;
   change: (level: string) => void;
@@ -107,6 +107,7 @@ export function ConversationMenu({
   find,
   notify,
   open,
+  settings,
   detail,
   children,
   more,
@@ -117,6 +118,8 @@ export function ConversationMenu({
   find?: () => void;
   notify: (text: string) => void;
   open: (modal: AppModal) => void;
+  // Opens this conversation in Settings at an address.
+  settings: (address: string) => void;
   detail?: DetailControl;
   children?: ComponentChildren;
   more?: ComponentChildren;
@@ -146,17 +149,10 @@ export function ConversationMenu({
         </MenuItem>
       )}
       {select && <MenuItem onClick={select}>Select</MenuItem>}
-      <MenuItem
-        onClick={() => open({ type: "statistics", session_id: item.id })}
-      >
+      <MenuItem onClick={() => settings("conversation/context")}>
         Context and usage
       </MenuItem>
-      <MenuItem
-        disabled={!online}
-        onClick={() => open({ type: "tools", session_id: item.id })}
-      >
-        Tools
-      </MenuItem>
+      <MenuItem onClick={() => settings("conversation/tools")}>Tools</MenuItem>
       {detail && detail.levels.length > 0 && (
         <MenuSub label="View" value={capitalize(detail.level)}>
           {detail.levels.map((level) => (

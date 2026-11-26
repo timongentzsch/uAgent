@@ -34,4 +34,9 @@ function ModelControl(
 }
 
 // The picker reads the route and efforts, nothing else of the state.
-export default updateChecked(ModelControl, ["route", "effort", "efforts"]);
+export default updateChecked(ModelControl, [
+  "route",
+  "route_source",
+  "effort",
+  "efforts",
+]);

@@ -146,6 +146,9 @@ void Application::PublishChannelState(bool checkpoint) {
   state["usage"] = UsageJson(agent_.SessionUsage());
   state["statistics"] = agent_.Statistics();
   state["permissions"] = PermissionControl(context_, json::object());
+  // Where the model comes from, said beside it as the approval's source is.
+  state["route_source"] = JsonValue(context_.config_manager.Read().sources,
+                                    "UAGENT_MODEL", "default");
   state["mcp"] = McpStatus(runtime_.mcp, context_.tools);
   state["efforts"] = json::array({"default"});
   for (std::string_view effort : kReasoningEfforts) {

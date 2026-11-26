@@ -625,6 +625,14 @@ function App({ host, bindResult, reading }: HostAppProps) {
     },
     [open, report, refresh, command],
   );
+  // This conversation in Settings is the open one: another is opened first.
+  const conversationSettings = useCallback(
+    (item: Session, address: string) =>
+      void (
+        item.id === selectedRef.current ? Promise.resolve() : choose(item.id)
+      ).then(() => open({ type: "settings", address }), report),
+    [choose, open, report],
+  );
   const conversationMenu = useCallback(
     (
       item: Session,
@@ -641,6 +649,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
         }
         notify={setNotice}
         open={open}
+        settings={(address) => conversationSettings(item, address)}
         detail={withDetail ? detailControl : undefined}
         more={extra?.more}
         select={
@@ -650,7 +659,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
         {extra?.top}
       </ConversationMenu>
     ),
-    [online, fork, load, report, open, detailControl],
+    [online, fork, load, report, open, detailControl, conversationSettings],
   );
   const step = (key: "ArrowUp" | "ArrowDown") => {
     const order = sessionOrder(
@@ -1179,6 +1188,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
                 setNotificationMode,
                 notifications,
                 logout,
+                detail: detailControl,
                 library: (kind: LibraryKind) => {
                   setModal(null);
                   setLibraryKind(kind);

@@ -56,22 +56,24 @@ export default function Statistics({
   ) : error ? (
     <LoadError error={error} retry={retry} />
   ) : (
-    <StatisticsLoading unit={modal.unit}>
-      {!modal.unit && <ContextSection />}
-    </StatisticsLoading>
+    <StatisticsLoading unit={modal.unit} />
   );
 }
 
-function StatisticsContent({
+// A turn's or a message's numbers, or with no `nodeId` the conversation's;
+// `context` false leaves out the context, which Settings shows above.
+export function StatisticsContent({
   session,
   state,
   nodeId,
   showContext,
+  context = true,
 }: {
   session: Session;
   state?: State;
   nodeId?: string;
   showContext?: () => void;
+  context?: boolean;
 }) {
   const [scope, setScope] = useState<"turn" | "session">(
     nodeId ? "turn" : "session",
@@ -182,7 +184,7 @@ function StatisticsContent({
         </Notice>
       ) : (
         <>
-          {!node && (
+          {!node && context && (
             <ContextSection
               key={session.id}
               session={session}

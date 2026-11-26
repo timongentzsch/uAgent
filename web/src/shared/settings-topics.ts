@@ -2,6 +2,7 @@ import {
   BookOpen,
   Cpu,
   Info,
+  MessageSquare,
   Monitor,
   Puzzle,
   Server,
@@ -13,6 +14,13 @@ import {
 // ⌘K and addresses read this one table. A host group no topic names here
 // still shows, at the end of the topic the host puts it in.
 export type Panel =
+  | "context"
+  | "model"
+  | "approval"
+  | "tools"
+  | "view"
+  | "usage"
+  | "restart"
   | "rules"
   | "mcp-servers"
   | "skills"
@@ -37,6 +45,20 @@ const panel = (id: Panel, label: string, words = ""): Part => ({
 });
 
 export const TOPICS = [
+  {
+    id: "conversation",
+    label: "This conversation",
+    icon: MessageSquare,
+    parts: [
+      panel("context", "Context", "window tokens compact raw estimated"),
+      panel("model", "Model", "effort reasoning"),
+      panel("approval", "Approval", "ask auto review yolo plan sandbox"),
+      panel("tools", "Tools", "profile offered"),
+      panel("view", "View", "detail minimal default full thinking"),
+      panel("usage", "Usage", "statistics tokens cost time turns calls"),
+      panel("restart", "Restart conversation", "close conversation"),
+    ],
+  },
   {
     id: "models",
     label: "Models and providers",

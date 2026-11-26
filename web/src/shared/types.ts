@@ -546,6 +546,8 @@ export interface State {
   attachments?: number;
   title?: string;
   route?: string;
+  // Where the model comes from: "conversation", "user", "project", …
+  route_source?: string;
   effort?: string;
   efforts?: string[];
   view?: View;
@@ -1113,12 +1115,13 @@ export type StatisticsModal =
       node?: never;
       snapshot?: never;
     }
+  // One turn's or message's; a conversation's are in Settings.
   | {
       type: "statistics";
       session_id: string;
-      node_id?: string;
+      node_id: string;
       // What node_id names: a turn (its footer) or one message.
-      unit?: StatisticsUnit;
+      unit: StatisticsUnit;
     };
 export type StatisticsUnit = "Turn" | "Message";
 export interface RawOptions {
@@ -1150,8 +1153,7 @@ export type AppModal =
   | { type: "delete-many"; sessions: Session[]; spaces: Space[] }
   // address: where Settings opens, "approvals/rules"; linked: opened from
   // the page's own address, which Back leaves.
-  | { type: "settings"; address?: string; linked?: boolean }
-  | { type: "tools"; session_id: string };
+  | { type: "settings"; address?: string; linked?: boolean };
 
 export interface LibraryItem {
   provenance?: {

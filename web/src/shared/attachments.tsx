@@ -1,10 +1,12 @@
 import { createContext, type ComponentChildren } from "preact";
 import { useContext, useState } from "preact/hooks";
-import { FileText, Pencil } from "lucide-preact";
+import { FileText, Paperclip, Pencil, X } from "lucide-preact";
 import {
   Button,
   Deferred,
   DialogHeader,
+  IconButton,
+  Input,
   Modal,
   Spinner,
   cleanText,
@@ -116,6 +118,69 @@ export function ImageViewerDialog({
         />
       )}
     </Modal>
+  );
+}
+
+// Adds files to a message, in the composer and the box a conversation
+// starts from.
+export function AttachButton({
+  disabled,
+  add,
+}: {
+  disabled?: boolean;
+  add: (files: File[]) => void;
+}) {
+  return (
+    <label class="file-button icon-button" title="Attach files">
+      <Paperclip />
+      <Input
+        type="file"
+        aria-label="Attach files"
+        multiple
+        disabled={disabled}
+        onChange={(event) => {
+          add([...(event.currentTarget.files || [])]);
+          event.currentTarget.value = "";
+        }}
+      />
+    </label>
+  );
+}
+
+// Files pasted on their own. Spreadsheets and web pages put a rendered image
+// beside the text; the text is what was copied.
+export function pastedFiles(event: ClipboardEvent) {
+  const files = [...(event.clipboardData?.files || [])];
+  if (!files.length || event.clipboardData?.getData("text/plain")) return [];
+  event.preventDefault();
+  return files;
+}
+
+// A file going with a message: its picture or a clip, what names it, and a
+// way to take it off.
+export function FileChip({
+  name,
+  busy,
+  tile,
+  remove,
+  children,
+}: {
+  name: string;
+  busy?: boolean;
+  tile?: ComponentChildren;
+  remove?: () => void;
+  children: ComponentChildren;
+}) {
+  return (
+    <div class="chip chip-outline file-chip" aria-busy={busy || undefined}>
+      {tile || <Paperclip />}
+      <span title={name}>{children}</span>
+      {remove && (
+        <IconButton label={`Remove ${name}`} onClick={remove}>
+          <X />
+        </IconButton>
+      )}
+    </div>
   );
 }
 

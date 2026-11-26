@@ -26,6 +26,10 @@ async function attachOnHome(page) {
   await expect(box.locator(".file-chip")).toHaveCount(2);
   await box.getByRole("button", { name: "Remove note.txt" }).click();
   await expect(box.locator(".file-chip")).toHaveText(/sample\.png/);
+  // The attach control takes no press meant for the controls beside it.
+  await box
+    .getByRole("button", { name: "Scratch", exact: true })
+    .click({ trial: true });
   await field.fill("What is in this picture?");
 }
 
@@ -49,6 +53,9 @@ test("a picture attached on the home screen goes with the first message", async 
   await expect(first.getByText("note.txt")).toHaveCount(0);
   await expect(page.locator(".composer .file-chip")).toHaveCount(0);
   await expect(page.getByLabel("Message or guidance")).toHaveValue("");
+  await page
+    .getByRole("button", { name: "Model and effort", exact: true })
+    .click({ trial: true });
 });
 
 test("a first message the host refuses stays in the new conversation's draft", async ({

@@ -740,16 +740,16 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       100000, ReloadPolicy::kNextUserTurn, "history",
                       "most saved sessions kept"),
         "Sessions kept")),
-    registry::Advanced(registry::Named(
+    registry::Named(
         registry::Int("logs.keepDays", "UAGENT_LOG_DAYS", {}, 14, 1, 3650,
                       ReloadPolicy::kNextUserTurn, "logs",
                       "days of session, activity, mail and MCP logs kept"),
-        "Logs kept")),
-    registry::Advanced(registry::Named(
+        "Logs kept"),
+    registry::Named(
         registry::Int("logs.keepMb", "UAGENT_LOG_MB", {}, 1024, 1, 1048576,
                       ReloadPolicy::kNextUserTurn, "logs",
                       "mebibytes of logs kept; the oldest go first"),
-        "Log space")),
+        "Log space"),
     registry::Named(
         registry::Choice(
             registry::Str("logs.level", "UAGENT_LOG_LEVEL", {}, "full",

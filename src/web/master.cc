@@ -935,11 +935,9 @@ int MasterMain(const WebOptions& options, char** argv) {
                       "existing master settings take precedence; using its "
                       "published origin\n");
             }
-            printf("%sSuggested host directory: %s\n",
-                   PairingText(JsonValue(identity, "url", ""),
-                               JsonValue(identity, "pairing_code", ""))
-                       .c_str(),
-                   CanonicalCwd().c_str());
+            printf("%s", PairingText(JsonValue(identity, "url", ""),
+                                     JsonValue(identity, "pairing_code", ""))
+                             .c_str());
             return 0;
           }
         }

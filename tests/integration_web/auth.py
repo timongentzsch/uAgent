@@ -97,8 +97,12 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
                 "host bypass",
             )
             reused = run(project, env, "--web", "--web-port", "12345", binary=binary)
+            # The same pairing text a new host prints, and nothing that names
+            # where this command ran: a container's folder means nothing outside.
             assert_true(
-                reused.returncode == 0 and client.origin in reused.stdout,
+                reused.returncode == 0
+                and client.origin in reused.stdout
+                and str(project.resolve()) not in reused.stdout,
                 reused.stdout + reused.stderr,
             )
             assert_true(process.poll() is None, "master replaced")

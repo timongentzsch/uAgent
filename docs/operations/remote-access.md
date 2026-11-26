@@ -24,7 +24,7 @@ port and origin whatever flags the second call carries. A paired device
 holds an `HttpOnly`, `SameSite=Strict` cookie for 30 days, not extended by
 use, after which it pairs again. At most 16 devices are paired
 (`kWebDeviceLimit`); `POST /api/auth` then answers 409. Revoke a device in
-Settings → Host → Paired devices, or **Log out this device**; its event
+Settings → Host and devices → Paired devices, or **Log out this device**; its event
 streams end at their next poll and every preview link is dropped.
 
 ## Give the host its public origin
@@ -86,13 +86,13 @@ local port must equal the host's port, because `Host` must read
 
 ## Install as an app
 
-Settings → Host → Install, where the browser offers it; it needs HTTPS or
+Settings → This device → Install, where the browser offers it; it needs HTTPS or
 loopback. On iOS: Safari → Share → Add to Home Screen, then pair the
 installed app if its storage is separate.
 
 ## Notifications
 
-Turn them on per device in Settings → Host → Notifications; both modes need
+Turn them on per device in Settings → This device → Notifications; both modes need
 a secure context and the browser's permission.
 
 | Mode | Works | Needs |

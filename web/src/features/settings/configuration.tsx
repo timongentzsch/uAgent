@@ -1,24 +1,18 @@
-import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { plural } from "../../shared/quantities.ts";
 import type { ConfigSetting, Session } from "../../shared/types.ts";
 import {
-  Button,
   ConfirmModal,
   Group,
-  Input,
-  InputRow,
   LoadError,
   Notice,
   Row,
 } from "../../shared/ui.tsx";
-import { SettingRowsLoading } from "./loading.tsx";
 import { itemized, note, type SavedScope } from "./config/facts.ts";
 import { RestartNotice } from "./config/restart-notice.tsx";
 import { SettingField } from "./config/setting-field.tsx";
-import { useConfiguration } from "./config/use-configuration.ts";
+import type { Config } from "./config/use-configuration.ts";
 import "./configuration.css";
-import { matches } from "../../shared/fuzzy.ts";
 
 const WHOLE = {
   user: {
@@ -37,51 +31,23 @@ const WHOLE = {
   },
 } as const;
 
-export default function Configuration({
+// What the host could not read or take, and what waits for a restart.
+export function ConfigNotices({
+  config,
   scope,
   folder,
-  version,
-  online,
   sessions,
-  children,
 }: {
+  config: Config;
   scope: SavedScope;
   folder?: string;
-  version: number;
-  online: boolean;
   sessions: Session[];
-  children: ComponentChildren;
 }) {
-  const config = useConfiguration(scope, folder, version);
-  const whole = WHOLE[scope];
-  const [query, setQuery] = useState("");
-  const [confirm, setConfirm] = useState(false);
-  const [asFile, setAsFile] = useState(false);
-  const find = (name: string) =>
-    config.settings.find((setting) => setting.name === name);
-  const needle = query.trim().toLowerCase();
-  const listed = config.settings.filter((setting) =>
-    matches(
-      query,
-      setting.label,
-      setting.key,
-      setting.name,
-      setting.purpose,
-      setting.description,
-    ),
-  );
-  const held = config.settings.filter(
-    (setting) =>
-      setting.set?.[scope] !== undefined && setting.sensitivity === "public",
-  ).length;
-  // A refresh that fails leaves the form, and what is typed in it.
-  const failed = config.error != null && (
-    <LoadError error={config.error} retry={config.retry} />
-  );
-
   return (
-    <section class="configuration">
-      {failed}
+    <>
+      {config.error != null && (
+        <LoadError error={config.error} retry={config.retry} />
+      )}
       {config.problem && (
         <p class="group-footer">
           <Notice tone="error">{config.problem}</Notice>
@@ -90,114 +56,122 @@ export default function Configuration({
       {config.restart.length > 0 && (
         <RestartNotice
           key={config.restart.join()}
-          keys={config.restart.map((key) => find(key)?.label || key)}
+          keys={config.restart.map((key) => config.find(key)?.label || key)}
           // The web host's own settings restart it, not a conversation.
-          host={config.restart.some((key) => find(key)?.key.startsWith("web."))}
+          host={config.restart.some((key) =>
+            config.find(key)?.key.startsWith("web."),
+          )}
           running={sessions.filter((item) => item.generation).length}
           folder={scope === "project" ? folder : undefined}
         />
       )}
-      <InputRow class="group-block configuration-bar">
-        <Input
-          type="search"
-          aria-label="Find a setting"
-          placeholder={
-            scope === "project"
-              ? "Find a folder setting"
-              : "Find a setting for all conversations"
-          }
-          value={query}
-          disabled={asFile}
-          onInput={(event) => setQuery(event.currentTarget.value)}
-        />
-        <Button
-          variant="quiet"
-          disabled={!config.loaded}
-          onClick={() => setAsFile(!asFile)}
-        >
-          {asFile ? "Show the form" : "Show the file"}
-        </Button>
-      </InputRow>
-      {!asFile && !needle && children}
-      {!config.loaded && !failed && <SettingRowsLoading />}
-      {asFile && (
-        <Group
-          title="settings.json"
-          footer={
+    </>
+  );
+}
+
+// One group of host settings, drawn from the registry alone.
+export function SettingsGroup({
+  config,
+  label,
+  settings,
+  scope,
+  folder,
+  online,
+}: {
+  config: Config;
+  label: string;
+  settings: ConfigSetting[];
+  scope: SavedScope;
+  folder?: string;
+  online: boolean;
+}) {
+  const field = (setting: ConfigSetting) => (
+    <SettingField
+      key={setting.name}
+      reload={config.retry}
+      setting={setting}
+      scope={scope}
+      folder={folder}
+      find={config.find}
+      note={note(
+        setting,
+        scope,
+        config.find,
+        config.restart.includes(setting.name),
+      )}
+      error={
+        config.failed?.key === setting.name
+          ? String(
+              (config.failed.error as Error)?.message || config.failed.error,
+            )
+          : undefined
+      }
+      disabled={!online}
+      online={online}
+      save={config.save}
+    />
+  );
+  // A list follows its group as a group of its own.
+  const rows = settings.filter((setting) => !itemized(setting));
+  return (
+    <>
+      {rows.length > 0 && <Group title={label}>{rows.map(field)}</Group>}
+      {settings.filter(itemized).map(field)}
+    </>
+  );
+}
+
+// The settings file as it stands, and taking a whole scope back.
+export function SettingsFile({
+  config,
+  scope,
+  online,
+}: {
+  config: Config;
+  scope: SavedScope;
+  online: boolean;
+}) {
+  const whole = WHOLE[scope];
+  const [confirm, setConfirm] = useState(false);
+  const [asFile, setAsFile] = useState(false);
+  const held = config.settings.filter(
+    (setting) =>
+      setting.set?.[scope] !== undefined && setting.sensitivity === "public",
+  ).length;
+  return (
+    <>
+      <Group
+        title="Settings file"
+        footer={
+          config.file && (
             <>
-              <code>{config.file}</code> as it stands, with keys and other
-              secrets hidden. Edit it in an editor:{" "}
-              <code>settings.schema.json</code> beside it completes and checks
-              every setting, and a change is taken up at the next message.
+              Saved in <code>{config.file}</code>, which an editor can open too:{" "}
+              <code>settings.schema.json</code> beside it names and checks every
+              setting, and a change is taken up at the next message.
             </>
-          }
-        >
+          )
+        }
+      >
+        <Row
+          label={asFile ? "Hide the file" : "Show the file"}
+          detail="As it stands, with keys and other secrets hidden."
+          disabled={!config.loaded}
+          expanded={asFile}
+          onClick={() => setAsFile(!asFile)}
+        />
+        {asFile && (
           <pre class="configuration-file">
             <code>{JSON.stringify(config.document ?? {}, null, 2)}</code>
           </pre>
-        </Group>
-      )}
-      {!asFile &&
-        config.groups.map(({ id, label }) => {
-          const own = listed.filter((setting) => setting.group === id);
-          const field = (setting: ConfigSetting) => (
-            <SettingField
-              key={setting.name}
-              reload={config.retry}
-              setting={setting}
-              scope={scope}
-              folder={folder}
-              find={find}
-              note={note(
-                setting,
-                scope,
-                find,
-                config.restart.includes(setting.name),
-              )}
-              error={
-                config.failed?.key === setting.name
-                  ? String(
-                      (config.failed.error as Error)?.message ||
-                        config.failed.error,
-                    )
-                  : undefined
-              }
-              disabled={!online}
-              online={online}
-              save={config.save}
-            />
-          );
-          // A list follows its group as a group of its own.
-          const rows = own.filter((setting) => !itemized(setting));
-          return [
-            rows.length > 0 && (
-              <Group key={id} title={label}>
-                {rows.map(field)}
-              </Group>
-            ),
-            ...own.filter(itemized).map(field),
-          ];
-        })}
-      {config.loaded && !asFile && needle && !listed.length && (
-        <p class="group-footer small">No setting matches.</p>
-      )}
-      {!asFile && !needle && config.file && (
-        <p class="group-footer small">
-          Saved in <code>{config.file}</code>, which an editor can open too:{" "}
-          <code>settings.schema.json</code> beside it names every setting.
-        </p>
-      )}
-      {config.loaded && !asFile && !needle && (
-        <Group>
-          <Row
-            label={whole.reset}
-            detail={held ? plural(held, "changed setting") : whole.none}
-            destructive
-            disabled={!held || !online}
-            onClick={() => setConfirm(true)}
-          />
-        </Group>
-      )}
+        )}
+        <Row
+          label={whole.reset}
+          detail={held ? plural(held, "changed setting") : whole.none}
+          destructive
+          disabled={!config.loaded || !held || !online}
+          onClick={() => setConfirm(true)}
+        />
+      </Group>
       {confirm && (
         <ConfirmModal
           title={whole.reset}
@@ -212,6 +186,32 @@ export default function Configuration({
           {whole.confirm} API keys and other secrets are kept.
         </ConfirmModal>
       )}
-    </section>
+    </>
+  );
+}
+
+// A topic's rarely changed settings, folded until asked for.
+export function ShowAll({
+  count,
+  shown,
+  toggle,
+}: {
+  count: number;
+  shown: boolean;
+  toggle: () => void;
+}) {
+  return (
+    <Group>
+      <Row
+        label={shown ? "Show fewer" : "Show all"}
+        detail={
+          shown
+            ? "Hides the rarely changed settings again."
+            : `${plural(count, "rarely changed setting")}: limits, timeouts and sizes.`
+        }
+        expanded={shown}
+        onClick={toggle}
+      />
+    </Group>
   );
 }

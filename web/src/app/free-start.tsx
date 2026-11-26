@@ -3,18 +3,14 @@ import { OpenRouterSignIn } from "../shared/openrouter-signin.tsx";
 import { Button } from "../shared/ui.tsx";
 import { useResource } from "../shared/use-resource.ts";
 import { useApi } from "../state/api.ts";
+import { useHostContext } from "../state/host-context.ts";
 import "./free-start.css";
 
 // Shown while no provider is set up, and when a sign-in started anywhere
 // comes back from OpenRouter.
-export function FreeStart({
-  online,
-  settings,
-}: {
-  online: boolean;
-  settings: () => void;
-}) {
+export function FreeStart({ online }: { online: boolean }) {
   const { manage } = useApi();
+  const { setModal } = useHostContext();
   const { value: provider } = useResource(() => manage("provider"), []);
   // A sign-in that comes back from OpenRouter, or was just finished here,
   // shows its outcome whether or not the host had a provider.
@@ -42,7 +38,13 @@ export function FreeStart({
         arrival
         done={() => setSigned(true)}
       >
-        <Button onClick={settings}>I have an API key</Button>
+        <Button
+          onClick={() =>
+            setModal({ type: "settings", address: "models/providers" })
+          }
+        >
+          I have an API key
+        </Button>
       </OpenRouterSignIn>
     </section>
   );

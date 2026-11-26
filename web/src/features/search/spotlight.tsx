@@ -20,7 +20,7 @@ import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { SuggestionList } from "../../shared/suggestion-list.tsx";
 import { fuzzy, matches } from "../../shared/fuzzy.ts";
 import { occurrences } from "../../../sheet/text.js";
-import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
+import { TOPICS } from "../../shared/settings-topics.ts";
 import { SHORTCUTS, keysOf, type ShortcutId } from "../../shared/shortcuts.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { useApi } from "../../state/api.ts";
@@ -111,7 +111,7 @@ export default function Spotlight({
   find: (id: string, words: string, sequence: number) => void;
   start: (cwd: string) => void;
   run: (command: SlashCommand) => void;
-  settings: (scope: Scope) => void;
+  settings: (address: string) => void;
   actions: Partial<Record<ShortcutId, () => void>>;
 }) {
   const { api, routes } = useApi();
@@ -182,7 +182,7 @@ export default function Spotlight({
       about: entry.description,
       run: () => run(entry),
     }));
-  const scopes: Row[] = SCOPES.map(([id, label]) => ({
+  const scopes: Row[] = TOPICS.map(({ id, label }) => ({
     key: `settings:${id}`,
     group: "Settings",
     kind: "action",

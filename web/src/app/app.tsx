@@ -1085,7 +1085,6 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       loadError={loadErrors[selected]}
                       newPlace={newPlace}
                       start={startUnfiled}
-                      settings={settings}
                       openList={compact ? openDrawer : undefined}
                       redirect={redirect}
                       updateView={updateView}
@@ -1160,8 +1159,8 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       void startConversation(cwd).catch(report)
                     }
                     run={runCommand}
-                    settings={(section: string) =>
-                      open({ type: "settings", section })
+                    settings={(address: string) =>
+                      open({ type: "settings", address })
                     }
                     actions={{ ...shortcutActions, search: undefined }}
                   />
@@ -1180,6 +1179,11 @@ function App({ host, bindResult, reading }: HostAppProps) {
                 setNotificationMode,
                 notifications,
                 logout,
+                library: (kind: LibraryKind) => {
+                  setModal(null);
+                  setLibraryKind(kind);
+                  setPage("library");
+                },
               }}
             >
               <Modals

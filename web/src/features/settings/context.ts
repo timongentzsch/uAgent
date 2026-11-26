@@ -26,9 +26,11 @@ export interface SettingsProps {
   session?: Session;
   logout: () => Promise<void>;
   instructions: (close: () => void) => ComponentChildren;
+  library: (kind: "memory" | "skill") => void;
   // Counts every saved change, whoever made it.
   version: number;
-  initialSection?: string;
+  // Where it opens: "approvals/rules", a topic and a row in it.
+  address?: string;
 }
 
 export const SettingsContext = createContext<SettingsProps | null>(null);

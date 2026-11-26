@@ -17,6 +17,8 @@ import {
   LoadError,
   Modal,
   Notice,
+  Group,
+  Row,
 } from "../../shared/ui.tsx";
 import HostLatency from "./host-latency.tsx";
 import { Menu } from "../../shared/menu.tsx";
@@ -280,13 +282,50 @@ export function OtherPlaces({ source }: { source: Source }) {
     </Fold>
   );
 }
-export function HostList() {
-  const hosts = useHosts();
+const hostStatus = (source: Source, gatewayOnline: boolean) =>
+  !gatewayOnline
+    ? "Unavailable"
+    : source.installing
+      ? "Updating…"
+      : connectionLabels[source.phase];
+
+// Which remote host is shown, or that one is being added; the sidebar and
+// Settings list them the same way.
+function useHostDialog() {
   const [detail, setDetail] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  return {
+    show: (id: string) => setDetail(id),
+    add: () => setAdding(true),
+    dialog: (adding || detail) && (
+      <HostDialog
+        adding={adding}
+        id={detail}
+        shown={setDetail}
+        close={() => {
+          setAdding(false);
+          setDetail(null);
+        }}
+      />
+    ),
+  };
+}
+
+function HostDialog({
+  adding,
+  id,
+  shown,
+  close,
+}: {
+  adding: boolean;
+  id: string | null;
+  shown: (id: string) => void;
+  close: () => void;
+}) {
+  const hosts = useHosts();
   const [address, setAddress] = useState("");
-  const { run, busy, error, setError } = useAction();
-  const source = hosts.sources.find((source) => source.id === detail);
+  const { run, busy, error } = useAction();
+  const source = hosts.sources.find((source) => source.id === id);
   const act = (action: string, id?: string) =>
     run(async () => {
       const added = await hosts.action(
@@ -295,17 +334,101 @@ export function HostList() {
         action === "add" ? address.trim() : undefined,
       );
       if (action === "add") {
-        setAdding(false);
-        setAddress("");
-        setDetail(added);
+        close();
+        shown(added);
       }
     });
-  const status = (source: Source) =>
-    !hosts.gatewayOnline
-      ? "Unavailable"
-      : source.installing
-        ? "Updating…"
-        : connectionLabels[source.phase];
+  if (!adding && !source) return null;
+  const status = (source: Source) => hostStatus(source, hosts.gatewayOnline);
+  return (
+    <Modal title={adding ? "Add remote host" : source!.name} close={close}>
+      {adding ? (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void act("add");
+          }}
+        >
+          <label>
+            SSH alias or user@machine
+            <Input
+              value={address}
+              autoFocus
+              onInput={(event) => setAddress(event.currentTarget.value)}
+              placeholder="devbox or user@machine"
+            />
+          </label>
+          <p class="small muted">
+            Uses SSH access configured on the serving host. The remote gateway
+            executes file and command requests beside your files.
+          </p>
+          <Button
+            type="submit"
+            variant="primary"
+            busy={busy}
+            disabled={!address.trim() || !hosts.gatewayOnline}
+          >
+            Connect
+          </Button>
+        </form>
+      ) : (
+        <>
+          <p>
+            {source!.address} · {status(source!)}
+          </p>
+          {source!.version && (
+            <p class="small muted">
+              µAgent {source!.version}, the same build as this host. It updates
+              by itself when this host does.
+            </p>
+          )}
+          {source!.installing && (
+            <p class="small muted">Copying this host's µAgent there.</p>
+          )}
+          {!hosts.gatewayOnline && (
+            <Notice tone="warning">
+              The serving host is unavailable. Reconnect to it first.
+            </Notice>
+          )}
+          {source!.error && <Notice tone="error">{source!.error}</Notice>}
+          {source!.phase === "connected" && hosts.gatewayOnline && (
+            <HostLatency key={source!.id} id={source!.id} />
+          )}
+          <Cluster class="host-actions">
+            <Button
+              disabled={
+                busy ||
+                !hosts.gatewayOnline ||
+                source!.phase === "connected" ||
+                source!.phase === "connecting"
+              }
+              onClick={() => void act("reconnect", source!.id)}
+            >
+              Reconnect
+            </Button>
+            <Button
+              disabled={
+                busy || !hosts.gatewayOnline || source!.phase === "disconnected"
+              }
+              onClick={() => void act("disconnect", source!.id)}
+            >
+              Disconnect
+            </Button>
+          </Cluster>
+          <p class="small muted">
+            Disconnect closes SSH access. Work continues on the remote host.
+            Reconnect restores remote file and command access.
+          </p>
+        </>
+      )}
+      {error && <LoadError error={error} />}
+    </Modal>
+  );
+}
+
+export function HostList() {
+  const hosts = useHosts();
+  const dialog = useHostDialog();
   return (
     <div class="host-list">
       <Fold name="$hosts" label="Remote hosts">
@@ -317,10 +440,7 @@ export function HostList() {
                 key={source.id}
                 variant="quiet"
                 class="host-row entry"
-                onClick={() => {
-                  setError(null);
-                  setDetail(source.id);
-                }}
+                onClick={() => dialog.show(source.id)}
               >
                 <StatusLed
                   state={
@@ -331,7 +451,7 @@ export function HostList() {
                 />
                 <span class="host-name truncate">{source.name}</span>
                 <span class="host-phase caption truncate">
-                  {status(source)}
+                  {hostStatus(source, hosts.gatewayOnline)}
                   {source.phase === "connected" && source.round_trip_ms != null
                     ? ` · ${Math.round(source.round_trip_ms)} ms`
                     : ""}
@@ -343,107 +463,51 @@ export function HostList() {
           variant="quiet"
           class="entry"
           disabled={!hosts.gatewayOnline}
-          onClick={() => {
-            setError(null);
-            setAdding(true);
-          }}
+          onClick={dialog.add}
         >
           <Plus />
           Add host
         </Button>
       </Fold>
-      {(adding || source) && (
-        <Modal
-          title={adding ? "Add remote host" : source!.name}
-          close={() => {
-            setAdding(false);
-            setDetail(null);
-          }}
-        >
-          {adding ? (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void act("add");
-              }}
-            >
-              <label>
-                SSH alias or user@machine
-                <Input
-                  value={address}
-                  autoFocus
-                  onInput={(event) => setAddress(event.currentTarget.value)}
-                  placeholder="devbox or user@machine"
-                />
-              </label>
-              <p class="small muted">
-                Uses SSH access configured on the serving host. The remote
-                gateway executes file and command requests beside your files.
-              </p>
-              <Button
-                type="submit"
-                variant="primary"
-                busy={busy}
-                disabled={!address.trim() || !hosts.gatewayOnline}
-              >
-                Connect
-              </Button>
-            </form>
-          ) : (
-            <>
-              <p>
-                {source!.address} · {status(source!)}
-              </p>
-              {source!.version && (
-                <p class="small muted">
-                  µAgent {source!.version}, the same build as this host. It
-                  updates by itself when this host does.
-                </p>
-              )}
-              {source!.installing && (
-                <p class="small muted">Copying this host's µAgent there.</p>
-              )}
-              {!hosts.gatewayOnline && (
-                <Notice tone="warning">
-                  The serving host is unavailable. Reconnect to it first.
-                </Notice>
-              )}
-              {source!.error && <Notice tone="error">{source!.error}</Notice>}
-              {source!.phase === "connected" && hosts.gatewayOnline && (
-                <HostLatency key={source!.id} id={source!.id} />
-              )}
-              <Cluster class="host-actions">
-                <Button
-                  disabled={
-                    busy ||
-                    !hosts.gatewayOnline ||
-                    source!.phase === "connected" ||
-                    source!.phase === "connecting"
-                  }
-                  onClick={() => void act("reconnect", source!.id)}
-                >
-                  Reconnect
-                </Button>
-                <Button
-                  disabled={
-                    busy ||
-                    !hosts.gatewayOnline ||
-                    source!.phase === "disconnected"
-                  }
-                  onClick={() => void act("disconnect", source!.id)}
-                >
-                  Disconnect
-                </Button>
-              </Cluster>
-              <p class="small muted">
-                Disconnect closes SSH access. Work continues on the remote host.
-                Reconnect restores remote file and command access.
-              </p>
-            </>
-          )}
-          {error && <LoadError error={error} />}
-        </Modal>
-      )}
+      {dialog.dialog}
     </div>
+  );
+}
+
+// The same hosts as the sidebar's fold, for Settings.
+export function RemoteHostsPane() {
+  const hosts = useHosts();
+  const dialog = useHostDialog();
+  const remote = hosts.sources.filter((source) => source.id);
+  return (
+    <Group
+      title="Remote hosts"
+      footer="Machines reached over SSH from this host; a conversation's host is chosen when it starts."
+    >
+      {!remote.length && <Row label="No remote hosts" />}
+      {remote.map((source) => (
+        <Row
+          key={source.id}
+          icon={
+            <StatusLed
+              state={
+                hosts.gatewayOnline && source.phase === "connected"
+                  ? "active"
+                  : "idle"
+              }
+            />
+          }
+          label={source.name}
+          detail={hostStatus(source, hosts.gatewayOnline)}
+          onClick={() => dialog.show(source.id)}
+        />
+      ))}
+      <Row
+        label="Add host"
+        disabled={!hosts.gatewayOnline}
+        onClick={dialog.add}
+      />
+      {dialog.dialog}
+    </Group>
   );
 }

@@ -45,7 +45,7 @@ export function DisplayPane() {
     </Row>
   );
   return (
-    <Group>
+    <Group title="Display">
       {choice(
         "Appearance",
         theme,

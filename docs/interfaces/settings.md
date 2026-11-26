@@ -193,7 +193,7 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 
 ## About and diagnostics
 
-### Updates
+### Update checks
 
 | Key | Variable | Default | Range | Scopes | Applies | What |
 | --- | --- | --- | --- | --- | --- | --- |

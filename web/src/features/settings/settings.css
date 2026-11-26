@@ -40,10 +40,15 @@
   padding-inline: var(--inset-x);
   font-size: var(--font-display);
 }
+/* raw: the two scopes share the page's width, a long folder name cut. */
 .settings-scope {
-  margin: 0 0 var(--pad);
-  padding-inline: var(--inset-x);
-  color: var(--muted);
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  margin: 0 var(--inset-x) var(--pad);
+}
+.settings-scope > button {
+  min-width: 0;
 }
 .group-block {
   padding: var(--space-6) var(--inset-x);

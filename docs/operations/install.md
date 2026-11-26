@@ -109,7 +109,7 @@ Runtimes run in their own systemd scope and survive a unit restart
 ## Update
 
 Rerunning the installer restarts an existing unit, unless
-`UAGENT_NONINTERACTIVE=1`. Settings → About shows the version and install
+`UAGENT_NONINTERACTIVE=1`. Settings → About and diagnostics shows the version and install
 kind. **Check for updates** asks `api.github.com` and caches the answer in
 `~/.uagent/config/update.json`; `web.updateCheck` asks daily
 ([Settings](../interfaces/settings.md)). **Update** appears for `release` and

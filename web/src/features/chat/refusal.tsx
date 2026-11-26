@@ -56,7 +56,7 @@ export function Refusal({
         host && (
           <Button
             onClick={() =>
-              host.setModal({ type: "settings", section: "project" })
+              host.setModal({ type: "settings", address: "approvals/rules" })
             }
           >
             Rules…

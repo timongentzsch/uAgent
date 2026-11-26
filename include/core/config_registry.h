@@ -91,7 +91,7 @@ inline constexpr ConfigGroup kConfigGroups[] = {
     {"view", "device", "View"},
     {"host", "host", "This host"},
     {"notifications", "host", "Notifications"},
-    {"updates", "about", "Updates"},
+    {"updates", "about", "Update checks"},
     {"logs", "about", "Logs"},
 };
 

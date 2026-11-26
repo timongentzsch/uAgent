@@ -86,7 +86,7 @@ part of the name: `openrouter/vendor/model:nitro:high`.
 
 | To | Terminal | Web |
 | --- | --- | --- |
-| add a provider | `uagent setup`, or edit `providers` in the settings file | Settings → All conversations → Providers |
+| add a provider | `uagent setup`, or edit `providers` in the settings file | Settings → Models and providers → Providers |
 | choose for this conversation | `/model NAME`, or `/model QUERY` to search | the model control under the composer |
 | choose for new conversations | `/model NAME --default` | **Also use for new conversations** |
 | set the reasoning effort | `/effort LEVEL` | the model control |
@@ -278,7 +278,7 @@ when you answer: Always with an allowing answer, Never with Deny; **+
 guidance** answers in words.
 
 A folder's rules allow, ask or refuse, in every mode: a refusing rule holds
-in yolo too, and an asking rule asks there. Settings → This folder → Rules
+in yolo too, and an asking rule asks there. Settings → Approvals and safety → Rules
 lists them by effect and adds one; `/permissions rules` lists them,
 `/permissions allow|ask|deny TOOL MATCH` adds one and `/permissions forget
 N` removes one. A call Auto refused without asking shows in the transcript
@@ -462,7 +462,7 @@ composer.
 | --- | --- | --- |
 | see or edit memories | `/memory`, `/memory set KEY @FILE`, `/memory forget KEY` | Library |
 | see or add skills | `/skills`, `/skills set KEY @FILE` | Library |
-| see skills an MCP server serves | `/skills` (under `served`) | Settings → MCP servers → the server |
+| see skills an MCP server serves | `/skills` (under `served`) | Settings → Tools and extensions → MCP servers → the server |
 | switch a skill off or on | `/skills disable ID`, `/skills enable ID` | Library |
 | import from Claude Code or Codex | `/skills import`, `/memory import` | Library → Import |
 | manage scheduled tasks | `/schedule`, `/schedule run\|pause\|resume\|forget ID` | Scheduled |
@@ -498,12 +498,20 @@ scopes and when a change applies are in
 | set for this conversation | `/config conversation KEY=VALUE` |
 | remove a saved value | `/config user unset KEY` |
 
-The web's Settings has five panes. **All conversations** and **This
-folder** list every setting with a filter, plus instructions, MCP servers
-and the folder's Rules; a change that needs a restart offers it.
-**This browser** (Appearance, Animations, Clock, Timestamps, Zoom) is kept
-in the browser only. **Host** holds Install, Notifications and Paired
-devices; **About** the build and updates.
+The web's Settings (Ctrl+, or ⌘,) is organised by topic: **This
+conversation** (context, model, approval, tools, view and usage of the
+open conversation), **Models and providers**, **Approvals and safety**
+(with the folder's Rules), **Tools and extensions** (with MCP servers),
+**Instructions and memory**, **This device** (Display, Notifications,
+Install, kept on this device), **Host and devices** (Paired devices,
+Remote hosts) and **About and diagnostics** (the build, updates, logs and
+the settings file). Where a setting can differ per folder, **All
+conversations | This folder** switches which one a change is saved for,
+and a row says when the folder overrides it. Rarely changed limits,
+timeouts and sizes wait under **Show all**; the search box at the top, and
+Ctrl+K, find every setting, panel and action by name. A change that needs
+a restart offers it. Every topic and row has an address, such as
+`#settings=approvals/rules`, which a reload or a pasted link opens.
 
 `~/.uagent/config/style.css` is added after the app's stylesheets on every
 paired device and may override the tokens of
@@ -519,9 +527,9 @@ agent changes it only through the `uagent` tool, with your approval.
   Markdown unrendered, and reads input a line at a time so the screen
   reader's line editing works. `NO_COLOR` keeps bold, dim and italic;
   `TERM=dumb` removes all styling.
-- **Motion.** `prefers-reduced-motion`, or This browser → Animations: Off,
+- **Motion.** `prefers-reduced-motion`, or This device → Animations: Off,
   stops animations and transitions except the working spinner.
-- **Zoom and contrast.** Pinch zoom is never disabled; This browser → Zoom
+- **Zoom and contrast.** Pinch zoom is never disabled; This device → Zoom
   scales from 50 % to 200 %. `prefers-contrast: more` and forced colours
   have their own palettes.
 - **Screen readers.** A turn is announced at its edges ("Responding",

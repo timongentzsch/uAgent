@@ -55,6 +55,7 @@ type Preferences = Pick<
   | "setNotificationMode"
   | "notifications"
   | "logout"
+  | "library"
 >;
 export const PreferencesContext = createContext<Preferences | null>(null);
 
@@ -448,7 +449,7 @@ export default function Modals({
           close={close}
         >
           <Settings
-            initialSection={modal.section}
+            address={modal.address}
             version={managementVersion}
             {...preferences}
             mcp={mcp}

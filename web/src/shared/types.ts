@@ -1148,8 +1148,9 @@ export type AppModal =
       linked: boolean;
     }
   | { type: "delete-many"; sessions: Session[]; spaces: Space[] }
-  // section: a settings section to open on, e.g. from /permissions.
-  | { type: "settings"; section?: string }
+  // address: where Settings opens, "approvals/rules"; linked: opened from
+  // the page's own address, which Back leaves.
+  | { type: "settings"; address?: string; linked?: boolean }
   | { type: "tools"; session_id: string };
 
 export interface LibraryItem {

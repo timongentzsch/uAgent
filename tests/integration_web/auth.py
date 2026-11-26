@@ -246,3 +246,23 @@ def test_an_unpaired_page_reads_how_the_host_was_installed(root, home, *, binary
             status, body, _ = client.json("/api/auth")
             assert_true(status == 200, (status, body))
             assert_true(body == {"install": "container"}, body)
+
+
+def test_a_start_without_a_provider_carries_its_code(root, home, *, binary):
+    """The runtime's refusal reaches the browser with a code beside its text,
+    so the page can offer the providers settings without reading the text."""
+    project = root / "project"
+    project.mkdir()
+    unset = {"UAGENT_PROVIDERS": None, "UAGENT_MODEL": None}
+    with web_host(binary, root, home, "", extra_env=unset) as (client, code, _process, _env):
+        client.pair(code)
+        session = client.command("create", cwd=str(project))["session"]
+        _connection, response = client.events()
+        # The refusal is the command's answer when the runtime ends before the
+        # host reaches it, else the runtime's error on the stream.
+        status, refused = client.send("activate", session)
+        if status == 200:
+            frames = (json.loads(line[6:]) for line in response if line.startswith(b"data: "))
+            refused = next(frame for frame in frames if frame.get("kind") == "error")
+        assert_true(refused["code"] == "no_provider", refused)
+        assert_true(refused["error"].startswith("no provider: "), refused)

@@ -970,7 +970,11 @@ int WorkerMain(int argc, char** argv) {
       Bootstrap(std::move(options), argv[0], observation, &channel);
   int status = boot.Ok() ? RunApplication(*boot.context) : boot.exit_code;
   if (!boot.Ok()) {
-    channel.Send({{"kind", "error"}, {"error", boot.error}});
+    json frame = {{"kind", "error"}, {"error", boot.error}};
+    if (const auto code = RefusalCode(boot.error); !code.empty()) {
+      frame["code"] = code;
+    }
+    channel.Send(std::move(frame));
     // No client may have connected yet to read that: leave the reason where
     // the one who started this runtime looks once it has ended.
     std::string ignored;

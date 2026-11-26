@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 
+#include "include/app/bootstrap.h"
 #include "include/app/session_host.h"
 #include "include/app/update.h"
 #include "include/browser/browser.h"
@@ -152,6 +153,10 @@ void Master::Command(const Request& request, Response& response) {
   outcome["accepted"] = call.error.empty();
   if (!call.error.empty()) {
     outcome["error"] = call.error;
+    // A runtime that could not start says why in its text alone.
+    if (const auto code = RefusalCode(call.error); !code.empty()) {
+      outcome["code"] = code;
+    }
   }
   requests_.at(key).outcome = outcome;
   requests_.at(key).handling = false;

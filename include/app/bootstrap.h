@@ -12,6 +12,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -113,6 +114,15 @@ struct AppContext {
   HeadlessOutput output;
   std::jthread remote_watch;
 };
+
+// A start refused for want of a provider: its text begins so, and it reaches
+// clients with the code beside it, which offer the providers settings.
+inline constexpr std::string_view kNoProviderError = "no provider: ";
+inline constexpr std::string_view kNoProviderCode = "no_provider";
+// The code clients key on for a start refusal's text; empty for most.
+inline std::string_view RefusalCode(std::string_view error) {
+  return error.starts_with(kNoProviderError) ? kNoProviderCode : "";
+}
 
 struct BootstrapResult {
   std::unique_ptr<AppContext> context;

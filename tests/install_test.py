@@ -130,6 +130,30 @@ class InstallerTest(unittest.TestCase):
                     self.assertIn("First: " + fix, result.stderr)
                 self.assertNotIn("compose", self.calls())
 
+    def test_a_taken_port_stops_before_anything_starts(self):
+        result = self.install(UAGENT_INSTALL="container", FAKE_PORT="taken")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"Port {PORT} on 127.0.0.1 is in use", result.stderr)
+        self.assertIn("UAGENT_WEB_PORT", result.stderr)
+        self.assertNotIn(" up ", self.calls())
+
+    def test_the_port_is_ours_when_the_container_already_runs(self):
+        result = self.install(UAGENT_INSTALL="container", FAKE_PORT="taken", FAKE_RUNNING="1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(" up ", self.calls())
+
+    def test_a_failed_start_is_stopped_and_says_what_to_do(self):
+        result = self.install(UAGENT_INSTALL="container", FAKE_UP="1")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("µAgent's container did not start", result.stderr)
+        self.assertIn(" stop", self.calls())
+
+    def test_a_container_install_keeps_its_port(self):
+        result = self.install(UAGENT_INSTALL="container", UAGENT_WEB_PORT="8181")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        env = (self.home / ".local/share/uagent/container/deploy/.env").read_text()
+        self.assertIn("UAGENT_WEB_PORT=8181\n", env)
+
 
 if __name__ == "__main__":
     unittest.main()

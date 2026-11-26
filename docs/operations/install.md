@@ -34,7 +34,7 @@ file reference that says why.
 | `UAGENT_PREFIX` | `~/.local` | install prefix |
 | `UAGENT_NONINTERACTIVE` | unset | `1`: ask nothing; no keys, `PATH`, policy or service |
 | `UAGENT_BUILD_DIR`, `UAGENT_BUILD_JOBS` | `build/release`, 4 | source build tree and jobs |
-| `UAGENT_WEB_PORT` | 8080 | port written into the service |
+| `UAGENT_WEB_PORT` | 8080 | port written into the service, or into the container's `.env`; checked free before the container starts |
 
 ## Platforms and the loader check
 

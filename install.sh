@@ -189,21 +189,40 @@ if [ "$choice" = container ]; then
       workspaces=$HOME/uagent-workspaces
       if [ -f "$deploy/.env" ]; then
         workspaces=$(sed -n 's/^UAGENT_WORKSPACES=//p' "$deploy/.env")
+        kept_port=$(sed -n 's/^UAGENT_WEB_PORT=//p' "$deploy/.env")
+        port=${UAGENT_WEB_PORT:-${kept_port:-$port}}
       elif reply "Folder the agent works in, all it sees of this machine [$workspaces]:" &&
            [ -n "$answer" ]; then
         workspaces=$answer
       fi
       workspace_folder "$workspaces"
-      printf 'UAGENT_VERSION=%s\nUAGENT_WORKSPACES=%s\n' "$version" "$workspaces" >"$deploy/.env"
+      printf 'UAGENT_VERSION=%s\nUAGENT_WORKSPACES=%s\nUAGENT_WEB_PORT=%s\n' \
+        "$version" "$workspaces" "$port" >"$deploy/.env"
     fi
   fi
 fi
+# Whether something already answers on the loopback port: curl's 7 is
+# "nothing listens".
+port_taken() {
+  curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$port/" 2>/dev/null && return 0
+  [ $? -ne 7 ]
+}
 if [ "$choice" = container ]; then
   compose() { docker compose -f "$deploy/compose.yaml" "$@"; }
-  if [ "$mode" = source ]; then
-    compose up --build -d
-  else
-    compose up -d --no-build --pull always
+  # A running µAgent holds the port itself; anything else there would stop
+  # the network container from starting.
+  if [ -z "$(compose ps -q --status running network 2>/dev/null)" ] && port_taken; then
+    echo "Port $port on 127.0.0.1 is in use. Free it, or install on another: UAGENT_WEB_PORT=<port>" >&2
+    exit 1
+  fi
+  if [ "$mode" = source ]; then up="up --build -d"; else up="up -d --no-build --pull always"; fi
+  # shellcheck disable=SC2086 # the options are words
+  if ! compose $up; then
+    # Nothing is left restarting in a loop.
+    compose stop >/dev/null 2>&1 || true
+    echo "µAgent's container did not start (Docker's message is above). If a port was in use," \
+      "free it or set UAGENT_WEB_PORT; then run the installer again." >&2
+    exit 1
   fi
   printf 'Waiting for the container'
   tries=0

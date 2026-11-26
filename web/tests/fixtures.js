@@ -222,14 +222,14 @@ export const draftOf = (page, id) =>
   );
 export const quotesOf = async (page, id) => (await draftOf(page, id))?.quotes;
 
-// The composer's totals open the statistics, which hold the way to the raw
-// context.
+// The status line opens This conversation in Settings, which holds the way
+// to the raw context.
 export async function openRawContext(page) {
   await page
-    .getByRole("button", { name: "Conversation statistics", exact: true })
+    .getByRole("button", { name: "Context and usage", exact: true })
     .click();
   await page
-    .getByRole("dialog", { name: "Conversation statistics" })
+    .getByRole("dialog", { name: "Settings" })
     .getByRole("button", { name: "Raw context", exact: true })
     .click();
 }

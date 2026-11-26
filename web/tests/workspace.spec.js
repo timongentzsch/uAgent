@@ -22,7 +22,7 @@ test("appearance and configuration remain usable at large scales", async ({
   // A phone opens settings on its section list.
   await page
     .locator(".settings-nav")
-    .getByRole("button", { name: "This browser", exact: true })
+    .getByRole("button", { name: "This device", exact: true })
     .click();
   await expect(page.getByLabel("Appearance")).toHaveValue("system");
   await page.emulateMedia({ colorScheme: "dark" });
@@ -100,20 +100,19 @@ test("appearance and configuration remain usable at large scales", async ({
   await expect(page.locator("html")).toHaveCSS("--zoom", "1");
   await expect(composer).toHaveCSS("font-size", originalText);
   await page.getByRole("button", { name: "Back", exact: true }).click();
-  await page
-    .locator(".settings-nav")
-    .getByRole("button", { name: "All conversations", exact: true })
-    .click();
-  const form = page.locator(".configuration");
-  await expect(
-    form.getByRole("region", { name: "Models and connection" }),
-  ).toBeVisible();
+  const form = page.locator(".settings-pane");
   const find = page.getByLabel("Find a setting");
+  const found = page.getByRole("region", { name: "Found" });
   await find.fill("UAGENT_PLAIN");
-  await expect(form).toContainText("read by the terminal");
+  await expect(found).toContainText("Plain output");
   await find.fill("no such setting");
-  await expect(form).toContainText("No setting matches.");
-  await find.fill("UAGENT_MAX_STEPS");
+  await expect(found).toContainText("Nothing matches");
+  // A folded row found by search opens unfolded.
+  const openSteps = async () => {
+    await find.fill("UAGENT_MAX_STEPS");
+    await found.getByRole("button", { name: /^Steps per turn/ }).click();
+  };
+  await openSteps();
   const steps = form.getByRole("spinbutton", { name: "Steps per turn" });
   const reset = form.getByRole("button", { name: "Reset Steps per turn" });
   await expect(reset).toHaveCount(0);
@@ -135,17 +134,24 @@ test("appearance and configuration remain usable at large scales", async ({
   await steps.fill("24");
   await steps.blur();
   await expect(reset).toBeVisible();
-  await find.fill("");
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page
+    .locator(".settings-nav")
+    .getByRole("button", { name: "About and diagnostics", exact: true })
+    .click();
   await page.getByRole("button", { name: /Reset all to defaults/ }).click();
   const confirm = page.getByRole("dialog", { name: "Reset all to defaults" });
   await expect(confirm).toContainText("API keys");
   await confirm.getByRole("button", { name: "Reset all", exact: true }).click();
   await expect(confirm).toHaveCount(0);
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await openSteps();
+  await expect(steps).toHaveValue("");
   await expect(reset).toHaveCount(0);
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page
     .locator(".settings-nav")
-    .getByRole("button", { name: "This browser", exact: true })
+    .getByRole("button", { name: "This device", exact: true })
     .click();
   await page.getByLabel("Appearance").selectOption("light");
   await page.emulateMedia({ colorScheme: "dark" });
@@ -570,10 +576,12 @@ test("a project overrides a setting; a draft survives other saves", async ({
   await page.goto(`/#session=${session.id}`);
   await headerAction(page, "Settings");
   const nav = page.locator(".settings-nav");
-  const form = page.locator(".configuration");
+  const form = page.locator(".settings-pane");
+  const scope = form.getByRole("group", { name: "Where it applies" });
   const field = (name) => form.locator(`[data-setting="${name}"]`);
-  await nav.getByRole("button", { name: /^This folder/ }).click();
-  await expect(form).toContainText("Remove all overrides");
+  await nav.getByRole("button", { name: "Approvals and safety" }).click();
+  await scope.getByRole("button", { name: /^This folder/ }).click();
+  await form.getByRole("button", { name: /^Show all/ }).click();
   const steps = form.getByRole("spinbutton", { name: "Steps per turn" });
   await steps.fill("5");
   await steps.blur();
@@ -582,18 +590,13 @@ test("a project overrides a setting; a draft survives other saves", async ({
   );
   const calls = form.getByRole("spinbutton", { name: "Tool calls per turn" });
   await calls.fill("77");
-  const approval = form.getByRole("combobox", { name: "Approval mode" });
+  const approval = form.getByRole("combobox", { name: "Approval" });
   await expect(
     approval.getByRole("option", { name: "Auto review" }),
   ).toHaveCount(1);
-  await expect(
-    form
-      .getByRole("combobox", { name: "Reasoning effort" })
-      .getByRole("option", { name: "high", exact: true }),
-  ).toHaveCount(1);
   await approval.selectOption("auto");
   await expect(
-    form.getByRole("button", { name: "Reset Approval mode" }),
+    form.getByRole("button", { name: "Reset Approval" }),
   ).toBeVisible();
   await expect(calls).toHaveValue("77");
   await expect(
@@ -601,10 +604,17 @@ test("a project overrides a setting; a draft survives other saves", async ({
   ).toHaveCount(0);
   await calls.press("Escape");
 
-  await nav.getByRole("button", { name: "All conversations" }).click();
+  await scope.getByRole("button", { name: "All conversations" }).click();
   await expect(field("UAGENT_MAX_STEPS")).toContainText(
     "Overridden in this folder",
   );
+  await nav.getByRole("button", { name: "Models and providers" }).click();
+  await expect(
+    form
+      .getByRole("combobox", { name: "Reasoning effort" })
+      .getByRole("option", { name: "high", exact: true }),
+  ).toHaveCount(1);
+  await nav.getByRole("button", { name: "Instructions and memory" }).click();
   const memory = form.getByRole("switch", { name: "Memory", exact: true });
   await expect(memory).toBeChecked();
   await memory.uncheck();
@@ -613,12 +623,15 @@ test("a project overrides a setting; a draft survives other saves", async ({
   await expect(memory).toBeChecked();
   await expect(restore).toHaveCount(0);
 
-  await nav.getByRole("button", { name: /^This folder/ }).click();
+  await nav.getByRole("button", { name: "About and diagnostics" }).click();
+  await scope.getByRole("button", { name: /^This folder/ }).click();
   await form.getByRole("button", { name: /Remove all overrides/ }).click();
   await page
     .getByRole("dialog", { name: "Remove all overrides" })
     .getByRole("button", { name: "Remove all", exact: true })
     .click();
+  await nav.getByRole("button", { name: "Approvals and safety" }).click();
+  await form.getByRole("button", { name: /^Show all/ }).click();
   await expect(
     form.getByRole("button", { name: "Reset Steps per turn" }),
   ).toHaveCount(0);
@@ -627,22 +640,24 @@ test("a project overrides a setting; a draft survives other saves", async ({
 test("locked settings and restart to apply", async ({ page, session }) => {
   await page.goto(`/#session=${session.id}`);
   await headerAction(page, "Settings");
-  await page
-    .locator(".settings-nav")
-    .getByRole("button", { name: "All conversations", exact: true })
-    .click();
-  const form = page.locator(".configuration");
+  const nav = page.locator(".settings-nav");
+  await nav.getByRole("button", { name: "Models and providers" }).click();
+  const form = page.locator(".settings-pane");
   const locked = form.locator('[data-setting="UAGENT_CONTEXT"]');
   await expect(locked).toContainText(
     "Set by environment variable UAGENT_CONTEXT — change it there",
   );
   await expect(locked.getByRole("spinbutton")).toHaveCount(0);
 
+  await nav.getByRole("button", { name: "Tools and extensions" }).click();
+  await form.getByRole("button", { name: /^Show all/ }).click();
   const timeout = form.getByRole("spinbutton", { name: "MCP call timeout" });
   await timeout.fill("90");
   await timeout.press("Enter");
   const notice = page.getByRole("region", { name: "Restart to apply" });
   await expect(notice).toContainText("MCP call timeout");
+  // The notice stays while another topic is open.
+  await nav.getByRole("button", { name: "Models and providers" }).click();
   await notice
     .getByRole("button", { name: /^Restart 1 running conversation/ })
     .click();
@@ -677,12 +692,11 @@ test("the conversation menu exports and restarts; /quit closes nothing", async (
   const item = (name) => head.getByRole("menuitem", { name, exact: true });
   await menu.click();
   await openMore(page);
-  await expect(item("Compact")).toBeVisible();
-  await item("Export transcript").click();
+  await item("Export").click();
   await expect(page.getByText(/^Transcript saved to .+\.md$/)).toBeVisible();
   await menu.click();
   await openMore(page);
-  await item("Restart").click();
+  await item("Restart conversation").click();
   await expect(page.getByText("Conversation restarted.")).toBeVisible();
   await expect.poll(generation).not.toBe(session.generation);
 });

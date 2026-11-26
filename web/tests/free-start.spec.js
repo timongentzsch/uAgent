@@ -87,7 +87,7 @@ test("Settings signs in to OpenRouter beside the providers, and reads them again
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "All conversations", exact: true })
+    .getByRole("button", { name: "Models and providers", exact: true })
     .click();
   const reads = [];
   page.on("request", (request) => {

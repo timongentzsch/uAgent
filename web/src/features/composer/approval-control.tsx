@@ -122,7 +122,7 @@ export default function ApprovalControl({
             <CommandAccess session={session} effective={effective} />
           )}
           <div class="default-source">
-            <small class="muted">{source}</small>
+            <small class="muted truncate">{source}</small>
             <Button
               variant="quiet"
               size="compact"

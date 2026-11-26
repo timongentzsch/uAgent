@@ -204,11 +204,7 @@ export function ShowAll({
     <Group>
       <Row
         label={shown ? "Show fewer" : "Show all"}
-        detail={
-          shown
-            ? "Hides the rarely changed settings again."
-            : `${plural(count, "rarely changed setting")}: limits, timeouts and sizes.`
-        }
+        detail={shown ? undefined : plural(count, "rarely changed setting")}
         expanded={shown}
         onClick={toggle}
       />

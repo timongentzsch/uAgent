@@ -112,6 +112,10 @@ function Composer({
     (address: string) => setModal({ type: "settings", address }),
     [setModal],
   );
+  const openContext = useCallback(
+    () => settings("conversation/context"),
+    [settings],
+  );
   const narrow = useNarrowColumn();
   const { drafts, setDraft, upload, busy, act, following } = useConversation();
   const draft = useStoreValue(drafts, (all) => all[session.id] ?? EMPTY_DRAFT);
@@ -532,7 +536,7 @@ function Composer({
             <SessionSummary
               state={state}
               queued={queued.length ? 0 : session.guidance}
-              open={() => settings("conversation/context")}
+              open={openContext}
             />
           </div>
         )}

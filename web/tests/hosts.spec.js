@@ -93,7 +93,7 @@ test.describe("in Recent", () => {
       "project",
     );
     await expect(row("Local conversation").locator(".session-tag")).toHaveText(
-      `Local · ${host.project.split("/").at(-1)}`,
+      `This host · ${host.project.split("/").at(-1)}`,
     );
     expect(observed.actions).toEqual([]);
     await row("Local conversation").locator(".list-row").click();
@@ -184,8 +184,8 @@ test.describe("phone host controls", () => {
     await expect
       .poll(() => page.evaluate(() => history.state?.layer ?? 0))
       .toBe(0);
-    await pick("Local", "Standalone local");
-    await expect(page.locator(".execution-host")).toHaveText("Local");
+    await pick("This host", "Standalone local");
+    await expect(page.locator(".execution-host")).toHaveText("This host");
     await expect(page).toHaveURL(new RegExp(`#session=${local.id}$`));
     await pick("GPU", "srv/project");
     await expect(
@@ -284,7 +284,7 @@ test("host details show measured main-to-host latency", async ({ page }) => {
     page.locator(".host-list").getByText("Remote hosts", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.locator(".host-list").getByRole("button", { name: /Local/ }),
+    page.locator(".host-list").getByRole("button", { name: /This host/ }),
   ).toHaveCount(0);
   await page
     .locator(".host-list")
@@ -434,13 +434,13 @@ test("an unknown host falls back to the full Local conversation list", async ({
   await offlineHost(page);
   await savedConversation(host, request, "Local fallback");
   await page.goto(`/#host=${"d".repeat(32)}`);
-  const local = page.getByRole("group", { name: "Local", exact: true });
+  const local = page.getByRole("group", { name: "This host", exact: true });
   const row = local
     .locator(".session-row")
     .filter({ hasText: "Local fallback" });
   await expect(row.locator('[aria-haspopup="menu"]')).toBeVisible();
   await row.getByRole("button", { name: /^Local fallback/ }).click();
-  await expect(page.locator(".execution-host")).toHaveText("Local");
+  await expect(page.locator(".execution-host")).toHaveText("This host");
 });
 
 test("choosing a disconnected host's own conversation reconnects once", async ({
@@ -522,7 +522,7 @@ test("single-host headers and scheduled tasks omit redundant host controls", asy
   await page.getByRole("button", { name: "Scheduled", exact: true }).click();
   await page.getByRole("button", { name: "New task", exact: true }).click();
   await expect(
-    page.getByRole("combobox", { name: "Execution host", exact: true }),
+    page.getByRole("combobox", { name: "Host", exact: true }),
   ).toHaveCount(0);
 });
 
@@ -626,6 +626,6 @@ test("a scheduled draft retains its execution host while navigating", async ({
     "Main-owned draft",
   );
   await expect(
-    page.getByRole("combobox", { name: "Execution host", exact: true }),
+    page.getByRole("combobox", { name: "Host", exact: true }),
   ).toHaveValue("");
 });

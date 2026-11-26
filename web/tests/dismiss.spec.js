@@ -46,7 +46,7 @@ test.describe("back closes what is open", () => {
     await expect(page).toHaveURL(new RegExp(session.id));
   });
 
-  test("settings unwinds section, then list, then closes", async ({
+  test("settings unwinds topic, then list, then closes", async ({
     page,
     session,
   }) => {
@@ -56,13 +56,13 @@ test.describe("back closes what is open", () => {
     await settings
       .locator(".settings-nav")
       .getByRole("button", {
-        name: "All conversations",
+        name: "Models and providers",
         exact: true,
       })
       .tap();
     await expect(
       settings.getByRole("heading", {
-        name: "All conversations",
+        name: "Models and providers",
         exact: true,
       }),
     ).toBeVisible();
@@ -76,7 +76,7 @@ test.describe("back closes what is open", () => {
     await expect(page).toHaveURL(new RegExp(session.id));
   });
 
-  test("back from instructions restores the settings section and then the list", async ({
+  test("back from instructions restores the settings topic and then the list", async ({
     page,
     session,
   }) => {
@@ -93,10 +93,9 @@ test.describe("back closes what is open", () => {
     const settings = page.getByRole("dialog", { name: "Settings" });
     await expect(settings.locator(".settings-nav")).toBeVisible();
     await expect(settings.locator(".settings-pane")).toHaveCount(0);
-    expect(configReads).toBe(0);
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "All conversations", exact: true })
+      .getByRole("button", { name: "Instructions and memory", exact: true })
       .tap();
     const opener = settings
       .locator(".settings-pane")
@@ -108,16 +107,17 @@ test.describe("back closes what is open", () => {
     await expect(prompt).toHaveCount(0);
     await expect(opener).toBeFocused();
     await expect(
-      settings.getByRole("heading", { name: "All conversations", exact: true }),
+      settings.getByRole("heading", {
+        name: "Instructions and memory",
+        exact: true,
+      }),
     ).toBeVisible();
-    const filter = settings.getByRole("searchbox", { name: "Find a setting" });
-    await filter.fill("model");
     await page.goBack();
     await expect(settings.locator(".settings-nav")).toBeVisible();
     await settings
-      .getByRole("button", { name: "All conversations", exact: true })
+      .getByRole("button", { name: "Models and providers", exact: true })
       .tap();
-    await expect(filter).toHaveValue("model");
+    // Read once as Settings opens, for its search; topics share it.
     expect(configReads).toBe(1);
     await page.goBack();
     await expect(settings.locator(".settings-nav")).toBeVisible();
@@ -128,7 +128,7 @@ test.describe("back closes what is open", () => {
     await expect.poll(() => layerDepth(page)).toBe(0);
   });
 
-  test("a reload on a layer entry opens nothing and back still works", async ({
+  test("a reload on Settings opens it where it was, and back still works", async ({
     page,
     session,
   }) => {
@@ -136,9 +136,7 @@ test.describe("back closes what is open", () => {
     await headerAction(page, "Settings");
     await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
     await page.reload();
-    await expect(page.getByLabel("Message or guidance")).toBeVisible();
-    await expect(page.getByRole("dialog", { name: "Settings" })).toHaveCount(0);
-    expect(await layerDepth(page)).toBe(0);
+    await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
     await page.goBack();
     await expect(page).toHaveURL(new RegExp(`#session=${session.id}$`));
     await expect(page.getByLabel("Message or guidance")).toBeVisible();

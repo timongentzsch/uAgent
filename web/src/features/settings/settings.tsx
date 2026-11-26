@@ -69,7 +69,8 @@ export default function Settings(props: SettingsProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: follows the address it is opened at
   useEffect(() => go(props.address), [props.address]);
   // A row asked for by its address is shown, folded or not, once drawn.
-  const target = place.row && config.find(place.row);
+  const target =
+    place.row && config.settings.find((setting) => setting.key === place.row);
   useEffect(() => {
     if (target && target.advanced) setAll(true);
   }, [target]);
@@ -129,7 +130,7 @@ export default function Settings(props: SettingsProps) {
       <Group>
         <Row
           label="Skills in the Library"
-          detail="See, turn on or off and import skills."
+          detail="Turn skills on or off, or import them."
           onClick={() => props.library("skill")}
         />
       </Group>
@@ -138,7 +139,7 @@ export default function Settings(props: SettingsProps) {
       <Group>
         <Row
           label="Instructions"
-          detail="What conversations read at start, in every folder or in one."
+          detail="Read by conversations as they start."
           onClick={(event) => {
             event.currentTarget.focus({ preventScroll: true });
             setEditingInstructions(true);
@@ -150,7 +151,7 @@ export default function Settings(props: SettingsProps) {
       <Group>
         <Row
           label="Memories in the Library"
-          detail="See, edit and move what the agent remembers."
+          detail="What the agent remembers."
           onClick={() => props.library("memory")}
         />
       </Group>

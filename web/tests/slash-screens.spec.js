@@ -11,17 +11,33 @@ test("bare slash commands open their screens", async ({ page, session }) => {
     await composer.press("Enter");
   };
 
-  await run("/tools");
-  const tools = page.getByRole("dialog", { name: "Tools", exact: true });
-  await expect(tools).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(tools).toHaveCount(0);
-
-  await run("/permissions");
+  // Each lands on its row of Settings, and the address names it.
   const settings = page.getByRole("dialog", { name: "Settings" });
-  await expect(
-    settings.getByRole("button", { name: "All conversations" }),
-  ).toHaveAttribute("aria-current", "page");
+  const topic = (name) =>
+    settings
+      .getByRole("navigation", { name: "Settings topics" })
+      .getByRole("button", { name: new RegExp(`^${name}`) });
+  for (const [command, name, row, address] of [
+    ["/tools", "This conversation", "tools", "conversation/tools"],
+    ["/detail", "This conversation", "view", "conversation/view"],
+    ["/permissions", "Approvals and safety", "rules", "approvals/rules"],
+    ["/mcp", "Tools and extensions", "mcp-servers", "tools/mcp-servers"],
+  ]) {
+    await run(command);
+    await expect(topic(name)).toHaveAttribute("aria-current", "page");
+    await expect(settings.locator(`[data-row="${row}"]`)).toBeInViewport();
+    await expect(page).toHaveURL(new RegExp(`settings=${address}$`));
+    await page.keyboard.press("Escape");
+    await expect(settings).toHaveCount(0);
+  }
+  await run("/tools");
+  await expect(settings.getByText(/serialized schema/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await run("/config");
+  await expect(topic("This conversation")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   await page.keyboard.press("Escape");
   await expect(settings).toHaveCount(0);
 

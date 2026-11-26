@@ -1,9 +1,17 @@
 import { SearchSelect } from "./search-select.tsx";
+import type { ComponentChildren } from "preact";
 import { Actions, Button, Field, Placeholder, Select } from "./ui.tsx";
 
 // Loading states that must exist before their feature's code loads.
 
-export function ModelLoading({ close }: { close: () => void }) {
+export function ModelLoading({
+  close,
+  source,
+}: {
+  close: () => void;
+  // Where a conversation's model comes from, known before the models are.
+  source?: ComponentChildren;
+}) {
   return (
     <div class="model-form">
       <Placeholder label="Loading models…">
@@ -20,6 +28,7 @@ export function ModelLoading({ close }: { close: () => void }) {
           </Field>
         </div>
       </Placeholder>
+      {source}
       <ModelActions close={close} />
     </div>
   );

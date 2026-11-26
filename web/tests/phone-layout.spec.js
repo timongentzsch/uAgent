@@ -236,7 +236,7 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
   );
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "This browser", exact: true })
+    .getByRole("button", { name: "This device", exact: true })
     .click();
   await settings.getByLabel("Appearance", { exact: true }).selectOption("dark");
   await expect(page.locator("#app")).toHaveCSS(
@@ -460,20 +460,16 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     });
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "This browser", exact: true })
+      .getByRole("button", { name: "This device", exact: true })
       .tap();
     await settings.getByLabel("Zoom", { exact: true }).selectOption("50");
     await settings.getByRole("button", { name: "Back", exact: true }).tap();
-    await settings
-      .locator(".settings-nav")
-      .getByRole("button", { name: "All conversations", exact: true })
-      .tap();
     await input(settings.getByLabel("Find a setting"), "web", 16);
     await contained(settings, 390, 70);
-    await settings.getByRole("button", { name: "Back", exact: true }).tap();
+    await settings.getByLabel("Find a setting").fill("");
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "This browser", exact: true })
+      .getByRole("button", { name: "This device", exact: true })
       .tap();
     await settings.getByLabel("Zoom", { exact: true }).selectOption("100");
     await settings
@@ -574,11 +570,13 @@ test.describe("composer footer", () => {
       const totals = (
         phone ? page.locator(".conversation-head") : footer
       ).getByRole("button", {
-        name: "Conversation statistics",
+        name: "Context and usage",
         exact: true,
       });
       await expect(footer.locator(".activity-button")).toHaveText("2 commands");
-      await expect(totals).toHaveText("99% left · 12.3k turns · $1234.56");
+      await expect(totals).toHaveText(
+        "Context 99% left · 12.3k turns · $1234.56",
+      );
       const geometry = await footer.evaluate((node) => {
         const rect = (target) => {
           const { x, y, width, height, bottom, right } =
@@ -724,10 +722,10 @@ test.describe("phone header", () => {
     await online(page);
     const head = page.locator(".conversation-head");
     const totals = head.getByRole("button", {
-      name: "Conversation statistics",
+      name: "Context and usage",
       exact: true,
     });
-    await expect(totals).toHaveText(/^\d+% left · \d+ turns?$/);
+    await expect(totals).toHaveText(/^Context \d+% left · \d+ turns?$/);
     const geometry = await head.evaluate((node) => {
       const box = (selector) =>
         node.querySelector(selector).getBoundingClientRect();
@@ -744,16 +742,15 @@ test.describe("phone header", () => {
     expect(geometry.totals.bottom).toBeLessThanOrEqual(geometry.head.bottom);
     await expect(page.locator(".composer .metrics")).toHaveCount(0);
     await totals.tap();
-    await expect(
-      page.getByRole("dialog", { name: "Conversation statistics" }),
-    ).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
     await page.keyboard.press("Escape");
 
     await head.getByRole("button", { name: "Conversation menu" }).tap();
     const items = page
       .getByRole("menu", { name: "Conversation menu" })
       .getByRole("menuitem");
-    await expect(items.filter({ hasText: "Settings" })).toHaveCount(0);
+    // Settings is one tap in the header's menu, and in the drawer.
+    await expect(items.filter({ hasText: "Settings" })).toHaveCount(1);
     await expect(items.last()).toHaveText("More");
     await page.keyboard.press("Escape");
     await headerAction(page, "Settings");

@@ -5,7 +5,6 @@ import {
   selectProbeModel,
   chooseDetail,
   openRow,
-  openMore,
 } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
@@ -16,10 +15,12 @@ test("tool catalogue shows its schema size and persists selection", async ({
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.goto(`/#session=${session.id}`);
   await page.getByRole("button", { name: "Conversation menu" }).last().click();
-  await openMore(page);
   await page.getByRole("menuitem", { name: "Tools", exact: true }).click();
 
-  const dialog = page.getByRole("dialog", { name: "Tools", exact: true });
+  // This conversation in Settings, at its tools.
+  const dialog = page
+    .getByRole("dialog", { name: "Settings", exact: true })
+    .locator('[data-row="tools"]');
   await expect(dialog.getByText(/serialized schema/)).toBeVisible();
   await expect(dialog.getByText(/estimated.*tokens/i)).toHaveCount(0);
 
@@ -268,7 +269,8 @@ test("MCP servers show their state and switch on and off", async ({
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   await settings
-    .getByRole("button", { name: "All conversations", exact: true })
+    .getByRole("navigation", { name: "Settings topics" })
+    .getByRole("button", { name: "Tools and extensions" })
     .click();
 
   const global = settings.getByRole("region", { name: "MCP servers" });
@@ -299,7 +301,7 @@ test("MCP servers show their state and switch on and off", async ({
   );
 
   await settings
-    .locator(".settings-nav")
+    .getByRole("group", { name: "Where it applies" })
     .getByRole("button", { name: /^This folder/ })
     .click();
   const project = settings.getByRole("region", { name: "MCP servers" });

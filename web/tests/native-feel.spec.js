@@ -80,11 +80,8 @@ async function memorySwitch(page) {
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "All conversations", exact: true })
+    .getByRole("button", { name: "Instructions and memory", exact: true })
     .click();
-  await settings
-    .getByRole("searchbox", { name: "Find a setting" })
-    .fill("memory");
   return settings.getByRole("switch", { name: "Memory", exact: true });
 }
 

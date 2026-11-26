@@ -5,7 +5,6 @@ import {
   startInFolder,
   openRow,
   openRawContext,
-  openMore,
 } from "./fixtures.js";
 import { readFile } from "node:fs/promises";
 
@@ -162,18 +161,17 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     "UI refactor proof",
   );
   await conversationMenu.click();
-  await openMore(page);
   await page
     .locator(".conversation-head")
-    .getByRole("menuitem", { name: "Statistics", exact: true })
+    .getByRole("menuitem", { name: "Context and usage", exact: true })
     .click();
-  await expect(
-    page.getByRole("dialog", { name: "Conversation statistics" }),
-  ).toContainText("Tool calls");
+  await expect(page.getByRole("dialog", { name: "Settings" })).toContainText(
+    "Tool calls",
+  );
   await expect(page.getByRole("dialog")).toContainText("Model calls");
   await page
     .getByRole("button", {
-      name: "Close conversation statistics",
+      name: "Close settings",
       exact: true,
     })
     .click();

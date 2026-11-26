@@ -122,6 +122,7 @@ export default function ConversationHeader({
             {terminal.open ? "Hide terminal" : "Terminal"}
           </MenuItem>
         )}
+        {inMenu && <MenuItem onClick={settings}>Settings</MenuItem>}
       </>
     ),
     more: inMenu && browserAvailable && (

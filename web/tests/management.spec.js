@@ -417,7 +417,7 @@ test("a skill kept by Claude Code is imported from the Library", async ({
   ).toBeVisible();
 });
 
-test("folder instructions return to their Settings scope and opener", async ({
+test("instructions return to their Settings topic and opener", async ({
   page,
   session,
 }) => {
@@ -425,8 +425,10 @@ test("folder instructions return to their Settings scope and opener", async ({
   await page.goto(`/#session=${session.id}`);
   await headerAction(page, "Settings");
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
-  await settings.getByRole("button", { name: /This folder/ }).click();
-  const opener = settings.getByRole("button", { name: /Folder instructions/ });
+  await settings
+    .getByRole("button", { name: "Instructions and memory", exact: true })
+    .click();
+  const opener = settings.getByRole("button", { name: /^Instructions What/ });
   await opener.click();
   await expect(
     page.getByRole("dialog", { name: "Instructions", exact: true }),
@@ -434,6 +436,6 @@ test("folder instructions return to their Settings scope and opener", async ({
   await page.keyboard.press("Escape");
   await expect(opener).toBeFocused();
   await expect(
-    settings.getByRole("heading", { name: "This folder" }),
+    settings.getByRole("heading", { name: "Instructions and memory" }),
   ).toBeVisible();
 });

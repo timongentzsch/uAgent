@@ -10,7 +10,8 @@ import ModelControl from "../shared/model-control.tsx";
 import { capitalize, valueSources } from "../shared/display.ts";
 import { useApi } from "../state/api.ts";
 import { useHostContext } from "../state/host-context.ts";
-import type { Session, State } from "../shared/types.ts";
+import type { Session } from "../shared/types.ts";
+import { useSnapshots } from "../state/snapshot-store.ts";
 import { Button, Group, LoadError, Row, Switch } from "../shared/ui.tsx";
 import { useAction } from "../shared/use-action.ts";
 import { restartConversation, type DetailControl } from "./menus.tsx";
@@ -21,51 +22,48 @@ type Panels = ComponentProps<typeof Settings>["panels"];
 // controls the composer and the menus use.
 export function settingsPanels({
   session,
-  state,
   detail,
-  pending,
 }: {
   session?: Session;
-  state?: State;
   detail: DetailControl;
-  pending: boolean;
 }): Panels {
   const conversation: Panels = session
     ? {
-        context: () => <ConversationContext session={session} state={state} />,
-        model: (go) => (
-          <Model session={session} state={state} pending={pending} go={go} />
-        ),
-        approval: (go) => <Approval session={session} state={state} go={go} />,
-        tools: (_, row) => (
-          <ConversationTools session={session} pending={pending} row={row} />
-        ),
+        context: () => <ConversationContext session={session} />,
+        model: (go) => <Model session={session} go={go} />,
+        approval: (go) => <Approval session={session} go={go} />,
+        tools: (_, row) => <ConversationTools session={session} row={row} />,
         view: () => <View detail={detail} />,
-        usage: () => (
-          <Group title="Usage">
-            <div class="group-block">
-              <StatisticsContent
-                session={session}
-                state={state}
-                context={false}
-              />
-            </div>
-          </Group>
-        ),
+        usage: () => <Usage session={session} />,
         restart: () => <Restart session={session} />,
       }
     : {};
   return { ...conversation, hosts: () => <RemoteHostsPane /> };
 }
 
-function ConversationContext({
-  session,
-  state,
-}: {
-  session: Session;
-  state?: State;
-}) {
+// Each panel reads only what it shows, so a streamed frame redraws it and
+// not Settings around it.
+function useConversationState(session: Session) {
+  const { store } = useHostContext();
+  const state = useSnapshots(store, (all) => all[session.id]?.state);
+  const pending = useSnapshots(store, (all) => !!all[session.id]?.pending);
+  return { state, pending };
+}
+
+function Usage({ session }: { session: Session }) {
+  const { state } = useConversationState(session);
+  return (
+    <Group title="Usage">
+      <div class="group-block">
+        <StatisticsContent session={session} state={state} context={false} />
+      </div>
+    </Group>
+  );
+}
+
+function ConversationContext({ session }: { session: Session }) {
   const { showContext } = useHostContext();
+  const { state } = useConversationState(session);
   return (
     <div class="group-block">
       <ContextSection
@@ -80,16 +78,13 @@ function ConversationContext({
 
 function Model({
   session,
-  state,
-  pending,
   go,
 }: {
   session: Session;
-  state?: State;
-  pending: boolean;
   go: (address: string) => void;
 }) {
   const { online } = useHostContext();
+  const { state, pending } = useConversationState(session);
   return (
     <Group>
       <Row label="Model" detail={valueSources[state?.route_source ?? ""]}>
@@ -107,14 +102,13 @@ function Model({
 
 function Approval({
   session,
-  state,
   go,
 }: {
   session: Session;
-  state?: State;
   go: (address: string) => void;
 }) {
   const { online, report } = useHostContext();
+  const { state } = useConversationState(session);
   return (
     <Group>
       <Row
@@ -135,14 +129,13 @@ function Approval({
 
 function ConversationTools({
   session,
-  pending,
   row,
 }: {
   session: Session;
-  pending: boolean;
   row?: string;
 }) {
   const { online, load } = useHostContext();
+  const { pending } = useConversationState(session);
   // Open when Settings was asked for this row (/tools, the menu).
   const [open, setOpen] = useState(row === "tools");
   useEffect(() => {
@@ -208,7 +201,7 @@ function Restart({ session }: { session: Session }) {
       <Row
         label="Restart conversation"
         detail={
-          done || "A fresh process with the same history, to apply settings."
+          done || "Same history, a fresh process."
         }
         disabled={!online || !running || action.busy}
         onClick={() =>
@@ -219,7 +212,7 @@ function Restart({ session }: { session: Session }) {
       />
       <Row
         label="Close conversation"
-        detail="Stops its process; the next message starts it again."
+        detail="Stops it until the next message."
         disabled={!online || !running || action.busy}
         onClick={() =>
           void action.run(async () => {

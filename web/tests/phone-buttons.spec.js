@@ -7,7 +7,6 @@ import {
   headerAction,
   online,
   openFiles,
-  openMore,
   openSheet,
   paper,
   SAMPLE_ASK,
@@ -430,12 +429,15 @@ test.describe("a conversation", () => {
     await roomy(page);
   });
 
-  test("the statistics' context, its lists open", async ({ page, session }) => {
+  test("This conversation's context, its lists open", async ({
+    page,
+    session,
+  }) => {
     await page.goto(`/#session=${session.id}`);
     await page
-      .getByRole("button", { name: "Conversation statistics", exact: true })
+      .getByRole("button", { name: "Context and usage", exact: true })
       .click();
-    const sheet = page.getByRole("dialog", { name: "Conversation statistics" });
+    const sheet = page.getByRole("dialog", { name: "Settings" });
     await expect(sheet.getByRole("img", { name: /compacts at/ })).toBeVisible();
     for (const name of [/^Tools \d+/, /^Not offered/]) {
       const fold = sheet.getByRole("button", { name });
@@ -451,7 +453,6 @@ test.describe("a conversation", () => {
       .locator(".conversation-head")
       .getByRole("button", { name: "Conversation menu" })
       .click();
-    await openMore(page);
     await page.getByRole("menuitem", { name: "Tools", exact: true }).click();
     await expect(page.locator(".tool-toggle").first()).toBeVisible();
     await roomy(page);
@@ -462,9 +463,8 @@ test.describe("a conversation", () => {
     await headerAction(page, "Settings");
     await page
       .locator(".settings-nav")
-      .getByRole("button", { name: "All conversations", exact: true })
+      .getByRole("button", { name: "Models and providers", exact: true })
       .click();
-    await page.getByLabel("Find a setting").fill("Providers");
     await page.getByRole("button", { name: "Add a provider" }).click();
     const adding = page.getByRole("dialog", { name: "Add a provider" });
     await adding

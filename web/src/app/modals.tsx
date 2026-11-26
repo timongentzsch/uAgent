@@ -141,13 +141,6 @@ export default function Modals({
   const mcp = useSnapshots(store, (all) =>
     modal?.type === "settings" ? all[selected]?.state?.mcp : undefined,
   );
-  const conversation = useSnapshots(store, (all) =>
-    modal?.type === "settings" ? all[selected]?.state : undefined,
-  );
-  const pending = useSnapshots(
-    store,
-    (all) => modal?.type === "settings" && !!all[selected]?.pending,
-  );
   const close = () => setModal(null);
   const instructions = (close: () => void) => (
     <Modal title="Instructions" size="l" layout="sheet" close={close}>
@@ -458,12 +451,7 @@ export default function Modals({
             refresh={refresh}
             selected={selected}
             session={session}
-            panels={settingsPanels({
-              session,
-              state: conversation,
-              detail,
-              pending,
-            })}
+            panels={settingsPanels({ session, detail })}
             instructions={instructions}
           />
         </Modal>

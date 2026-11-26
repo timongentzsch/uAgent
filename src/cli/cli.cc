@@ -73,8 +73,8 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kRewind, "/rewind", "[N]",
      "fork before your message N to edit it; bare, list the numbers",
      kNoViewer},
-    {SlashCommandId::kShare, "/share", "", "export this conversation as markdown",
-     kNoViewer | kClientOnly},
+    {SlashCommandId::kShare, "/share", "",
+     "export this conversation as markdown", kNoViewer | kClientOnly},
     {SlashCommandId::kPermissions, "/permissions",
      "[default|ask|auto|yolo|plan|rules|forget N|forget all|allow|ask|deny "
      "TOOL MATCH]",

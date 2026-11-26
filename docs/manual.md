@@ -88,7 +88,7 @@ part of the name: `openrouter/vendor/model:nitro:high`.
 | --- | --- | --- |
 | add a provider | `uagent setup`, or edit `providers` in the settings file | Settings → Models and providers → Providers |
 | choose for this conversation | `/model NAME`, or `/model QUERY` to search | the model control under the composer |
-| choose for new conversations | `/model NAME --default` | **Also use for new conversations** |
+| choose for new conversations | `/model NAME --default` | Settings → Models and providers → Model (**Change the default** in the model control) |
 | set the reasoning effort | `/effort LEVEL` | the model control |
 
 Providers and the default model are saved in
@@ -260,7 +260,8 @@ pipeline is in [Tools](architecture/tools.md).
 | `yolo` | YOLO | `/yolo`, `--yolo`, `/permissions yolo` |
 | `plan` | Plan | `/plan`, `/permissions plan` |
 
-Open **Approval** to see which setting supplied the mode. **Default** follows
+Open **Approval** to see which setting supplied the mode, and **Change the
+default** for the row in Settings that sets it. **Default** follows
 the applicable settings for an ordinary conversation. A delegated agent
 inherits its parent's mode at launch. Its assignment disclosure shows whether
 it may edit the shared folder, edit its own worktree or only read. Choosing

@@ -71,7 +71,26 @@ export default function ModelPicker({
     },
     [session.id, session.cwd],
   );
-  if (!catalog && !loadError) return <ModelLoading close={close} />;
+  // Where the model comes from, and the way to its default.
+  const source = settings && (
+    <div class="default-source">
+      <small class="muted truncate">
+        {valueSources[state?.route_source ?? ""]}
+      </small>
+      <Button
+        variant="quiet"
+        size="compact"
+        onClick={() => {
+          close();
+          settings("models/model");
+        }}
+      >
+        Change the default
+      </Button>
+    </div>
+  );
+  if (!catalog && !loadError)
+    return <ModelLoading close={close} source={source} />;
   const selected = catalog?.models.find((item) => item.value === model);
   const efforts = [
     ...new Set([
@@ -153,23 +172,7 @@ export default function ModelPicker({
               </Select>
             </Field>
           </div>
-          {settings && (
-            <div class="default-source">
-              <small class="muted">
-                {valueSources[state?.route_source ?? ""]}
-              </small>
-              <Button
-                variant="quiet"
-                size="compact"
-                onClick={() => {
-                  close();
-                  settings("models/model");
-                }}
-              >
-                Change the default
-              </Button>
-            </div>
-          )}
+          {source}
           {loadError && <LoadError error={loadError} retry={retry} />}
           {action.error && <LoadError error={action.error} />}
         </>

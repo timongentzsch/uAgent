@@ -2355,3 +2355,11 @@ def test_search_is_offered_to_a_conversation_that_chose_its_model_late(root, hom
         result = run_dialog(root, env, "1\nprobe\n/q\n", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true("web_search" in function_names(server.requests[0][1]), server.requests)
+
+
+def test_setup_without_a_terminal_says_where_else_to_set_a_provider(root, home, *, binary):
+    result = run(root, base_env(home, "http://127.0.0.1:9"), "setup", binary=binary)
+    assert_true(result.returncode == 2, result)
+    assert_true(
+        "run uagent setup in one" in result.stderr and "Settings" in result.stderr, result.stderr
+    )

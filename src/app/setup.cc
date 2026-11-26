@@ -365,7 +365,9 @@ int OpenRouterSetup(bool browser);
 
 int RunSetup() {
   if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) {
-    fprintf(stderr, "uagent setup needs a terminal\n");
+    fprintf(stderr,
+            "uagent setup asks its questions in a terminal: run uagent setup "
+            "in one, or set the provider in Settings in the web interface\n");
     return 2;
   }
   SavedSettings saved = ReadSettings("");

@@ -36,6 +36,16 @@ dialog.browser-view[data-layout="sheet"] {
 }
 /* noVNC sets the remote pointer inline, and Chrome's is often blank: it
    takes over the local one only while this device drives. */
+/* What keeps it from starting is said on the page's own surface, not on an
+   empty screen. */
+.browser-screen[data-unavailable] {
+  background: var(--bg);
+  color: var(--text);
+}
+.browser-screen[data-unavailable] > .browser-overlay {
+  color: inherit;
+  pointer-events: auto;
+}
 .browser-screen[data-watching] .browser-rfb canvas {
   cursor: default !important;
 }

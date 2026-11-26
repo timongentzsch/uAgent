@@ -77,6 +77,8 @@ interface BrowserStatus {
   profile_setup?: boolean;
   profiles?: { id: string; name: string }[];
   error?: string;
+  // Why it cannot start (a program missing on the host), while stopped.
+  unavailable?: string;
 }
 
 // Remote Chrome runs on Linux, so the platform shortcut modifier maps to Ctrl.
@@ -897,6 +899,24 @@ export default function BrowserPanel({
           >
             {overlays}
           </Screen>
+        ) : status.unavailable ? (
+          <div class="browser-screen" data-unavailable>
+            <div class="browser-overlay">
+              <Notice
+                tone="error"
+                action={
+                  <Button
+                    disabled={busy}
+                    onClick={() => void control("takeover")}
+                  >
+                    Retry
+                  </Button>
+                }
+              >
+                {status.unavailable}
+              </Notice>
+            </div>
+          </div>
         ) : (
           <div class="browser-screen">
             <p class="browser-overlay" role="status">

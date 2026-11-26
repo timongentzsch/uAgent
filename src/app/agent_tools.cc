@@ -130,7 +130,7 @@ bool Working(const SessionInfo& info) {
 // "working" for an agent of `box` that works or is about to, else the status
 // of its runtime.
 std::string AgentState(const SessionInfo& info, const std::string& box) {
-  const std::string status = RuntimeStatus(info.path);
+  std::string status = RuntimeStatus(info.path);
   if (status != "idle") return status;
   // Check again after the inbox: this child might have started a turn and
   // acknowledged its guidance since the first status check. It mails its

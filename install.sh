@@ -25,6 +25,28 @@ reply() {
 }
 ask() { reply "$1 [y/N]" && { [ "$answer" = y ] || [ "$answer" = Y ]; }; }
 ask_yes() { reply "$1 [Y/n]" && [ "$answer" != n ] && [ "$answer" != N ]; }
+# Offers to put the prefix's bin on PATH, so uagent is found.
+offer_path() {
+  case :$PATH: in
+    *:"$prefix/bin":*) ;;
+    *)
+      case ${SHELL##*/} in
+        zsh) rc=$HOME/.zshrc line="export PATH=\"$prefix/bin:\$PATH\"" ;;
+        fish) rc=$HOME/.config/fish/conf.d/uagent.fish line="fish_add_path $prefix/bin" ;;
+        bash) rc=$HOME/.bashrc line="export PATH=\"$prefix/bin:\$PATH\""
+          [ "$os" = Darwin ] && rc=$HOME/.bash_profile ;;
+        *) rc=$HOME/.profile line="export PATH=\"$prefix/bin:\$PATH\"" ;;
+      esac
+      if ask_yes "$prefix/bin is not on your PATH. Add it in $rc?"; then
+        mkdir -p "$(dirname -- "$rc")"
+        grep -qsF "$line" "$rc" || printf '\n%s\n' "$line" >>"$rc"
+        echo "Open a new terminal, or run: $line"
+      else
+        echo "To find uagent, add this to your shell's startup file: $line"
+      fi
+      ;;
+  esac
+}
 
 # A file beside CMakeLists.txt is a checkout, built as it is. Anything else
 # (the script piped to sh) installs a release.
@@ -159,6 +181,11 @@ if [ -z "${UAGENT_INSTALL:-}" ] && [ "$docker" = yes ] && [ "$interactive" = yes
   [ "$answer" = 2 ] || choice=container
 fi
 
+# What the uagent command a container install writes says of itself; a
+# native install replaces it.
+container_mark="# uagent: µAgent's container"
+bin=$prefix/bin/uagent
+
 # The container's agent is UID 10001; you keep access to what it makes.
 workspace_folder() {
   mkdir -p "$1"
@@ -254,8 +281,29 @@ if [ "$choice" = container ]; then
   elif [ "$os" = Darwin ]; then
     echo "To keep µAgent available, let Docker Desktop start when you log in (Settings, General)."
   fi
-  echo "Open the link below to pair this browser; to pair another device later:"
-  echo "  docker compose -f $deploy/compose.yaml exec uagent uagent --web"
+  # uagent runs the container's, unless a µAgent installed here does.
+  command="docker compose -f $deploy/compose.yaml exec uagent uagent"
+  if [ -f "$prefix/share/uagent/install" ]; then
+    echo "uagent is the µAgent installed in $prefix; the container's is: $command"
+  else
+    mkdir -p "$prefix/bin"
+    cat >"$bin" <<EOF
+#!/bin/sh
+$container_mark: its uagent, with this terminal when there is one.
+compose_file='$deploy/compose.yaml'
+if [ -z "\$(docker compose -f "\$compose_file" ps -q --status running uagent 2>/dev/null)" ]; then
+  echo "µAgent's container is not running; start it with: docker compose -f \$compose_file up -d" >&2
+  exit 1
+fi
+tty=-T
+if [ -t 0 ] && [ -t 1 ]; then tty=; fi
+exec docker compose -f "\$compose_file" exec \$tty uagent uagent "\$@"
+EOF
+    chmod 0755 "$bin"
+    command=uagent
+    offer_path
+  fi
+  echo "Open the link below to pair this browser; to pair another device later: $command --web"
   compose exec -T uagent uagent --web
   exit 0
 fi
@@ -271,9 +319,12 @@ if [ "$os" = Linux ] && [ "$browser" = no ] && has apt-get &&
     fonts-noto-color-emoji "$deb"
 fi
 
-bin=$prefix/bin/uagent
 installed=
-if [ -x "$bin" ]; then installed=$("$bin" --version 2>/dev/null | sed 's/^uagent //'); fi
+if grep -qsF "$container_mark" "$bin"; then
+  echo "uagent will be this µAgent; the container's stays: docker compose -f $data/container/deploy/compose.yaml exec uagent uagent"
+elif [ -x "$bin" ]; then
+  installed=$("$bin" --version 2>/dev/null | sed 's/^uagent //')
+fi
 if [ "$mode" = source ]; then
   # Every build embeds the web interface: reuse a built one only while its
   # source inputs match, and without npm only a supplied bundle.
@@ -390,25 +441,7 @@ fi
   exit 0
 }
 
-case :$PATH: in
-  *:"$prefix/bin":*) ;;
-  *)
-    case ${SHELL##*/} in
-      zsh) rc=$HOME/.zshrc line="export PATH=\"$prefix/bin:\$PATH\"" ;;
-      fish) rc=$HOME/.config/fish/conf.d/uagent.fish line="fish_add_path $prefix/bin" ;;
-      bash) rc=$HOME/.bashrc line="export PATH=\"$prefix/bin:\$PATH\""
-        [ "$os" = Darwin ] && rc=$HOME/.bash_profile ;;
-      *) rc=$HOME/.profile line="export PATH=\"$prefix/bin:\$PATH\"" ;;
-    esac
-    if ask_yes "$prefix/bin is not on your PATH. Add it in $rc?"; then
-      mkdir -p "$(dirname -- "$rc")"
-      grep -qsF "$line" "$rc" || printf '\n%s\n' "$line" >>"$rc"
-      echo "Open a new terminal, or run: $line"
-    else
-      echo "To find uagent, add this to your shell's startup file: $line"
-    fi
-    ;;
-esac
+offer_path
 
 # Keys and the default model, before a service starts that reads them.
 if "$bin" --help 2>/dev/null | grep -q '^uagent setup'; then

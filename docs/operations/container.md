@@ -20,7 +20,16 @@ release's `compose.yaml` and `seccomp-chrome.json` into
 `~/.local/share/uagent/container/deploy`, writes `UAGENT_VERSION` and
 `UAGENT_WORKSPACES` to `.env` there, runs `up -d --no-build --pull always`
 on `ghcr.io/timongentzsch/uagent:<version>` (amd64, arm64), waits up to 60 s,
-then runs `uagent setup` and `uagent --web`. The Compose project is named
+then runs `uagent setup` and `uagent --web`. It writes `<prefix>/bin/uagent`
+(`~/.local/bin/uagent`), which runs the container's `uagent` with the
+arguments given: `uagent setup`, `uagent --web` and the rest work as on a
+native install. It passes this terminal when there is one (`exec -T` when
+not) and says how to start the container when it is not running. A native
+µAgent in the same prefix (`share/uagent/install` exists) keeps the name and
+the installer says the container's command instead; a native install over a
+container one replaces the command, and the container stays reachable with
+`docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec
+uagent uagent`. The Compose project is named
 `uagent` either way, so both copies share one volume. Use Docker Engine 28
 or newer: [older engines can expose a loopback-published port to nearby hosts](https://docs.docker.com/engine/network/port-publishing/).
 

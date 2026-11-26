@@ -51,7 +51,7 @@ as CI does.
 
 | Path | Content |
 | --- | --- |
-| `<prefix>/bin/uagent` | the executable, web client embedded |
+| `<prefix>/bin/uagent` | the executable, web client embedded; for a container install, a script that runs the container's `uagent` ([Container](container.md#start-it)) |
 | `<prefix>/share/uagent/` | `skills/`, `sheet/`, `remote/<build id>/` (the remote bundle), `install` (`release`, `source`, `checkout` or `container`) |
 | `<prefix>/share/doc/uagent/` | README, SECURITY, docs, licences |
 | `/etc/opt/chrome/policies/managed/uagent.json` | Chrome policy, Linux, when accepted |

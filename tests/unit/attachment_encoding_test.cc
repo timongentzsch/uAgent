@@ -202,6 +202,18 @@ TEST_CASE(TestImageRegion) {
                    "12P8//8/AwwwQWlGRgYGBgBIDwMDBa70RgAAAABJRU5ErkJggg==",
                    png, 1024));
   CHECK(ToolWriteFile("small.png", png).Ok());
+  // A picture its decoder warns about (a broken colour profile) still has a
+  // size.
+  std::string warned;
+  CHECK(Base64Decode(
+      "iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAE2lDQ1B4AAB4nGNgoAwAAABA"
+      "AAFqdW5rB8/N0gAAABBJREFUeJxjEGj4AEcMyBwAlRoMAZaWcPQAAAAASUVORK5CYII=",
+      warned, 1024));
+  CHECK(ToolWriteFile("warned.png", warned).Ok());
+  int warned_width = 0, warned_height = 0;
+  if (ImageSize("warned.png", warned_width, warned_height).Ok()) {
+    CHECK(warned_width == 4 && warned_height == 2);
+  }
   int width = 0, height = 0;
   if (!ImageSize("small.png", width, height).error.empty()) {
     CHECK(ToolReadImageRegion("small.png", "0,0,1,1", "cut")

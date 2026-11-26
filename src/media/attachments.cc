@@ -483,6 +483,8 @@ namespace {
 // `convert` and `identify`. `tool` is "identify", or empty to convert.
 CapturedProcess Magick(const std::string& tool,
                        std::vector<std::string> arguments) {
+  // Its warnings share the pipe its answer is read from.
+  arguments.insert(arguments.begin(), "-quiet");
   std::vector<std::string> seven{"magick"};
   if (!tool.empty()) seven.push_back(tool);
   seven.insert(seven.end(), arguments.begin(), arguments.end());

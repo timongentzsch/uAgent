@@ -259,6 +259,8 @@ void Agent::PushAssistantMessage(ChatResult& response,
     facts["tokens_per_second"] = static_cast<double>(usage.GeneratedTokens()) *
                                  1000 / response.duration_ms;
   }
+  // Streamed as a step, it is published as one: never once as the answer.
+  if (reply_as_step_) facts["held"] = true;
   conversation_.RecordDisplay(conversation_.LastDisplayId(), std::move(facts));
   // Only the preview the view shows is kept; more would crowd out other facts.
   conversation_.RecordDisplay(
@@ -272,12 +274,15 @@ Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
   // Mail that arrived during the final model call reopens the turn too; a
   // reply written as a step then stays one.
   DeliverMail(true);
-  if (reply_as_step_ && SteeringYieldRequested()) HoldReply(true);
   if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
-  if (SteeringState().Requested()) return InterruptTurn(state);
-  if (StepFlow held = HoldAnswer(state, loop); held != StepFlow::kProceed) {
-    return held;
+  if (!SteeringState().Requested()) {
+    if (StepFlow held = HoldAnswer(state, loop); held != StepFlow::kProceed) {
+      return held;
+    }
   }
+  // It stands as the answer.
+  if (reply_as_step_) HoldReply(false);
+  if (SteeringState().Requested()) return InterruptTurn(state);
   state.stop.outcome = TurnOutcome::kComplete;
   return StepFlow::kEndTurn;
 }
@@ -320,7 +325,11 @@ Agent::StepFlow Agent::HoldAnswer(TurnExecution& state, StepState& loop) {
   if (!agent_wait_ || state.agent_calls.empty()) return StepFlow::kProceed;
   const std::vector<std::string> owed =
       agent_wait_(state.agent_calls, {}, true);
-  if (owed.empty()) return StepFlow::kProceed;
+  if (owed.empty()) {
+    // One that ended since the mail was taken mailed its report first.
+    DeliverMail(true);
+    return ApplyQueuedSteering(loop) ? StepFlow::kNextStep : StepFlow::kProceed;
+  }
   const std::string names = NameList(owed);
   if (loop.holds >= kAnswerHolds) {
     RecordWorkNotice({{"view",

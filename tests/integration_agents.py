@@ -404,6 +404,51 @@ def test_an_answer_while_an_agent_works_is_held_until_it_reports(root, home, *, 
     assert_true(waited["state"] == "ok" and waited["work"] == held["work"], (waited, held))
 
 
+def test_a_held_reply_is_never_published_as_the_answer(root, home, *, binary):
+    """What a client is sent of the held reply, as it streams and once whole,
+    places it in the work: a client never draws it as the turn's answer."""
+    release = threading.Event()
+
+    def route(_, body):
+        if brief_of(body):
+            release.wait(budget(30))
+            return event({"content": "slow done"})
+        if REPORTED in text_of(body):
+            return event({"content": "final answer"})
+        if not results_of(body):
+            return tool_call("agent_start", {"brief": "BRIEF slow", "wait": False})
+        return event({"content": "early answer"})
+
+    with Server([route]) as server, web_host(binary, root, home, server.url) as (web, code, _, _):
+        web.pair(code)
+        session = web.command("activate", web.command("create", cwd=str(root))["session"])
+        session = session["session"]
+        web.until(session, lambda value: value["metadata"]["status"] == "idle")
+        client = SessionClient(runtime_directory(home) / f"{session['id']}.sock")
+        try:
+            web.command("submit", session, text="ask")
+            client.until(
+                lambda frame: (
+                    (frame.get("data") or {}).get("node", {}).get("headline", {}).get("verb")
+                    == "Waiting for"
+                )
+            )
+            release.set()
+            client.until(lambda frame: "final answer" in json.dumps(frame))
+        finally:
+            release.set()
+            client.close()
+    nodes = [
+        frame["data"]["node"]
+        for frame in client.frames
+        if frame.get("type") == "message.changed"
+        and "early answer" in json.dumps(frame["data"].get("node", {}))
+    ]
+    assert_true(nodes, client.frames[-5:])
+    assert_true({node["parent"] for node in nodes} == {nodes[-1]["parent"]}, nodes)
+    assert_true(nodes[-1]["parent"].startswith("w-"), nodes[-1])
+
+
 def test_a_held_answer_stands_after_three_holds_without_a_report(root, home, *, binary):
     release = threading.Event()
     asked = []

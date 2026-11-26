@@ -113,10 +113,13 @@ test.describe("in Places", () => {
       "Lists the commands",
     );
 
-    await page.route(
-      "**/api/folder?**",
-      (route) => route.fulfill({ status: 503, body: "Unavailable" }),
-      { times: 1 },
+    // Unreadable until Retry is pressed: the overview also reads again when
+    // one of its conversations changes, which a new one still does now and
+    // then, and that read must not answer for Retry.
+    await page.route("**/api/folder?**", async (route) =>
+      (await page.evaluate(() => window.retried))
+        ? route.continue()
+        : route.fulfill({ status: 503, body: "Unavailable" }),
     );
     await page.getByTitle(/^Overview of /).click();
     const overview = page.getByRole("region", { name: /^Overview of / });
@@ -130,6 +133,17 @@ test.describe("in Places", () => {
     await expect(
       overview.getByText("Unavailable", { exact: true }),
     ).toHaveCount(2);
+    // Whichever Retry is drawn by then: a failed read draws it anew.
+    await page.evaluate(() =>
+      document.addEventListener(
+        "click",
+        (event) => {
+          if (event.target.closest("button")?.textContent === "Retry")
+            window.retried = true;
+        },
+        true,
+      ),
+    );
     await overview.getByRole("button", { name: "Retry" }).click();
     await expect(overview.getByText("0 files", { exact: true })).toBeVisible();
     await expect(overview.locator(".overview-card")).toHaveCount(1);

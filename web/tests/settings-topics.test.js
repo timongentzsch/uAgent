@@ -28,13 +28,16 @@ test("the topics and groups are the host's, in its order", () => {
     ]),
     topics,
   );
-  for (const [id, topic] of groups)
-    assert.ok(
-      TOPICS.find((entry) => entry.id === topic)?.parts.some(
-        (part) => part.group === id,
-      ),
-      `group ${id} is placed in ${topic}`,
-    );
+  // A group the table places is the host's, in that topic; one it does not
+  // name still shows, at the end of its topic, so a new one needs no change
+  // here.
+  for (const topic of TOPICS)
+    for (const part of topic.parts)
+      if ("group" in part)
+        assert.ok(
+          groups.some(([id, owner]) => id === part.group && owner === topic.id),
+          `${topic.id} places the host group ${part.group}`,
+        );
 });
 
 test("an address names a topic and a row", () => {

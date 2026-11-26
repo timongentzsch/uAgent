@@ -233,7 +233,11 @@ export default function Legend({
             height={board.h}
             scale={(grid ? GRID_WIDTH : LEGEND_WIDTH) / board.w}
             far={!near.has(at)}
-            onMessage={heard(board.path)}
+            // A document's pages are counted on the stage: a thumbnail drawn
+            // anew starts at one.
+            onMessage={(message) =>
+              message.type !== "pages" && heard(board.path)(message)
+            }
           />
           <span class="page-legend-name small truncate">
             {(board.failed || board.issue) && <TriangleAlert />}

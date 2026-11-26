@@ -521,15 +521,19 @@ export function useHost(
       return;
     }
     // The open conversation is asked for with the list, not after it, when
-    // this device listed it before; the list's own load below reuses it.
+    // this device listed it before; the list's own load below reuses it
+    // unless it failed.
     const open = selection.current;
-    if (
+    const early =
       open &&
       (catalogueRef.current?.sessions ?? kept.catalogue.read()).some(
         (item) => item.id === open,
       )
-    )
-      load(open).catch(() => {});
+        ? load(open).then(
+            () => true,
+            () => false,
+          )
+        : undefined;
     try {
       const scan = rescan.current;
       rescan.current = false;
@@ -584,7 +588,11 @@ export function useHost(
       // the retry action remain reachable while its snapshot loads.
       setAuthenticated(true);
       const id = selection.current;
-      if (id && list.sessions.some((item) => item.id === id))
+      if (
+        id &&
+        list.sessions.some((item) => item.id === id) &&
+        !(id === open && (await early))
+      )
         await load(id).catch(() => {});
       if (signal.aborted) return;
       follow(list, `${list.epoch}:${list.cursor}`);
@@ -684,9 +692,12 @@ export function useHost(
   useEffect(() => {
     if (authenticated && catalogue.pins) kept.pins.write(catalogue.pins);
   }, [authenticated, catalogue.pins]);
+  // A conversation chosen once connected; the one open while connecting is
+  // read by the connection itself.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: authenticated only gates
   useEffect(() => {
     if (selected && authenticated) load(selected).catch(() => {});
-  }, [selected, authenticated, load]);
+  }, [selected, load]);
   const listed = useMemo(
     () =>
       listedSessions({

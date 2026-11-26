@@ -151,6 +151,9 @@ export interface FilePart {
   name: string;
   mime: string;
   bytes: number;
+  // A raster picture's size; old conversations lack it.
+  width?: number;
+  height?: number;
 }
 export interface LinkPart {
   kind: "link";

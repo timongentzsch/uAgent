@@ -310,6 +310,57 @@ TEST_CASE(TestPdfPages) {
         "[scan.pdf pages 1-2 of 2; no text layer, likely scanned]");
 }
 
+// A picture's size comes from its header, as a browser shows it: a JPEG
+// turned by its EXIF orientation, and nothing from a file cut short.
+TEST_CASE(TestRasterSize) {
+  const auto bytes = [](std::initializer_list<int> values) {
+    std::string out;
+    for (int value : values) out.push_back(static_cast<char>(value));
+    return out;
+  };
+  const auto size = [](const std::string& file) {
+    int width = -1, height = -1;
+    return RasterSize(file, width, height)
+               ? std::to_string(width) + "x" + std::to_string(height)
+               : std::string();
+  };
+  const std::string png = std::string("\x89PNG\r\n\x1a\n\0\0\0\rIHDR", 16) +
+                          bytes({0, 0, 3, 0x20, 0, 0, 2, 0x58});
+  const std::string gif = "GIF89a" + bytes({0x20, 3, 0x58, 2, 0, 0, 0});
+  const std::string riff = "RIFF" + bytes({0, 0, 0, 0}) + "WEBP";
+  const std::string lossy = riff + "VP8 " + bytes({0, 0, 0, 0, 0, 0, 0}) +
+                            bytes({0x9d, 1, 0x2a, 0x20, 3, 0x58, 2});
+  // 800 - 1 and 600 - 1 in 14 bits each.
+  const uint32_t bits = 799 | 599u << 14;
+  const std::string lossless =
+      riff + "VP8L" + bytes({0, 0, 0, 0, 0x2f}) +
+      bytes({static_cast<int>(bits & 0xff), static_cast<int>(bits >> 8 & 0xff),
+             static_cast<int>(bits >> 16 & 0xff),
+             static_cast<int>(bits >> 24)});
+  const std::string extended = riff + "VP8X" + bytes({0, 0, 0, 0, 0, 0, 0, 0}) +
+                               bytes({0x1f, 3, 0, 0x57, 2, 0});
+  const std::string sof = bytes({0xff, 0xc0, 0, 17, 8, 2, 0x58, 3, 0x20});
+  const std::string jpeg = bytes({0xff, 0xd8}) + sof;
+  // APP1 with one IFD entry: orientation 6, a quarter turn.
+  const std::string exif = bytes({0xff, 0xe1, 0, 34}) +
+                           std::string("Exif\0\0", 6) + "MM" +
+                           bytes({0, 42, 0, 0, 0, 8, 0, 1, 1, 0x12, 0, 3,
+                                  0, 0,  0, 1, 0, 6, 0, 0, 0, 0,    0, 0});
+  const std::string turned = bytes({0xff, 0xd8}) + exif + sof;
+  for (const auto& [file, expected] :
+       std::vector<std::pair<std::string, std::string>>{{png, "800x600"},
+                                                        {gif, "800x600"},
+                                                        {lossy, "800x600"},
+                                                        {lossless, "800x600"},
+                                                        {extended, "800x600"},
+                                                        {jpeg, "800x600"},
+                                                        {turned, "600x800"}}) {
+    CHECK(size(file) == expected);
+    CHECK(size(file.substr(0, file.size() - 1)).empty());
+  }
+  CHECK(size("plain text").empty());
+}
+
 // HEIC stills and SVG diagrams enter the image pipeline; MP4 video, HTML and
 // mislabeled files do not. Sniffing and inspection need no converter.
 TEST_CASE(TestVectorAndHeicAttachments) {

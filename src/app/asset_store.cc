@@ -194,14 +194,19 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
       mime = kOctetStreamMime;
     }
   }
+  // The size lets a page reserve a picture's box before it loads.
+  json facts = {{"name", name},
+                {"mime", mime},
+                {"image", image},
+                {"bytes", bytes.size()}};
+  if (int width = 0, height = 0; RasterSize(bytes, width, height)) {
+    facts["width"] = width;
+    facts["height"] = height;
+  }
   const auto result = [&](const std::string& id) -> AssetStoreResult {
-    return {{{"id", id},
-             {"name", name},
-             {"mime", mime},
-             {"image", image},
-             {"bytes", bytes.size()}},
-            {},
-            200};
+    json value = facts;
+    value["id"] = id;
+    return {std::move(value), {}, 200};
   };
   // A file kept again unchanged is the asset it was. An upload, committed
   // only when sent, and an evictable copy always get their own.
@@ -237,17 +242,13 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
     return {{}, "cannot persist upload", 500};
   }
   bytes_ += bytes.size();
-  if (!WritePrivateFile(stem + ".json",
-                        JsonDump({{"mime", mime},
-                                  {"name", name},
-                                  {"image", image},
-                                  {"extension", ".data"},
-                                  {"bytes", bytes.size()},
-                                  {"hash", hash},
-                                  {"committed", committed},
-                                  {"tool_copy", tool_copy},
-                                  {"shared", shared}}),
-                        error)) {
+  json record = facts;
+  record.update({{"extension", ".data"},
+                 {"hash", hash},
+                 {"committed", committed},
+                 {"tool_copy", tool_copy},
+                 {"shared", shared}});
+  if (!WritePrivateFile(stem + ".json", JsonDump(record), error)) {
     return {{}, "cannot persist upload metadata", 500};
   }
   return result(id);

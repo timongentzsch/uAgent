@@ -17,7 +17,6 @@ export const storageKeys = {
   browser: "uagent-browser",
   // The side chats each conversation shows as tabs on this device.
   sideTabs: "uagent-side-tabs",
-  bookmarks: "uagent-transcript-bookmarks",
   theme: "uagent-theme",
   motion: "uagent-motion",
   zoom: "uagent-zoom",
@@ -46,7 +45,6 @@ export const hostDataKeys = [
   storageKeys.unread,
   storageKeys.browser,
   storageKeys.sideTabs,
-  storageKeys.bookmarks,
   storageKeys.scheduledDraft,
   storageKeys.filesAt,
   "uagent-library-",

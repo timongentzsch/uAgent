@@ -124,6 +124,78 @@ std::string RasterMime(std::string_view bytes) {
   return {};
 }
 
+bool RasterSize(std::string_view bytes, int& width, int& height) {
+  width = height = 0;
+  const auto at = [&](size_t i) {
+    return i < bytes.size()
+               ? static_cast<uint32_t>(static_cast<unsigned char>(bytes[i]))
+               : 0u;
+  };
+  const auto be16 = [&](size_t i) { return at(i) << 8 | at(i + 1); };
+  const auto le16 = [&](size_t i) { return at(i) | at(i + 1) << 8; };
+  const auto le24 = [&](size_t i) { return le16(i) | at(i + 2) << 16; };
+  const auto set = [&](uint32_t w, uint32_t h, size_t needed) {
+    if (bytes.size() < needed || !w || !h || w > INT_MAX || h > INT_MAX) {
+      return false;
+    }
+    width = static_cast<int>(w);
+    height = static_cast<int>(h);
+    return true;
+  };
+  const std::string mime = RasterMime(bytes);
+  if (mime == kPngMime) {
+    return set(be16(16) << 16 | be16(18), be16(20) << 16 | be16(22), 24);
+  }
+  if (mime == kGifMime) return set(le16(6), le16(8), 10);
+  if (mime == kWebpMime) {
+    const std::string_view chunk = bytes.substr(12, 4);
+    if (chunk == "VP8 ") {
+      return set(le16(26) & 0x3fff, le16(28) & 0x3fff, 30);
+    }
+    if (chunk == "VP8L") {
+      const uint32_t bits = le16(21) | le16(23) << 16;
+      return set((bits & 0x3fff) + 1, (bits >> 14 & 0x3fff) + 1, 25);
+    }
+    if (chunk == "VP8X") return set(le24(24) + 1, le24(27) + 1, 30);
+    return false;
+  }
+  if (mime != kJpegMime) return false;
+  // Browsers turn a JPEG by its EXIF orientation; 5 to 8 swap the sides.
+  bool turned = false;
+  for (size_t pos = 2; pos + 4 <= bytes.size();) {
+    if (at(pos) != 0xff) return false;
+    const uint32_t marker = at(pos + 1);
+    if (marker == 0xff) {
+      ++pos;
+      continue;
+    }
+    if (marker == 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
+      pos += 2;
+      continue;
+    }
+    const size_t end = pos + 2 + be16(pos + 2);
+    if (marker == 0xe1 &&
+        bytes.substr(pos + 4, 6) == std::string_view("Exif\0\0", 6)) {
+      const size_t tiff = pos + 10;
+      const bool le = bytes.substr(tiff, 2) == "II";
+      const auto u16 = [&](size_t i) { return le ? le16(i) : be16(i); };
+      const size_t ifd = tiff + (le ? le16(tiff + 4) | le16(tiff + 6) << 16
+                                    : be16(tiff + 4) << 16 | be16(tiff + 6));
+      for (size_t entry = ifd + 2, n = 0; n < u16(ifd) && entry + 12 <= end;
+           ++n, entry += 12) {
+        if (u16(entry) == 0x0112) turned = u16(entry + 8) >= 5;
+      }
+    }
+    if (marker >= 0xc0 && marker <= 0xcf && marker != 0xc4 && marker != 0xc8 &&
+        marker != 0xcc) {
+      const uint32_t h = be16(pos + 5), w = be16(pos + 7);
+      return turned ? set(h, w, pos + 9) : set(w, h, pos + 9);
+    }
+    pos = end;
+  }
+  return false;
+}
+
 // The same ftyp box with a video brand is a video container. Only image
 // magic wins over a video claim, never the reverse.
 std::string VideoMime(std::string_view bytes) {

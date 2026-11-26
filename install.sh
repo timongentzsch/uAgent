@@ -89,8 +89,27 @@ build_from_source() {
   UAGENT_INSTALL=here exec sh "$data/src/install.sh"
 }
 
+# Whether this user can run containers; if not, why, and what fixes it.
 docker=no
-if has docker && docker info >/dev/null 2>&1; then docker=yes; fi
+docker_why=
+docker_fix=
+if ! has docker; then
+  docker_why="not installed"
+elif problem=$(docker info 2>&1 >/dev/null); then
+  docker=yes
+else
+  case $problem in
+    *"permission denied"*)
+      docker_why="installed, but $(id -un) may not use it"
+      docker_fix="sudo usermod -aG docker $(id -un), then log in again" ;;
+    *)
+      docker_why="installed, but not running"
+      docker_fix="sudo systemctl start docker"
+      [ "$os" = Darwin ] && docker_fix="start Docker Desktop" ;;
+  esac
+fi
+docker_found=$(yes_no "$docker")
+[ -z "$docker_fix" ] || docker_found="not usable"
 browser=no
 if [ "$os" = Linux ] && has google-chrome-stable && has Xtigervnc && has xauth; then
   browser=yes
@@ -98,15 +117,16 @@ fi
 if [ "$mode" = source ]; then
   node=no
   if has npm; then node=yes; fi
-  found="Docker: $(yes_no "$docker"), Node.js: $(yes_no "$node")"
+  found="Docker: $docker_found, Node.js: $(yes_no "$node")"
 else
-  found="Docker: $(yes_no "$docker")"
+  found="Docker: $docker_found"
 fi
 if [ "$os" = Linux ]; then
   echo "$found, Chrome and TigerVNC: $(yes_no "$browser")"
 else
   echo "$found; the agent's browser runs in the container or on Linux"
 fi
+[ -z "$docker_fix" ] || echo "Docker is $docker_why. For the container: $docker_fix"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
@@ -126,6 +146,10 @@ release_version() {
 # The container keeps an agent that runs commands and browses away from this
 # machine's files and logins, so it comes first where Docker runs.
 choice=${UAGENT_INSTALL:-here}
+if [ "$choice" = container ] && [ "$docker" = no ]; then
+  echo "The container needs Docker, which is $docker_why${docker_fix:+. First: $docker_fix}" >&2
+  exit 1
+fi
 if [ -z "${UAGENT_INSTALL:-}" ] && [ "$docker" = yes ] && [ "$interactive" = yes ]; then
   here=
   [ "$mode" = release ] && [ -n "$unsupported" ] && here=", built from source ($unsupported)"

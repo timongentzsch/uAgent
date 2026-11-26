@@ -15,6 +15,7 @@ uv run --frozen ruff format --check .github tests benchmarks skills
 python3 tests/ci_changes_test.py
 python3 tests/boundary_test.py
 python3 tests/egress_test.py
+python3 tests/install_test.py
 python3 tests/wire_contract_test.py
 python3 benchmarks/session_metrics.py --self-test
 python3 benchmarks/eval.py --self-test

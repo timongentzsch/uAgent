@@ -351,8 +351,10 @@ ToolResult ReadPdf(const std::string& path, int64_t offset, int64_t limit,
                    const std::string& call_id) {
   const CapturedProcess info = CaptureProcess({"pdfinfo", path});
   int64_t total = 0;
-  if (size_t at = info.output.find("\nPages:"); at != std::string::npos) {
-    std::istringstream(info.output.substr(at + 8)) >> total;
+  // Its warnings share the pipe, and the line may be the first.
+  const std::string lines = "\n" + info.output;
+  if (size_t at = lines.find("\nPages:"); at != std::string::npos) {
+    std::istringstream(lines.substr(at + 7)) >> total;
   }
   if (!info.Ok() || total <= 0) {
     ToolResult attached = Attachments().Add(path, call_id);

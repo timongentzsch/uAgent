@@ -907,8 +907,9 @@ Tool AgentsTool() {
                       JsonValue(a, "query", "")};
     }
     const std::string target = AgentName(JsonValue(a, "id", ""));
+    // Not "Read": the step counts as one, not as a file looked at.
     if (action == "read") {
-      return Headline{"Reading", "Read", part + " from " + target};
+      return Headline{"Checking", "Checked", part + " from " + target};
     }
     if (action == "stop") return Headline{"Stopping", "Stopped", target};
     if (action == "close") return Headline{"Closing", "Closed", target};

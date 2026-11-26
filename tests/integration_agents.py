@@ -359,6 +359,33 @@ def test_agents_wait_returns_when_an_agent_not_waited_for_reports(root, home, *,
         assert_true(waits[0][1] == "completed: BRIEF slow\n", waits[0])
 
 
+def test_a_folded_group_counts_only_the_rows_it_shows(root, home, *, binary):
+    (root / "a.txt").write_text("a")
+    (root / "b.txt").write_text("b")
+    calls = [
+        ("read_path", {"path": "a.txt"}),
+        ("agents", {"action": "list"}),
+        ("read_path", {"path": "b.txt"}),
+    ]
+
+    def route(_, body):
+        done = len(results_of(body))
+        if done < len(calls):
+            return tool_call(*calls[done], call_id=f"call-{done}")
+        return event({"content": "looked"})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "-p", "look", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    (saved,) = (home / ".uagent" / "history").glob("*.json")
+    facts = facts_of(saved)
+    # The routine list folds into the run unseen, so it is not counted.
+    (group,) = [f for key, f in facts.items() if key.startswith("g-")]
+    assert_true(group["kinds"] == {"read": 2}, group)
+    (work,) = [f for key, f in facts.items() if key.startswith("w-")]
+    assert_true(work["kinds"] == {"read": 2}, work)
+
+
 def parent_of(agent):
     (parent,) = [
         p for p in agent.parent.glob("*.json") if session_id(p) == header(agent)["agent"]["parent"]

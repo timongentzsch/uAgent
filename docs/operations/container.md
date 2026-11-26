@@ -8,9 +8,10 @@ works is in [Browser](../architecture/browser.md).
 
 ## Commands of a container install
 
-The installer runs µAgent in the container; `uagent` on this machine is
-not it. Every command goes through `docker compose` with the appliance's
-file (under `$XDG_DATA_HOME` when that is set):
+Wherever µAgent or its docs say `uagent …`, a container install runs it as
+`docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec
+uagent uagent …`: there is no `uagent` on this machine. The file is under
+`$XDG_DATA_HOME` when that is set. The commands it needs:
 
 ```sh
 docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent --web    # a new pairing link

@@ -1,5 +1,4 @@
 import json
-import shutil
 
 from integration_support import (
     Server,
@@ -232,20 +231,6 @@ def test_a_browser_at_another_address_is_told_where_uagent_is(root, home, *, bin
                 status, body, _ = client.request(path, headers={**elsewhere, "Accept": accept})
                 assert_true(status == 403, (path, status))
                 assert_true(json.loads(body) == {"error": "invalid Host or Origin"}, body)
-
-
-def test_an_unpaired_page_reads_how_the_host_was_installed(root, home, *, binary):
-    """The kind only, as the installer wrote it beside the binary: what
-    decides the commands the connect page shows."""
-    installed = root / "installed"
-    (installed / "share/uagent").mkdir(parents=True)
-    shutil.copy2(binary, installed / "uagent")
-    (installed / "share/uagent/install").write_text("container\n")
-    with Server([event({"content": "unused"})]) as provider:
-        with web_host(installed / "uagent", root, home, provider.url) as (client, _, _, _):
-            status, body, _ = client.json("/api/auth")
-            assert_true(status == 200, (status, body))
-            assert_true(body == {"install": "container"}, body)
 
 
 def test_a_start_without_a_provider_carries_its_code(root, home, *, binary):

@@ -201,17 +201,20 @@
     background: var(--scrim);
     border-top: var(--safe-top) solid var(--bg);
   }
+  /* A bar: Close stands in its corner, its icon as far from the edges as
+     the title is from the other side. */
   dialog > header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--pad);
     border-bottom: var(--border);
-    padding: var(--inset-x);
+    min-height: calc(var(--bar-min) + var(--line-width));
+    padding: var(--bar-pad);
     flex-shrink: 0;
-    /* Reserve the same native scrollbar space as the body on every platform. */
-    overflow: hidden;
-    scrollbar-gutter: stable;
+  }
+  dialog > header > h2:first-child {
+    padding-left: calc(var(--bar-text) - var(--bar-pad));
   }
   dialog p {
     color: var(--muted);

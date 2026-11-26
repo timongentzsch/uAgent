@@ -148,9 +148,6 @@ dialog.image-view[data-layout="panel"] {
   padding: 0;
   overflow: clip;
 }
-.image-view .dialog-header-actions > a {
-  padding: 0 var(--space-3);
-}
 .mention-chip {
   vertical-align: baseline;
 }

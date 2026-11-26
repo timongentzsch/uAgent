@@ -860,12 +860,13 @@ bool PrepareAttachments(json& messages,
         error += name + ": " + detail;
       }
       if (delivery == "File reference") {
-        prepared.push_back(
-            {{"type", "text"},
-             {"text", "[File reference: " + path +
-                          (processed ? "; earlier attachment"
-                                     : "; contents not included") +
-                          "]"}});
+        // With the reason, where there is one: the model can then act on it.
+        const std::string why = processed ? "; earlier attachment"
+                                : detail.empty()
+                                    ? "; contents not included"
+                                    : "; contents not included: " + detail;
+        prepared.push_back({{"type", "text"},
+                            {"text", "[File reference: " + path + why + "]"}});
       } else if (detail.empty()) {
         // Where it is kept, so a tool can copy it (write_file's `from`).
         prepared.push_back(

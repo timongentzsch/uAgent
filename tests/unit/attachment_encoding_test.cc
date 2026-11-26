@@ -402,6 +402,8 @@ TEST_CASE(TestVectorAndHeicAttachments) {
   CHECK(!error.empty());
   CHECK(JsonDump(request).find("image_url") == std::string::npos);
   CHECK(deliveries[0]["delivery"] == "File reference");
+  // The model reads why it got no picture.
+  CHECK(JsonDump(request).find("contents not included: ") != std::string::npos);
 
   std::error_code cleanup;
   fs::remove_all(root, cleanup);

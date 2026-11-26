@@ -48,6 +48,20 @@ case $url in
 esac
 """
 
+# The platform the installer sees, whatever runs the test: FAKE_OS is Linux
+# or Darwin, each with a version the prebuilt archives support.
+PLATFORM = r"""#!/bin/sh
+case $(basename "$0")-$1 in
+  uname-) echo "$FAKE_OS" ;;
+  uname--s) echo "$FAKE_OS" ;;
+  uname--m) [ "$FAKE_OS" = Darwin ] && echo arm64 || echo x86_64 ;;
+  getconf-GNU_LIBC_VERSION) [ "$FAKE_OS" = Linux ] && echo "glibc 2.39" || exit 1 ;;
+  sw_vers-*) [ "$FAKE_OS" = Darwin ] && echo 15.0 || exit 1 ;;
+  *) exit 1 ;;
+esac
+"""
+FAKED = ("docker", "curl", "timedatectl", "uname", "getconf", "sw_vers")
+
 
 class InstallerTest(unittest.TestCase):
     def setUp(self):
@@ -63,9 +77,11 @@ class InstallerTest(unittest.TestCase):
         for folder in ("/usr/bin", "/bin", "/usr/sbin", "/sbin"):
             for tool in Path(folder).iterdir() if Path(folder).is_dir() else ():
                 link = self.bin / tool.name
-                if tool.name not in ("docker", "curl", "timedatectl") and not link.exists():
+                if tool.name not in FAKED and not link.exists():
                     link.symlink_to(tool)
         self.fake("curl", CURL)
+        for tool in ("uname", "getconf", "sw_vers"):
+            self.fake(tool, PLATFORM)
         self.script = self.directory / "release" / "install.sh"
         self.script.parent.mkdir()
         shutil.copy(ROOT / "install.sh", self.script)
@@ -75,9 +91,13 @@ class InstallerTest(unittest.TestCase):
         path.write_text(body)
         path.chmod(0o755)
 
-    def install(self, docker="ok", **env):
+    def install(self, docker="ok", platform="Linux", **env):
+        # Each run starts from its own state: Docker as asked, an empty log.
         if docker:
             self.fake("docker", DOCKER)
+        else:
+            (self.bin / "docker").unlink(missing_ok=True)
+        self.log.write_text("")
         environment = {
             "PATH": str(self.bin),
             "HOME": str(self.home),
@@ -88,6 +108,7 @@ class InstallerTest(unittest.TestCase):
             "FAKE_LOG": str(self.log),
             "FAKE_DOCKER": docker or "",
             "FAKE_DEPLOY": str(ROOT / "deploy"),
+            "FAKE_OS": platform,
             **env,
         }
         return subprocess.run(
@@ -103,26 +124,39 @@ class InstallerTest(unittest.TestCase):
     def calls(self):
         return self.log.read_text()
 
-    # Each state with the words that name it and a piece of its fix.
-    DOCKER_STATES = (
-        (None, "Docker is not installed", "install Docker"),
-        ("denied", "Docker is installed, but", "sudo usermod -aG docker"),
-        ("down", "Docker is installed, but not running", "start"),
-    )
+    # Each platform's states: the words that name one, and its fix.
+    DOCKER_STATES = {
+        "Linux": (
+            (None, "Docker is not installed", "install Docker Engine 28 or newer"),
+            ("denied", "Docker is installed, but", "sudo usermod -aG docker"),
+            ("down", "Docker is installed, but not running", "sudo systemctl start docker"),
+        ),
+        "Darwin": (
+            (None, "Docker is not installed", "install Docker Desktop"),
+            ("denied", "Docker is installed, but", "sudo usermod -aG docker"),
+            ("down", "Docker is installed, but not running", "start Docker Desktop"),
+        ),
+    }
+
+    def states(self):
+        return [
+            (platform, *state)
+            for platform, states in self.DOCKER_STATES.items()
+            for state in states
+        ]
 
     def test_each_docker_state_is_one_line_with_its_fix(self):
-        for state, said, fix in self.DOCKER_STATES:
-            with self.subTest(state=state):
-                lines = [
-                    line for line in self.install(docker=state).stdout.splitlines() if said in line
-                ]
-                self.assertEqual(len(lines), 1, lines)
+        for platform, state, said, fix in self.states():
+            with self.subTest(platform=platform, state=state):
+                out = self.install(docker=state, platform=platform).stdout
+                lines = [line for line in out.splitlines() if said in line]
+                self.assertEqual(len(lines), 1, out)
                 self.assertIn(f"For the container: {fix}", lines[0])
 
     def test_a_container_asked_for_stops_on_that_one_line(self):
-        for state, said, fix in self.DOCKER_STATES:
-            with self.subTest(state=state):
-                result = self.install(docker=state, UAGENT_INSTALL="container")
+        for platform, state, said, fix in self.states():
+            with self.subTest(platform=platform, state=state):
+                result = self.install(docker=state, platform=platform, UAGENT_INSTALL="container")
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertNotIn(said, result.stdout)
                 lines = [line for line in result.stderr.splitlines() if said in line]

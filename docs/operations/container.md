@@ -118,6 +118,44 @@ Names resolve once when `network` starts; an unresolvable one stops it, and
 `uagent` with it. A container named there must share a Docker network with
 `network`. DNS goes to Docker's upstream resolver, which may be on your LAN.
 
+### A model server on this machine
+
+Inside the container, `127.0.0.1` is the container's own. The `network`
+service maps `host.docker.internal` to this machine (`extra_hosts` with
+`host-gateway`; Docker Desktop has the name already), and the agent's
+container shares that hosts file. To use a model server running here:
+
+1. Make it listen on the Docker bridge or on all interfaces, not only on
+   loopback. Ollama: `OLLAMA_HOST=0.0.0.0:11434`.
+2. Allow it: `UAGENT_NETWORK_ALLOW=host.docker.internal:11434` in `.env`
+   beside `compose.yaml`, then `docker compose -f … up -d`.
+3. Use `http://host.docker.internal:11434/v1` as the provider's address.
+
+### A model server in another Compose project
+
+Containers of two projects share no network. Join them: an override file
+beside `compose.yaml` (`compose.override.yaml`, read by `docker compose`
+when no `-f` names files, else add it with a second `-f`) attaches the
+`network` service to the other project's network, declared `external`, and
+`UAGENT_NETWORK_ALLOW` names the server's service and port:
+
+```yaml
+services:
+  network:
+    networks: [default, models]
+networks:
+  models:
+    external: true
+    name: otherproject_default
+```
+
+```sh
+UAGENT_NETWORK_ALLOW=llm:8000      # the other project's service name and port
+```
+
+The installer starts the appliance with `compose.yaml` alone: after it
+runs, start it again with both files.
+
 ```sh
 deploy/check-network.sh                         # or: deploy/check-network.sh -f FILE
 CHECK_LISTENER=192.168.1.5:80 deploy/check-network.sh

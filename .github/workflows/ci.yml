@@ -465,6 +465,11 @@ jobs:
           timeout 600 sh -c 'until docker compose -f deploy/compose.yaml exec -T uagent grep -q "^ready " /data/browser/chrome/status 2>/dev/null; do sleep 5; done'
           docker compose -f deploy/compose.yaml exec -T uagent google-chrome-stable --version
           deploy/check-browser.sh
+          # A model server on this machine: reachable by its name once allowed.
+          model_port=18080
+          python3 -m http.server "$model_port" --bind 0.0.0.0 >/dev/null 2>&1 &
+          UAGENT_NETWORK_ALLOW="host.docker.internal:$model_port" docker compose -f deploy/compose.yaml up -d --no-build --wait
+          docker compose -f deploy/compose.yaml exec -T uagent curl -fsS -m 10 -o /dev/null "http://host.docker.internal:$model_port/"
           docker compose -f deploy/compose.yaml down -v
 
   checks:

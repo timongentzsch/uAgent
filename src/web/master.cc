@@ -31,6 +31,7 @@
 #include "include/app/update.h"
 #include "include/app/workspace_files.h"
 #include "include/browser/browser.h"
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/detail.h"
 #include "include/core/effective_config.h"
@@ -174,6 +175,29 @@ void Error(Response& response, const std::string& error, int status) {
   Reply(response, {{"error", error}}, status);
 }
 
+// A browser that opened the host at another address (a tunnel on another
+// port, a name it was not given) is told which one it serves; nothing else
+// of the host is served. The addresses are checked origins: bare URLs.
+void WrongAddress(Response& response, const std::string& origin,
+                  const std::string& local) {
+  constexpr std::string_view kSetting = Cfg("UAGENT_WEB_ORIGIN").key;
+  constexpr std::string_view kVariable = Cfg("UAGENT_WEB_ORIGIN").environment;
+  const std::string served = origin == local ? local : origin + " and " + local;
+  response.status = 403;
+  response.set_content(
+      "<!doctype html><meta charset=utf-8>"
+      "<meta name=viewport content=\"width=device-width\">"
+      "<title>µAgent</title><body style=\"font:16px/1.5 ui-monospace,"
+      "monospace;max-width:36em;margin:4em auto;padding:0 1em;color:#000;"
+      "background:#fff\"><h1 style=\"font-size:1.25em\">µAgent is not at "
+      "this address</h1><p>It answers at " +
+          served +
+          ".</p><p>Open that address, or forward the same port in your "
+          "tunnel. To serve another address, set " +
+          std::string(kSetting) + " (" + std::string(kVariable) + ").</p>",
+      "text/html; charset=utf-8");
+}
+
 Master::Master(WebOptions options, std::string executable,
                std::string directory)
     : options_(std::move(options)),
@@ -284,7 +308,15 @@ bool Master::Initialize(std::string& error) {
     if (!expected_origin ||
         (!preview && !origin.empty() && origin != *expected_origin) ||
         (mutation && !instance && origin != *expected_origin)) {
-      Error(response, "invalid Host or Origin", 403);
+      // A page a browser navigates to is told where µAgent is; API calls
+      // keep the error their clients read.
+      if (request.method == "GET" && !request.path.starts_with("/api/") &&
+          request.get_header_value("Accept").find("text/html") !=
+              std::string::npos) {
+        WrongAddress(response, origin_, local_);
+      } else {
+        Error(response, "invalid Host or Origin", 403);
+      }
       return httplib::Server::HandlerResponse::Handled;
     }
     if (request.path.starts_with("/api/") && request.path != "/api/auth" &&

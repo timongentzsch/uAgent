@@ -206,3 +206,24 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
             )
             client.command("logout")
             assert_true(client.json("/api/sessions")[0] == 401, "revoked cookie remained valid")
+
+
+def test_a_browser_at_another_address_is_told_where_uagent_is(root, home, *, binary):
+    """A page opened at an address the host does not serve (a tunnel on
+    another port) names the one it does; API calls keep their JSON error, and
+    neither is served anything else."""
+    with Server([event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, _code, _process, _env):
+            elsewhere = {"Host": "127.0.0.1:1", "Origin": ""}
+            status, body, headers = client.request(
+                "/", headers={**elsewhere, "Accept": "text/html,application/xhtml+xml"}
+            )
+            page = body.decode()
+            assert_true(status == 403, status)
+            assert_true(headers["Content-Type"].startswith("text/html"), headers)
+            assert_true(client.origin in page and "UAGENT_WEB_ORIGIN" in page, page)
+            assert_true("<script" not in page, page)
+            for path, accept in (("/", "*/*"), ("/api/sessions", "text/html")):
+                status, body, _ = client.request(path, headers={**elsewhere, "Accept": accept})
+                assert_true(status == 403, (path, status))
+                assert_true(json.loads(body) == {"error": "invalid Host or Origin"}, body)

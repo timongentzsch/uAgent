@@ -469,7 +469,12 @@ export function NodeBody({
 export function SharedFile({ file, href }: { file: FilePart; href: string }) {
   const touch = coarsePointer();
   const preview = file.mime.startsWith("image/") ? (
-    <ImageTile src={href} name={file.name} />
+    <ImageTile
+      src={href}
+      name={file.name}
+      width={file.width}
+      height={file.height}
+    />
   ) : file.mime === "text/html" ? (
     <iframe
       src={href}

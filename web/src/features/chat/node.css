@@ -211,9 +211,16 @@ div.node-row > .row-chevron {
   background: var(--surface);
 }
 .artifact-card-cover {
+  display: grid;
   justify-self: start;
   min-height: 0;
   padding: 0;
+}
+/* "Preview unavailable" lies over the cover's box. */
+.artifact-card-cover > * {
+  position: relative;
+  grid-area: 1 / 1;
+  place-self: center;
 }
 .node-file > figcaption {
   display: flex;

@@ -33,6 +33,9 @@ std::string AttachmentMime(const std::string& name);
 // raster and HEIC magic, or an SVG document root within the scan window.
 std::string RasterMime(std::string_view bytes);
 std::string SvgMime(std::string_view bytes);
+// A PNG, JPEG, GIF or WebP's size as a browser shows it, from its header;
+// false for any other or a cut-off file.
+bool RasterSize(std::string_view bytes, int& width, int& height);
 // Container sniffing; empty when inconclusive, and the extension decides.
 std::string AudioMime(std::string_view bytes);
 std::string VideoMime(std::string_view bytes);

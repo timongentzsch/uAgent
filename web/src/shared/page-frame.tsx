@@ -512,28 +512,39 @@ export default function Frame({
   );
 }
 
-// The address a conversation's folder is previewed from, minted once.
+// The address a conversation's folder is previewed from. Views that ask at
+// once (a transcript's cards) share one request; a later one asks again, as
+// the address changes with the folder and when a device is signed out.
+const minting = new Map<string, Promise<{ base: string }>>();
 export function usePreviewBase(session: string) {
   const { api, routes } = useApi();
-  return useResource(
-    () => api<{ base: string }>(routes.preview(session), {}),
-    [session],
-  );
+  return useResource(() => {
+    let request = minting.get(session);
+    if (!request) {
+      request = api<{ base: string }>(routes.preview(session), {}).finally(() =>
+        minting.delete(session),
+      );
+      minting.set(session, request);
+    }
+    return request;
+  }, [session]);
 }
 
 // How tall every page thumbnail is, in chat and the Library alike.
 const THUMB_HEIGHT = 160;
 
 // A page small and still: drawn at its own size (a tall one, its top) and
-// scaled to one height, so thumbnails line up whatever their pages.
-export function PageThumb({ base, path }: { base: string; path: string }) {
+// scaled to one height, so thumbnails line up whatever their pages. Without
+// a base it is only its box.
+export function PageThumb({ base, path }: { base?: string; path: string }) {
   const [info, setInfo] = useState<PageInfo>();
   const { w, h } = pageSize(info, 900);
   return (
     <div class="page-thumb">
       <Frame
         live={false}
-        src={pageAddress(base, path)}
+        far={base === undefined}
+        src={pageAddress(base ?? "", path)}
         title={info?.title || path}
         width={w}
         height={h}

@@ -191,18 +191,29 @@ function fileType(name: string, size?: number) {
   return size == null ? kind : `${kind} · ${bytes(size)}`;
 }
 
-export function ImageTile({ src, name, draftId }: ViewedImage) {
+// With its size, a picture's box has its shape before it loads.
+export function ImageTile({
+  src,
+  name,
+  draftId,
+  width,
+  height,
+}: ViewedImage & { width?: number; height?: number }) {
   const view = useContext(ImageViewer);
+  const sized = !!width && !!height;
   return (
     <Button
       class="attachment-tile"
       title={name}
       aria-label={`View ${name}`}
       onClick={() => view({ src, name, draftId })}
+      style={sized ? { "--ratio": width / height } : undefined}
     >
       <img
         src={src}
         alt={name}
+        width={sized ? width : undefined}
+        height={sized ? height : undefined}
         loading="lazy"
         // A display copy the host no longer keeps leaves no broken image.
         onError={(event) =>

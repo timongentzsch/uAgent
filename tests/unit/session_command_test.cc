@@ -489,6 +489,15 @@ TEST_CASE(TestUnchangedFileStoredOnce) {
                      again.parts[0]["id"].get<std::string>() + ".data",
                  64)
             .value_or("") == "report");
+  // A picture is presented with its size, for its box before it loads.
+  CHECK(ToolWriteFile("shot.png",
+                      std::string("\x89PNG\r\n\x1a\n\0\0\0\rIHDR", 16) +
+                          std::string("\0\0\0\x03\0\0\0\x02", 8))
+            .Ok());
+  const ToolResult picture = present.run({{"path", "shot.png"}}, ToolContext{});
+  CHECK(picture.Ok() && picture.parts[0]["width"] == 3 &&
+        picture.parts[0]["height"] == 2);
+  CHECK(!again.parts[0].contains("width"));
 }
 
 TEST_CASE(TestCommandReplies) {

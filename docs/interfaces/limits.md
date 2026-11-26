@@ -43,6 +43,8 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kModelRequestDeadlineReserveSeconds` | `1` |  |
 | `kLimitAnswerSeconds` | `60` | What the answering round of a turn stopped at a limit may take. |
 | `kReportBundleS` | `45` | How long a turn a report started waits for the other reports owed. |
+| `kAgentsWaitSeconds` | `300` | One wait for agents, by the agents tool or a held answer, at most: as long as the longest wait on a command. |
+| `kAnswerHolds` | `3` | Answers held in a row while agents owe reports and none arrives. |
 | `kUsageProgressIntervalMs` | `100` | Shared by model callbacks and browser publication. |
 | `kUsageProgressBytes` | `1 KiB` | Progress is also reported after this many bytes, inside the interval. |
 | `kStreamBatchIntervalMs` | `12` |  |

@@ -28,6 +28,11 @@ bool Blank(std::string_view text);
 // How the ids of a work and of a group start; no other node's id does.
 inline constexpr std::string_view kWorkPrefix = "w-";
 inline constexpr std::string_view kGroupPrefix = "g-";
+// The verbs of a row that waits for agents, and of the notice that an answer
+// stood before they reported.
+inline constexpr std::string_view kWaitingFor = "Waiting for";
+inline constexpr std::string_view kWaitedFor = "Waited for";
+inline constexpr std::string_view kAnsweredBefore = "Answered before";
 // The work replying to `message`; "" for none.
 std::string WorkId(std::string_view message);
 // The group whose first call is `call`.

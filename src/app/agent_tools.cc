@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "include/agent/conversation.h"
+#include "include/agent/node.h"
 #include "include/agent/session_links.h"
 #include "include/agent/session_role.h"
 #include "include/agent/session_search.h"
@@ -831,9 +832,9 @@ Tool AgentStartTool(const Api& api, std::function<std::string()> own_model,
     const size_t count = items ? items->size() : 1;
     const std::string agents =
         count == 1 ? "agent" : Plural(count, "agent") + ":";
-    return Headline{
-        JsonValue(a, "wait", true) ? "Waiting for" : "Starting " + agents,
-        "Started " + agents, names};
+    return Headline{JsonValue(a, "wait", true) ? std::string(kWaitingFor)
+                                               : "Starting " + agents,
+                    "Started " + agents, names};
   };
   return tool;
 }
@@ -912,7 +913,7 @@ Tool AgentsTool() {
       for (const SessionInfo& info : Children(OwnSessionFile())) {
         if (Working(info)) names += (names.empty() ? "" : ", ") + info.name;
       }
-      return Headline{"Waiting for", "Waited for",
+      return Headline{std::string(kWaitingFor), std::string(kWaitedFor),
                       names.empty() ? "agents" : names};
     }
     const std::string part = JsonValue(a, "part", "");

@@ -490,6 +490,12 @@ def test_escape_ends_a_hold_and_an_earlier_agent_holds_no_later_answer(root, hom
             assert_true(not release.is_set() and socket_of(home, agent).exists(), "agent gone")
             assert_true(held() == [False], held())
             assert_true(len(asked) == 3, len(asked))
+            waits = [
+                f
+                for f in facts_of(parent_file(home)).values()
+                if f.get("view", {}).get("verb") == WAITED
+            ]
+            assert_true(len(waits) == 1, waits)
         finally:
             release.set()
 

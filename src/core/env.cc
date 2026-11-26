@@ -49,9 +49,8 @@ int64_t AutoCompactTokens() {
 
 int64_t AgentDepth() { return EnvLong("UAGENT_INTERNAL_DEPTH", 0); }
 
-// As long as the longest wait on a command.
 int64_t AgentsWaitSeconds() {
-  return EnvLong("UAGENT_INTERNAL_AGENTS_WAIT_S", 300);
+  return EnvLong("UAGENT_INTERNAL_AGENTS_WAIT_S", kAgentsWaitSeconds);
 }
 
 bool CanDelegate() {

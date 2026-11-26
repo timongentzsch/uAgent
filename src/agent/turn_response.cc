@@ -22,6 +22,7 @@
 #include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
@@ -30,9 +31,6 @@
 
 namespace uagent {
 namespace {
-// Answers held in a row while agents owe reports and none arrives.
-constexpr int64_t kAnswerHolds = 3;
-
 std::string NameList(const std::vector<std::string>& names) {
   std::string list;
   for (const std::string& name : names) {
@@ -287,7 +285,7 @@ std::vector<std::string> Agent::AwaitAgents(
     std::chrono::steady_clock::time_point until, bool on_mail) {
   const std::string id = RecordWorkNotice(
       {{"view",
-        {{"verb", {"Waiting for", "Waited for"}}, {"target", NameList(owed)}}},
+        {{"verb", {kWaitingFor, kWaitedFor}}, {"target", NameList(owed)}}},
        {"state", "running"}})["id"];
   std::vector<std::string> left = agent_wait_(calls, until, on_mail);
   conversation_.RecordDisplay(
@@ -310,7 +308,7 @@ Agent::StepFlow Agent::HoldAnswer(TurnExecution& state, StepState& loop) {
   const std::string names = NameList(owed);
   if (loop.holds >= kAnswerHolds) {
     RecordWorkNotice({{"view",
-                       {{"verb", {"Answered before", "Answered before"}},
+                       {{"verb", {kAnsweredBefore, kAnsweredBefore}},
                         {"target", names + " reported"}}},
                       {"state", "ok"}});
     return StepFlow::kProceed;

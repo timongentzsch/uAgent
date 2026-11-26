@@ -209,7 +209,7 @@ export default function Settings(props: SettingsProps) {
               type="search"
               class="settings-search"
               aria-label="Find a setting"
-              placeholder="Find a setting, a status or an action"
+              placeholder="Find a setting"
               value={query}
               onInput={(event) => setQuery(event.currentTarget.value)}
             />

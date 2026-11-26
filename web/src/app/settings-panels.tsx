@@ -200,9 +200,7 @@ function Restart({ session }: { session: Session }) {
     <Group>
       <Row
         label="Restart conversation"
-        detail={
-          done || "Same history, a fresh process."
-        }
+        detail={done || "Same history, a fresh process."}
         disabled={!online || !running || action.busy}
         onClick={() =>
           void action.run(async () =>

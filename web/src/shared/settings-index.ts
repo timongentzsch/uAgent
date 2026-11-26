@@ -57,12 +57,14 @@ export function settingsEntries(
 }
 
 // Every word of the query somewhere in an entry; names that start with it
-// first.
+// first, those that hold it as a whole word before the rest.
 export function findSettings(entries: SettingsEntry[], query: string) {
-  if (!query.trim()) return [];
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
   const score = (entry: SettingsEntry) => {
-    const named = fuzzyScore(query, entry.label);
-    return named < 0 ? Infinity : named;
+    const named = fuzzyScore(needle, entry.label);
+    const word = entry.label.toLowerCase().split(/\s+/).includes(needle);
+    return named < 0 ? Infinity : named - (word ? 0.5 : 0);
   };
   return entries
     .filter((entry) => matches(query, entry.label, entry.detail, entry.words))

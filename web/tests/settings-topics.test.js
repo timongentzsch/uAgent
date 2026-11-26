@@ -65,8 +65,9 @@ test("search finds settings, panels and actions across topics", () => {
   });
   const entries = settingsEntries(
     [
-      setting("logs.level", "Log level", "logs", "about"),
+      // In registry order: a whole-word match still comes first.
       setting("logs.keepDays", "Logs kept", "logs", "about"),
+      setting("logs.level", "Log level", "logs", "about"),
       setting("model", "Model", "conversation", "models"),
     ],
     [{ id: "logs", label: "Logs", topic: "about" }],

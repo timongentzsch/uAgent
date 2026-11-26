@@ -25,28 +25,6 @@ reply() {
 }
 ask() { reply "$1 [y/N]" && { [ "$answer" = y ] || [ "$answer" = Y ]; }; }
 ask_yes() { reply "$1 [Y/n]" && [ "$answer" != n ] && [ "$answer" != N ]; }
-# Offers to put the prefix's bin on PATH, so uagent is found.
-offer_path() {
-  case :$PATH: in
-    *:"$prefix/bin":*) ;;
-    *)
-      case ${SHELL##*/} in
-        zsh) rc=$HOME/.zshrc line="export PATH=\"$prefix/bin:\$PATH\"" ;;
-        fish) rc=$HOME/.config/fish/conf.d/uagent.fish line="fish_add_path $prefix/bin" ;;
-        bash) rc=$HOME/.bashrc line="export PATH=\"$prefix/bin:\$PATH\""
-          [ "$os" = Darwin ] && rc=$HOME/.bash_profile ;;
-        *) rc=$HOME/.profile line="export PATH=\"$prefix/bin:\$PATH\"" ;;
-      esac
-      if ask_yes "$prefix/bin is not on your PATH. Add it in $rc?"; then
-        mkdir -p "$(dirname -- "$rc")"
-        grep -qsF "$line" "$rc" || printf '\n%s\n' "$line" >>"$rc"
-        echo "Open a new terminal, or run: $line"
-      else
-        echo "To find uagent, add this to your shell's startup file: $line"
-      fi
-      ;;
-  esac
-}
 
 # A file beside CMakeLists.txt is a checkout, built as it is. Anything else
 # (the script piped to sh) installs a release.
@@ -181,11 +159,6 @@ if [ -z "${UAGENT_INSTALL:-}" ] && [ "$docker" = yes ] && [ "$interactive" = yes
   [ "$answer" = 2 ] || choice=container
 fi
 
-# What the uagent command a container install writes says of itself; a
-# native install replaces it.
-container_mark="# uagent: µAgent's container"
-bin=$prefix/bin/uagent
-
 # A pairing link names this machine's loopback and lasts as long as the web
 # host's code: what another device needs, and for how long.
 pairing_minutes=5
@@ -260,6 +233,9 @@ port_taken() {
 }
 if [ "$choice" = container ]; then
   compose() { docker compose -f "$deploy/compose.yaml" "$@"; }
+  # How every later step reaches the container's uagent.
+  compose_line="docker compose -f $deploy/compose.yaml"
+  container_command="$compose_line exec uagent uagent"
   # A running µAgent holds the port itself; anything else there would stop
   # the network container from starting.
   if [ -z "$(compose ps -q --status running network 2>/dev/null)" ] && port_taken; then
@@ -280,7 +256,7 @@ if [ "$choice" = container ]; then
   until compose exec -T uagent curl -fs -o /dev/null "http://127.0.0.1:$port/" 2>/dev/null; do
     tries=$((tries + 1))
     if [ "$tries" -ge 60 ]; then
-      echo; echo "It did not answer within a minute; see: docker compose -f $deploy/compose.yaml logs uagent" >&2
+      echo; echo "It did not answer within a minute; see: $compose_line logs uagent" >&2
       exit 1
     fi
     printf .
@@ -305,37 +281,15 @@ if [ "$choice" = container ]; then
   elif [ "$os" = Darwin ]; then
     echo "To keep µAgent available, let Docker Desktop start when you log in (Settings, General)."
   fi
-  # uagent runs the container's, unless a µAgent installed here does.
-  command="docker compose -f $deploy/compose.yaml exec uagent uagent"
-  if [ -f "$prefix/share/uagent/install" ]; then
-    echo "uagent is the µAgent installed in $prefix; the container's is: $command"
-  else
-    mkdir -p "$prefix/bin"
-    cat >"$bin" <<EOF
-#!/bin/sh
-$container_mark: its uagent, with this terminal when there is one.
-compose_file='$deploy/compose.yaml'
-if [ -z "\$(docker compose -f "\$compose_file" ps -q --status running uagent 2>/dev/null)" ]; then
-  echo "µAgent's container is not running; start it with: docker compose -f \$compose_file up -d" >&2
-  exit 1
-fi
-tty=-T
-if [ -t 0 ] && [ -t 1 ]; then tty=; fi
-exec docker compose -f "\$compose_file" exec \$tty uagent uagent "\$@"
-EOF
-    chmod 0755 "$bin"
-    command=uagent
-    offer_path
-  fi
   # Without questions, nothing asked for a provider.
   if [ "$interactive" = no ] &&
      ! compose exec -T uagent uagent --control '{"kind":"provider"}' 2>/dev/null |
        grep -q '"configured":true'; then
-    echo "No model provider is set yet: run $command setup in a terminal, or set one in Settings in the web interface."
+    echo "No model provider is set yet: run $container_command setup in a terminal, or set one in Settings in the web interface."
   fi
-  echo "Open the link below to pair this browser; to pair another device later: $command --web"
+  echo "Open the link below to pair this browser; to pair another device later: $container_command --web"
   compose exec -T uagent uagent --web
-  reach_hint "$command"
+  reach_hint "$container_command"
   exit 0
 fi
 
@@ -350,12 +304,9 @@ if [ "$os" = Linux ] && [ "$browser" = no ] && has apt-get &&
     fonts-noto-color-emoji "$deb"
 fi
 
+bin=$prefix/bin/uagent
 installed=
-if grep -qsF "$container_mark" "$bin"; then
-  echo "uagent will be this µAgent; the container's stays: docker compose -f $data/container/deploy/compose.yaml exec uagent uagent"
-elif [ -x "$bin" ]; then
-  installed=$("$bin" --version 2>/dev/null | sed 's/^uagent //')
-fi
+if [ -x "$bin" ]; then installed=$("$bin" --version 2>/dev/null | sed 's/^uagent //'); fi
 if [ "$mode" = source ]; then
   # Every build embeds the web interface: reuse a built one only while its
   # source inputs match, and without npm only a supplied bundle.
@@ -472,7 +423,25 @@ fi
   exit 0
 }
 
-offer_path
+case :$PATH: in
+  *:"$prefix/bin":*) ;;
+  *)
+    case ${SHELL##*/} in
+      zsh) rc=$HOME/.zshrc line="export PATH=\"$prefix/bin:\$PATH\"" ;;
+      fish) rc=$HOME/.config/fish/conf.d/uagent.fish line="fish_add_path $prefix/bin" ;;
+      bash) rc=$HOME/.bashrc line="export PATH=\"$prefix/bin:\$PATH\""
+        [ "$os" = Darwin ] && rc=$HOME/.bash_profile ;;
+      *) rc=$HOME/.profile line="export PATH=\"$prefix/bin:\$PATH\"" ;;
+    esac
+    if ask_yes "$prefix/bin is not on your PATH. Add it in $rc?"; then
+      mkdir -p "$(dirname -- "$rc")"
+      grep -qsF "$line" "$rc" || printf '\n%s\n' "$line" >>"$rc"
+      echo "Open a new terminal, or run: $line"
+    else
+      echo "To find uagent, add this to your shell's startup file: $line"
+    fi
+    ;;
+esac
 
 # Keys and the default model, before a service starts that reads them.
 if "$bin" --help 2>/dev/null | grep -q '^uagent setup'; then

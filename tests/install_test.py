@@ -127,7 +127,8 @@ class InstallerTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertIn("The container needs Docker, which is", result.stderr)
                 if fix:
-                    self.assertIn("First: " + fix, result.stderr)
+                    self.assertIn("First: ", result.stderr)
+                    self.assertIn(fix, result.stderr)
                 self.assertNotIn("compose", self.calls())
 
     def test_a_taken_port_stops_before_anything_starts(self):
@@ -154,40 +155,17 @@ class InstallerTest(unittest.TestCase):
         env = (self.home / ".local/share/uagent/container/deploy/.env").read_text()
         self.assertIn("UAGENT_WEB_PORT=8181\n", env)
 
-    def run_command(self, *args, **env):
-        environment = {"PATH": str(self.bin), "FAKE_LOG": str(self.log), **env}
-        return subprocess.run(
-            [str(self.home / ".local/bin/uagent"), *args],
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=30,
+    def test_a_container_install_names_the_full_command(self):
+        result = self.install(UAGENT_INSTALL="container")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        compose = f"docker compose -f {self.home}/.local/share/uagent/container/deploy/compose.yaml"
+        self.assertIn(
+            f"to pair another device later: {compose} exec uagent uagent --web", result.stdout
         )
-
-    def test_a_container_install_answers_to_uagent(self):
-        result = self.install(UAGENT_INSTALL="container")
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("to pair another device later: uagent --web", result.stdout)
-        self.assertIn("No model provider is set yet: run uagent setup", result.stdout)
-        # Not running: says how to start it; running: the container's, without
-        # a terminal here.
-        stopped = self.run_command("--version")
-        self.assertEqual(stopped.returncode, 1)
-        self.assertIn("µAgent's container is not running", stopped.stderr)
-        self.assertEqual(self.run_command("setup", FAKE_RUNNING="1").returncode, 0)
-        self.assertIn("exec -T uagent uagent setup", self.calls())
-
-    def test_a_container_install_leaves_a_native_uagent_alone(self):
-        native = self.home / ".local/bin/uagent"
-        native.parent.mkdir(parents=True)
-        native.write_text("#!/bin/sh\necho native\n")
-        (self.home / ".local/share/uagent").mkdir(parents=True)
-        (self.home / ".local/share/uagent/install").write_text("release\n")
-        result = self.install(UAGENT_INSTALL="container")
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(native.read_text(), "#!/bin/sh\necho native\n")
-        self.assertIn("the container's is: docker compose -f", result.stdout)
+        self.assertIn(
+            f"No model provider is set yet: run {compose} exec uagent uagent setup", result.stdout
+        )
+        self.assertFalse((self.home / ".local/bin/uagent").exists())
 
     def test_the_link_says_how_another_device_reaches_it(self):
         local = self.install(UAGENT_INSTALL="container")

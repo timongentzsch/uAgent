@@ -93,7 +93,14 @@ A provider is a base URL with a key. The runtime speaks OpenAI Responses, Chat C
 curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | sh
 ```
 
-Run `uagent` in a project folder to open the terminal client, or `uagent --web` to pair a browser; after a container install, `uagent` runs the container's. Release packages support Linux (x86-64 and ARM64) and macOS on Apple silicon. The Chrome service is included in the Linux container. [Install and verify](docs/operations/install.md) · [Container setup](docs/operations/container.md) · [Release downloads](https://github.com/timongentzsch/uAgent/releases/latest)
+Run `uagent` in a project folder to open the terminal client, or `uagent --web` to pair a browser. A container install has no `uagent` on this machine; it runs them in the container ([all its commands](docs/operations/container.md#commands-of-a-container-install)):
+
+```sh
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent --web   # a pairing link
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent setup   # keys and model
+```
+
+Release packages support Linux (x86-64 and ARM64) and macOS on Apple silicon. The Chrome service is included in the Linux container. [Install and verify](docs/operations/install.md) · [Container setup](docs/operations/container.md) · [Release downloads](https://github.com/timongentzsch/uAgent/releases/latest)
 
 ## Footprint
 

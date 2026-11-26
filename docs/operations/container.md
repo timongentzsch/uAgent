@@ -6,6 +6,21 @@ owns the network. What the container does and does not bound is policy and
 is stated in [Security](../../SECURITY.md#the-container); how the browser
 works is in [Browser](../architecture/browser.md).
 
+## Commands of a container install
+
+The installer runs µAgent in the container; `uagent` on this machine is
+not it. Every command goes through `docker compose` with the appliance's
+file (under `$XDG_DATA_HOME` when that is set):
+
+```sh
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent --web    # a new pairing link
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent setup    # keys and model, in a terminal
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent -p "…"   # a one-off prompt
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml logs -f uagent              # logs
+curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | UAGENT_INSTALL=container sh   # update
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml down                       # stop; the data volume stays
+```
+
 ## Start it
 
 ```sh
@@ -20,16 +35,8 @@ release's `compose.yaml` and `seccomp-chrome.json` into
 `~/.local/share/uagent/container/deploy`, writes `UAGENT_VERSION` and
 `UAGENT_WORKSPACES` to `.env` there, runs `up -d --no-build --pull always`
 on `ghcr.io/timongentzsch/uagent:<version>` (amd64, arm64), waits up to 60 s,
-then runs `uagent setup` and `uagent --web`. It writes `<prefix>/bin/uagent`
-(`~/.local/bin/uagent`), which runs the container's `uagent` with the
-arguments given: `uagent setup`, `uagent --web` and the rest work as on a
-native install. It passes this terminal when there is one (`exec -T` when
-not) and says how to start the container when it is not running. A native
-µAgent in the same prefix (`share/uagent/install` exists) keeps the name and
-the installer says the container's command instead; a native install over a
-container one replaces the command, and the container stays reachable with
-`docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec
-uagent uagent`. The Compose project is named
+then runs `uagent setup` and `uagent --web` in it, naming the commands
+above as it ends. The Compose project is named
 `uagent` either way, so both copies share one volume. Use Docker Engine 28
 or newer: [older engines can expose a loopback-published port to nearby hosts](https://docs.docker.com/engine/network/port-publishing/).
 

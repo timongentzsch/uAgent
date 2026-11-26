@@ -12,6 +12,18 @@ curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install
 
 Prebuilt archives are available from [GitHub Releases](https://github.com/timongentzsch/uAgent/releases/latest).
 
+A container install puts no `uagent` on this machine; its commands go
+through `docker compose`:
+
+```sh
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent --web    # a new pairing link
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent setup    # keys and model, in a terminal
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent -p "…"   # a one-off prompt
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml logs -f uagent              # logs
+curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | UAGENT_INSTALL=container sh   # update
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml down                       # stop; the data volume stays
+```
+
 Piped to `sh` it installs a release; `./install.sh` in a checkout builds
 that checkout. It asks on `/dev/tty`: *container* or *here* (where `docker
 info` answers), Chrome and TigerVNC via `apt-get`, the Chrome policy, a
@@ -51,7 +63,7 @@ as CI does.
 
 | Path | Content |
 | --- | --- |
-| `<prefix>/bin/uagent` | the executable, web client embedded; for a container install, a script that runs the container's `uagent` ([Container](container.md#start-it)) |
+| `<prefix>/bin/uagent` | the executable, web client embedded |
 | `<prefix>/share/uagent/` | `skills/`, `sheet/`, `remote/<build id>/` (the remote bundle), `install` (`release`, `source`, `checkout` or `container`) |
 | `<prefix>/share/doc/uagent/` | README, SECURITY, docs, licences |
 | `/etc/opt/chrome/policies/managed/uagent.json` | Chrome policy, Linux, when accepted |

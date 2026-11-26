@@ -416,6 +416,26 @@ bool IsUserMessage(const json& message, MessageKind kind) {
          !JsonValue((*parts)[0], "text", "").starts_with(kAttachedOnRequest);
 }
 
+bool IsImagePart(const json& part) {
+  const std::string* type = JsonStringRef(part, "type");
+  return type && (*type == "image_url" ||
+                  (*type == "attachment" &&
+                   JsonValue(part, "mime", "").starts_with("image/")));
+}
+
+size_t ContextBytes(const json& value) {
+  // About what a provider bills for an image scaled to fit its limits.
+  constexpr size_t kImageBytes = 1500 * kEstimatedBytesPerToken;
+  if (!value.is_structured()) return JsonEstimatedBytes(value);
+  if (IsImagePart(value)) return kImageBytes;
+  size_t total = 16;
+  for (const auto& [key, item] : value.items()) {
+    total = SaturatingAdd(total, ContextBytes(item));
+    if (value.is_object()) total = SaturatingAdd(total, key.size());
+  }
+  return total;
+}
+
 bool Conversation::TruncateBeforeUserTurn(int64_t turn) {
   if (turn <= 0) return false;
   int64_t seen = 0;

@@ -37,6 +37,12 @@ struct ToolTracePruneResult {
 // A message the person wrote, not files attached mid-turn in the same role.
 bool IsUserMessage(const json& message, MessageKind kind);
 
+// An image in a message: a part, or an attachment staged to become one.
+bool IsImagePart(const json& part);
+// JsonEstimatedBytes as the context window sees it: an image costs a flat
+// amount, not its encoded payload.
+size_t ContextBytes(const json& value);
+
 class Conversation {
  public:
   const json& Messages() const { return messages_; }

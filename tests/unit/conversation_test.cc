@@ -1307,4 +1307,29 @@ TEST_CASE(TestViewKeepsTheHeadOfALargeTurn) {
   CHECK(view["before"] == view["nodes"][1]["sequence"]);
 }
 
+// An attached picture fills the window by what a provider bills for it, not
+// by its base64 payload; text counts exactly as JsonEstimatedBytes does.
+TEST_CASE(TestContextBytesCountsAnImageFlat) {
+  const json text =
+      json::array({{{"role", "system"}, {"content", "You help."}},
+                   {{"role", "user"}, {"content", "What is on it?"}},
+                   {{"role", "assistant"},
+                    {"content", nullptr},
+                    {"tool_calls", json::array({{{"id", "call-1"}}})}}});
+  CHECK(ContextBytes(text) == JsonEstimatedBytes(text));
+  json image = text;
+  image[1]["content"] =
+      json::array({{{"type", "text"}, {"text", "What is on it?"}},
+                   {{"type", "image_url"},
+                    {"image_url",
+                     {{"url", "data:image/png;base64," +
+                                  std::string(MiB(1) + KiB(400), 'A')}}}}});
+  CHECK(JsonEstimatedBytes(image) > MiB(1));
+  CHECK(EstimatedTokens(ContextBytes(image)) < 3000);
+  // Staged, not yet encoded, it costs the same.
+  image[1]["content"][1] = {
+      {"type", "attachment"}, {"path", "/tmp/a.png"}, {"mime", "image/png"}};
+  CHECK(EstimatedTokens(ContextBytes(image)) > 1500);
+}
+
 }  // namespace uagent

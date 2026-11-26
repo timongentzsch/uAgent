@@ -227,7 +227,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
                              {"context_tokens", ContextUsed()}});
   Emit(NoticeEvent(PresentationStatus::kNeutral,
                    std::string(automatic ? "auto-" : "") + "compacting…"));
-  size_t source_bytes = JsonEstimatedBytes(conversation_.Messages());
+  size_t source_bytes = ContextBytes(conversation_.Messages());
   size_t messages_before = conversation_.Size();
   const auto compact_started = std::chrono::steady_clock::now();
   // The live request plus one instruction reads the provider's cache instead
@@ -279,7 +279,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
   for (const auto& skill : retained_skills) replacement.push_back(skill);
   for (const auto& user : retained_users) replacement.push_back(user);
   replacement.push_back(summary);
-  const size_t replacement_bytes = JsonEstimatedBytes(replacement);
+  const size_t replacement_bytes = ContextBytes(replacement);
   bool invalid_summary =
       !ProseOnlyResponse(r) || replacement_bytes >= source_bytes;
   if (r.interrupted || !r.error.empty() || invalid_summary) {

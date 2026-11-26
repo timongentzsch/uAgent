@@ -103,7 +103,10 @@ else
   case $problem in
     *"permission denied"*)
       docker_why="installed, but $(id -un) may not use it"
-      docker_fix="sudo usermod -aG docker $(id -un), then log in again" ;;
+      docker_fix="sudo usermod -aG docker $(id -un), then log in again"
+      # Docker Desktop has no docker group: it serves the user who runs it.
+      [ "$os" = Darwin ] &&
+        docker_fix="start Docker Desktop as $(id -un) (Docker said: $(echo "$problem" | head -n 1))" ;;
     *)
       docker_why="installed, but not running"
       docker_fix="sudo systemctl start docker"

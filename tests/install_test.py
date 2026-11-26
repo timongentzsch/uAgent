@@ -133,7 +133,7 @@ class InstallerTest(unittest.TestCase):
         ),
         "Darwin": (
             (None, "Docker is not installed", "install Docker Desktop"),
-            ("denied", "Docker is installed, but", "sudo usermod -aG docker"),
+            ("denied", "Docker is installed, but", "start Docker Desktop as"),
             ("down", "Docker is installed, but not running", "start Docker Desktop"),
         ),
     }
@@ -152,6 +152,11 @@ class InstallerTest(unittest.TestCase):
                 lines = [line for line in out.splitlines() if said in line]
                 self.assertEqual(len(lines), 1, out)
                 self.assertIn(f"For the container: {fix}", lines[0])
+                if platform == "Darwin":
+                    # Docker Desktop has no docker group; Docker's own words say why.
+                    self.assertNotIn("usermod", lines[0])
+                    if state == "denied":
+                        self.assertIn("Docker said: permission denied", lines[0])
 
     def test_a_container_asked_for_stops_on_that_one_line(self):
         for platform, state, said, fix in self.states():

@@ -42,6 +42,7 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kKqueueWatchTargets` | `64` |  |
 | `kModelRequestDeadlineReserveSeconds` | `1` |  |
 | `kLimitAnswerSeconds` | `60` | What the answering round of a turn stopped at a limit may take. |
+| `kReportBundleS` | `45` | How long a turn a report started waits for the other reports owed. |
 | `kUsageProgressIntervalMs` | `100` | Shared by model callbacks and browser publication. |
 | `kUsageProgressBytes` | `1 KiB` | Progress is also reported after this many bytes, inside the interval. |
 | `kStreamBatchIntervalMs` | `12` |  |

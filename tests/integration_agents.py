@@ -472,6 +472,45 @@ def test_escape_ends_a_held_answer_and_it_stands(root, home, *, binary):
             release.set()
 
 
+def test_reports_after_the_turn_start_one_turn_and_a_note_none(root, home, *, binary):
+    ended = threading.Event()
+    asked = []
+
+    def route(_, body):
+        if brief := brief_of(body):
+            ended.wait(budget(30))
+            if "Item: a" in brief:
+                if not results_of(body):
+                    (child,) = [p for p in agent_files(home) if "a" == header(p)["agent"]["name"]]
+                    parent = header(child)["agent"]["parent"]
+                    return tool_call("agent_send", {"id": parent, "text": "note from a"})
+                return event({"content": "a done"})
+            time.sleep(1)
+            return event({"content": "b done"})
+        asked.append(text_of(body))
+        if not results_of(body):
+            return tool_call(
+                "agent_start", {"brief": "BRIEF part", "items": ["a", "b"], "wait": False}
+            )
+        if len(asked) == 5:
+            ended.set()
+        return event({"content": "answer " + str(len(asked))})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_INTERNAL_AGENTS_WAIT_S"] = "1"
+        result = run(root, env, "-p", "fan out", timeout=40, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    # The first turn: a start, three holds, the answer that stands. Then one
+    # turn for the note and both reports, not one each.
+    assert_true(len(asked) == 6, [t[-300:] for t in asked])
+    last = asked[-1]
+    assert_true(
+        last.count(REPORTED) == 2 and "note from a" in last and "a done" in last, last[-800:]
+    )
+    assert_true(header(parent_file(home))["turns"] == 2, header(parent_file(home)))
+
+
 def test_a_folded_group_counts_only_the_rows_it_shows(root, home, *, binary):
     (root / "a.txt").write_text("a")
     (root / "b.txt").write_text("b")

@@ -271,7 +271,7 @@ void Agent::PushAssistantMessage(ChatResult& response,
 // Plain prose and no call: the turn is done unless steering reopened it.
 Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
   // Mail that arrived during the final model call reopens the turn too.
-  DeliverMail();
+  DeliverMail(true);
   if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
   if (SteeringState().Requested()) return InterruptTurn(state);
   if (StepFlow held = HoldAnswer(state, loop); held != StepFlow::kProceed) {
@@ -283,12 +283,12 @@ Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
 
 std::vector<std::string> Agent::AwaitAgents(
     const std::vector<std::string>& owed,
-    std::chrono::steady_clock::time_point until) {
+    std::chrono::steady_clock::time_point until, bool on_mail) {
   const std::string id = RecordWorkNotice(
       {{"view",
         {{"verb", {"Waiting for", "Waited for"}}, {"target", NameList(owed)}}},
        {"state", "running"}})["id"];
-  std::vector<std::string> left = agent_wait_(until);
+  std::vector<std::string> left = agent_wait_(until, on_mail);
   conversation_.RecordDisplay(
       id, {{"state", AbortRequested() ? "cancelled" : "ok"}});
   Emit(Event{EventId::kMessageChanged,
@@ -302,7 +302,7 @@ std::vector<std::string> Agent::AwaitAgents(
 // and the model writes one answer with what arrived.
 Agent::StepFlow Agent::HoldAnswer(TurnExecution& state, StepState& loop) {
   const std::vector<std::string> owed =
-      agent_wait_ ? agent_wait_({}) : std::vector<std::string>();
+      agent_wait_ ? agent_wait_({}, true) : std::vector<std::string>();
   if (owed.empty()) return StepFlow::kProceed;
   const std::string names = NameList(owed);
   if (loop.holds >= kAnswerHolds) {
@@ -322,7 +322,7 @@ Agent::StepFlow Agent::HoldAnswer(TurnExecution& state, StepState& loop) {
   };
   publish(true);
   const std::vector<std::string> left = AwaitAgents(
-      owed, std::min(state.deadline, DeadlineAfter(AgentsWaitSeconds())));
+      owed, std::min(state.deadline, DeadlineAfter(AgentsWaitSeconds())), true);
   // Escape or the person's message ends the hold: the answer stands.
   if (AbortRequested() || SteeringState().Requested() ||
       SteeringYieldRequested()) {

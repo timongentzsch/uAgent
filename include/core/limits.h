@@ -67,6 +67,8 @@ inline constexpr size_t kKqueueWatchTargets = 64;
 inline constexpr int64_t kModelRequestDeadlineReserveSeconds = 1;
 // What the answering round of a turn stopped at a limit may take.
 inline constexpr int64_t kLimitAnswerSeconds = 60;
+// How long a turn a report started waits for the other reports owed.
+inline constexpr int64_t kReportBundleS = 45;
 
 // Shared by model callbacks and browser publication.
 inline constexpr int64_t kUsageProgressIntervalMs = 100;

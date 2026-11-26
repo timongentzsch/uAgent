@@ -448,7 +448,7 @@ def test_web_move_delivers_the_mail_waiting_for_its_conversation(root, home, *, 
                 "hops": 0,
                 "created_ms": 1,
                 "expires_ms": 0,
-                "body": {"text": "MAIL-FROM-AGENT"},
+                "body": {"state": "completed", "text": "MAIL-FROM-AGENT"},
             }
         )
     )

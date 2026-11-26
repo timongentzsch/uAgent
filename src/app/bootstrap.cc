@@ -465,8 +465,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   context->agent->SetSessionRole(context->options.session);
   context->agent->JudgeReports(MakeReportJudge(app));
   context->agent->AwaitAgentsWith(
-      [](std::chrono::steady_clock::time_point until) {
-        return AgentsOwing(OwnSessionFile(), until);
+      [](std::chrono::steady_clock::time_point until, bool on_mail) {
+        return AgentsOwing(OwnSessionFile(), until, on_mail);
       });
   if (context->channel && !context->channel->SessionPath().empty()) {
     context->agent->OpenEditJournal(context->channel->SessionPath() +

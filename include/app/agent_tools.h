@@ -24,12 +24,15 @@ void AddAgentTools(
 
 // The names of the agents the session at `path` started that still owe a
 // report: those working or about to, not one waiting on a person. With
-// `until` ahead, after waiting as the agents tool's wait does.
+// `until` ahead, after waiting as the agents tool's wait does, or with
+// `on_mail` false until none works.
 std::vector<std::string> AgentsOwing(
-    const std::string& path, std::chrono::steady_clock::time_point until = {});
+    const std::string& path, std::chrono::steady_clock::time_point until = {},
+    bool on_mail = true);
 
-// Whether an agent of the session at `path` works or has not begun, or mail
-// from one is not yet acknowledged. One waiting on a person does not count.
+// Whether an agent of the session at `path` works or has not begun, or a
+// report from one is not yet acknowledged. One waiting on a person does not
+// count.
 bool AgentsOwe(const std::string& path);
 
 // The agents the session at `path` started, nested, one line each.

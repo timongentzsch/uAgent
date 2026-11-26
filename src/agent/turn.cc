@@ -171,7 +171,7 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
 Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
   // Mail from its parent, children or their siblings arrives as
   // steering and is applied by the very next statement.
-  DeliverMail();
+  DeliverMail(true);
   ApplyQueuedSteering(loop);
   RefreshSystemMessage();
   if (!prompt_error_.empty()) {
@@ -352,6 +352,14 @@ void Agent::Turn(const std::string& user_input, json user_content,
           ? DeadlineAfter(state.started, state.limits.max_turn_seconds)
           : std::chrono::steady_clock::time_point::max();
   active_deadline_ = state.deadline;
+  // A report that finds others still owed waits a while for them, so one
+  // turn answers them all.
+  if (JsonValue(origin, "kind", "") == "agent" && agent_wait_) {
+    if (const auto owed = agent_wait_({}, true); !owed.empty()) {
+      AwaitAgents(owed, std::min(state.deadline, DeadlineAfter(kReportBundleS)),
+                  false);
+    }
+  }
 
   for (; state.limits.max_steps <= 0 || loop.step < state.limits.max_steps;
        ++loop.step) {

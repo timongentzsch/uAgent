@@ -123,10 +123,10 @@ class Agent {
       const std::string& sender, const std::string& report, int64_t turn)>;
   void JudgeReports(ReportJudge judge) { judge_report_ = std::move(judge); }
   // The names of the agents this conversation started that still owe a
-  // report: at once, or after waiting until `until` for mail from one, none
-  // to work, Escape or steering.
+  // report: at once, or after waiting until `until` for mail from one (with
+  // `on_mail`) or for none to work, Escape or steering.
   using AgentWait = std::function<std::vector<std::string>(
-      std::chrono::steady_clock::time_point until)>;
+      std::chrono::steady_clock::time_point until, bool on_mail)>;
   void AwaitAgentsWith(AgentWait wait) { agent_wait_ = std::move(wait); }
   // An agent's role ({agent}), saved in the session header.
   void SetSessionRole(json role) { session_role_ = std::move(role); }
@@ -191,7 +191,8 @@ class Agent {
   bool FinishCommandRow(const EndedCommand& ended);
 
   // Takes the pending mail session_links.h allows; true when any was taken.
-  bool DeliverMail();
+  // Outside a turn a note from an agent of this one waits for the next.
+  bool DeliverMail(bool in_turn = false);
   // Starts a turn when idle; a working session reads it at its next step.
   void Arrive(const std::string& text, json origin);
   // Writes a message into the conversation without a turn.
@@ -330,7 +331,7 @@ class Agent {
   // still owes a report after.
   std::vector<std::string> AwaitAgents(
       const std::vector<std::string>& owed,
-      std::chrono::steady_clock::time_point until);
+      std::chrono::steady_clock::time_point until, bool on_mail);
   StepFlow ExecuteToolCalls(const std::vector<ToolCall>& calls,
                             const std::string& served_by, TurnExecution& state,
                             StepState& loop);

@@ -19,14 +19,7 @@
   // The panes someone resized keep their size from the first frame.
   try {
     const panes = JSON.parse(localStorage.getItem("uagent-panes") || "{}");
-    for (const name of [
-      "sidebar",
-      "board",
-      "side",
-      "files",
-      "files-list",
-      "terminal",
-    ])
+    for (const name of ["sidebar", "side", "files", "files-list", "terminal"])
       if (Number.isFinite(panes[name]))
         document.documentElement.style.setProperty(
           `--${name}-${name === "terminal" ? "height" : "width"}`,

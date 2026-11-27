@@ -16,7 +16,7 @@ import { failure } from "../shared/types.ts";
 export const protocol = 2;
 
 // Every host path the page calls, so a path is written once.
-const localRoutes = {
+export const localRoutes = {
   auth: "/api/auth",
   hosts: "/api/hosts",
   hostPing: (id: string) => `/api/hosts/${encodeURIComponent(id)}/ping`,

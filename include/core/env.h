@@ -15,6 +15,17 @@
 
 namespace uagent {
 
+// Every variable of uAgent's starts with this; the internal ones are handed
+// from a runtime to its children or set by tests, and are never settings.
+inline constexpr std::string_view kEnvPrefix = "UAGENT_";
+inline constexpr std::string_view kInternalEnvPrefix = "UAGENT_INTERNAL_";
+// Internal variables that one place sets and another reads.
+inline constexpr char kDepthEnv[] = "UAGENT_INTERNAL_DEPTH";
+inline constexpr char kSessionPathEnv[] = "UAGENT_INTERNAL_SESSION_PATH";
+inline constexpr char kPreviewEnv[] = "UAGENT_INTERNAL_PREVIEW";
+inline constexpr char kRuntimeDirEnv[] = "UAGENT_INTERNAL_RUNTIME_DIR";
+inline constexpr char kWebDistEnv[] = "UAGENT_INTERNAL_WEB_DIST";
+
 std::string EnvStr(const char* name, const std::string& dflt = "");
 
 int64_t EnvLong(const char* name, int64_t dflt);

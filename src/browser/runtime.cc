@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "include/browser/browser.h"
+#include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
@@ -95,7 +96,7 @@ std::string FreeDisplay() {
 // Where the sessions keep their leases. The service runs with its own HOME,
 // so the host that started it names the directory.
 std::string SessionRuntimeDir() {
-  const char* named = getenv("UAGENT_INTERNAL_RUNTIME_DIR");
+  const char* named = getenv(kRuntimeDirEnv);
   return named && *named ? named : RuntimeDir();
 }
 }  // namespace

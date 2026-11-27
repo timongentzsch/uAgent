@@ -27,7 +27,7 @@ constexpr size_t kMaxWaiting = 64;
 constexpr auto kWaitHeartbeat = std::chrono::seconds(15);
 constexpr auto kOwnerQuiet = std::chrono::minutes(3);
 std::string LockPath(const std::string& session) {
-  const char* named = getenv("UAGENT_INTERNAL_RUNTIME_DIR");
+  const char* named = getenv(kRuntimeDirEnv);
   return session::SocketPathForId(session,
                                   named && *named ? named : RuntimeDir()) +
          ".lock";

@@ -47,7 +47,7 @@ int64_t AutoCompactTokens() {
   return EnvLong("UAGENT_INTERNAL_AUTO_COMPACT_TOKENS", 0);
 }
 
-int64_t AgentDepth() { return EnvLong("UAGENT_INTERNAL_DEPTH", 0); }
+int64_t AgentDepth() { return EnvLong(kDepthEnv, 0); }
 
 int64_t AgentsWaitSeconds() {
   return EnvLong("UAGENT_INTERNAL_AGENTS_WAIT_S", kAgentsWaitSeconds);
@@ -65,7 +65,7 @@ std::string PromptOverlayPath() {
   return EnvStr("UAGENT_INTERNAL_PROMPT_OVERLAY");
 }
 
-std::string OwnSessionFile() { return EnvStr("UAGENT_INTERNAL_SESSION_PATH"); }
+std::string OwnSessionFile() { return EnvStr(kSessionPathEnv); }
 
 std::string PlanFile() {
   const std::string session = OwnSessionFile();

@@ -174,7 +174,7 @@ void HandleContext(AppSession& session, CommandReply& reply) {
       {"provider", session.ApiClient().name},
       {"base_url", RedactedUrl(session.ApiClient().base_url)},
       {"model", session.ApiClient().model},
-      {"model_source", source("UAGENT_MODEL")},
+      {"model_source", source(Cfg("UAGENT_MODEL").EnvName())},
       {"credentials", HasKey(session.ApiClient()) ? "<set>" : "<unset>"},
       {"context_window", session.ApiClient().ctx_window}};
   reply.Print("%seffective configuration%s\n%s\n", BOLD(), RST(),

@@ -24,9 +24,10 @@ constexpr FlagSpec kFlags[] = {
      "model"},
     {"--web", FlagKind::kToggle, &Options::web, nullptr, nullptr,
      "start or reuse this user's web host"},
-    {"--web-port", FlagKind::kConfig, nullptr, "UAGENT_WEB_PORT", "PORT",
-     "loopback web listener port (default 8080)"},
-    {"--web-origin", FlagKind::kConfig, nullptr, "UAGENT_WEB_ORIGIN", "ORIGIN",
+    {"--web-port", FlagKind::kConfig, nullptr, Cfg("UAGENT_WEB_PORT").EnvName(),
+     "PORT", "loopback web listener port (default 8080)"},
+    {"--web-origin", FlagKind::kConfig, nullptr,
+     Cfg("UAGENT_WEB_ORIGIN").EnvName(), "ORIGIN",
      "exact browser origin behind a local HTTPS or tailnet proxy"},
     {"-p", FlagKind::kPrompt, nullptr, nullptr, "PROMPT",
      "run one turn, print only the final answer, exit"},
@@ -43,24 +44,27 @@ constexpr FlagSpec kFlags[] = {
      "cap this conversation's generated tokens between model calls"},
     {.flag = "--plain",
      .kind = FlagKind::kConfigSet,
-     .key = "UAGENT_PLAIN",
+     .key = Cfg("UAGENT_PLAIN").EnvName(),
      .help = "screen-reader output: labelled lines, no animation",
      .preset = "1"},
     {.flag = "--no-memory",
      .kind = FlagKind::kConfigSet,
-     .key = "UAGENT_MEMORY",
+     .key = Cfg("UAGENT_MEMORY").EnvName(),
      .help = "disable memory recall and writes for this conversation",
      .preset = "0"},
-    {"--detail", FlagKind::kConfig, nullptr, "UAGENT_DETAIL", "LEVEL",
-     "detail shown in this terminal: minimal, default or full"},
-    {"--model", FlagKind::kConfig, nullptr, "UAGENT_MODEL", "SELECTION",
-     "conversation model as [provider/]model[:effort]"},
-    {"--image-model", FlagKind::kConfig, nullptr, "UAGENT_IMAGE_MODEL",
-     "SELECTION", "read attached images with this model route"},
+    {"--detail", FlagKind::kConfig, nullptr, Cfg("UAGENT_DETAIL").EnvName(),
+     "LEVEL", "detail shown in this terminal: minimal, default or full"},
+    {"--model", FlagKind::kConfig, nullptr, Cfg("UAGENT_MODEL").EnvName(),
+     "SELECTION", "conversation model as [provider/]model[:effort]"},
+    {"--image-model", FlagKind::kConfig, nullptr,
+     Cfg("UAGENT_IMAGE_MODEL").EnvName(), "SELECTION",
+     "read attached images with this model route"},
     {"--web-search-model", FlagKind::kConfig, nullptr,
-     "UAGENT_WEB_SEARCH_MODEL", "SELECTION", "model route for web search"},
-    {"--memory-model", FlagKind::kConfig, nullptr, "UAGENT_MEMORY_MODEL",
-     "SELECTION", "model route for background memory extraction"},
+     Cfg("UAGENT_WEB_SEARCH_MODEL").EnvName(), "SELECTION",
+     "model route for web search"},
+    {"--memory-model", FlagKind::kConfig, nullptr,
+     Cfg("UAGENT_MEMORY_MODEL").EnvName(), "SELECTION",
+     "model route for background memory extraction"},
     {.flag = "--debug",
      .kind = FlagKind::kToggle,
      .toggle = &Options::debug,
@@ -151,7 +155,7 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
           parsed.error = "--budget must be a positive dollar amount";
           return parsed;
         }
-        parsed.options.overrides["UAGENT_SESSION_BUDGET"] =
+        parsed.options.overrides[Cfg("UAGENT_SESSION_BUDGET").EnvName()] =
             std::to_string(budget);
         break;
       }
@@ -161,7 +165,7 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
           parsed.error = "--token-budget must be a positive integer";
           return parsed;
         }
-        parsed.options.overrides["UAGENT_SESSION_TOKEN_BUDGET"] =
+        parsed.options.overrides[Cfg("UAGENT_SESSION_TOKEN_BUDGET").EnvName()] =
             std::to_string(budget);
         break;
       }

@@ -306,7 +306,7 @@ void Application::EnsureSessionPath() {
   }
   // Peer sessions address this process by its session file.
   if (!session_file_.empty()) {
-    ::setenv("UAGENT_INTERNAL_SESSION_PATH", session_file_.c_str(), 1);
+    ::setenv(kSessionPathEnv, session_file_.c_str(), 1);
   }
   runtime_.processes.SetOwner(
       session_file_.empty() ? agent_.SessionId() : SessionIdFor(session_file_));

@@ -32,7 +32,7 @@ namespace uagent {
 
 // The mode is the approval setting; a conversation's own is that setting
 // chosen at its scope, and "default" takes the choice back.
-constexpr char kApprovalKey[] = "UAGENT_APPROVAL";
+constexpr const char* kApprovalKey = Cfg("UAGENT_APPROVAL").EnvName();
 
 json ApprovalState(const EffectiveConfigSnapshot& configured,
                    const json& agent) {
@@ -109,7 +109,7 @@ static std::string ChooseForConversation(AppSession& session,
   if (!descriptor || !(descriptor->scopes & kScopeConversation)) {
     return key + " cannot be set for one conversation";
   }
-  if (key == "UAGENT_APPROVAL") {
+  if (key == Cfg("UAGENT_APPROVAL").EnvName()) {
     return JsonValue(
         PermissionControl(session.context,
                           {{"mode", value.empty() ? "default" : value}}),

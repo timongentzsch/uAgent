@@ -26,6 +26,8 @@
 #include "include/app/session_command.h"
 #include "include/app/transient_batcher.h"
 #include "include/cli/cli.h"
+#include "include/core/config_registry.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/mailbox.h"
@@ -942,21 +944,22 @@ int WorkerMain(int argc, char** argv) {
   // An agent runs sandboxed, at its depth and within its budget however its
   // runtime is started again: nothing inherited through the environment
   // stands in for its own, so a restart never widens it.
-  ::unsetenv("UAGENT_INTERNAL_DEPTH");
+  ::unsetenv(kDepthEnv);
   if (!agent.empty()) {
-    ::setenv("UAGENT_INTERNAL_DEPTH",
+    ::setenv(kDepthEnv,
              std::to_string(JsonValue(agent, "depth", int64_t{1})).c_str(), 1);
-    options.overrides["UAGENT_SANDBOX"] =
+    options.overrides[Cfg("UAGENT_SANDBOX").EnvName()] =
         JsonValue(agent, "edits", "") == "none" ? "readonly" : "default";
     const double budget = JsonValue(agent, "budget", 0.0);
     if (budget > 0) {
-      options.overrides["UAGENT_SESSION_BUDGET"] = std::to_string(budget);
+      options.overrides[Cfg("UAGENT_SESSION_BUDGET").EnvName()] =
+          std::to_string(budget);
     }
   }
   // The browser opens a page of this folder where the web host serves it, so
   // its stylesheets and images load as on the canvas (tools/browser.cc).
   if (!options.preview.empty()) {
-    ::setenv("UAGENT_INTERNAL_PREVIEW",
+    ::setenv(kPreviewEnv,
              (std::string(argv[2]) + "\n" + options.preview).c_str(), 1);
   }
   WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5], agent);

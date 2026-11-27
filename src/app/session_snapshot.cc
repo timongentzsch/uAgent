@@ -17,6 +17,7 @@
 #include "include/app/session.h"
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
+#include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -259,10 +260,10 @@ SnapshotResult SessionHost::SavedSnapshot(std::shared_ptr<HostSession> session,
                              json::object()),
                    config);
     const EffectiveConfigSnapshot configured = config.Read();
-    const std::string route = configured.Get("UAGENT_MODEL");
+    const std::string route = configured.Get(Cfg("UAGENT_MODEL").EnvName());
     state["route"] = route.empty() ? record.metadata.model : route;
     state["route_source"] =
-        JsonValue(configured.sources, "UAGENT_MODEL", "default");
+        JsonValue(configured.sources, Cfg("UAGENT_MODEL").EnvName(), "default");
     state["permissions"] = ApprovalState(configured, record.metadata.agent);
   } else if (PathExists(session->path)) {
     return {{{"error", loaded.status.message}}, 422};

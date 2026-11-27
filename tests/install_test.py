@@ -2,6 +2,7 @@
 told, and what is written, for each state Docker and the port can be in. The
 script runs as a release install from a copy, so nothing is built."""
 
+import re
 import shutil
 import subprocess
 import tempfile
@@ -225,6 +226,16 @@ class InstallerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         env = (self.home / ".local/share/uagent/container/deploy/.env").read_text()
         self.assertIn("UAGENT_TZ=Europe/Berlin\n", env)
+
+    def test_reads_every_variable_the_one_click_update_sets(self):
+        # src/app/update.cc runs this script with these names.
+        source = (ROOT / "src/app/update.cc").read_text()
+        script = (ROOT / "install.sh").read_text()
+        names = set(re.findall(r'\{"(UAGENT_[A-Z_]+)",', source))
+        names |= set(re.findall(r'kInstallEnv\[\] = "(UAGENT_[A-Z_]+)"', source))
+        self.assertGreaterEqual(len(names), 4, names)
+        for name in names:
+            self.assertIn("${" + name + ":", script, name)
 
 
 if __name__ == "__main__":

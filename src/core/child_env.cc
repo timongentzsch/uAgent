@@ -85,7 +85,8 @@ ChildEnvironment::ChildEnvironment(const EnvironmentOverrides& overrides,
   // A uagent started from a command is no freer than the session it runs in;
   // one the person starts in their own terminal chooses for itself.
   if (!user_shell) {
-    set("UAGENT_APPROVAL", ApprovalModeName(CurrentApprovalMode()));
+    set(Cfg("UAGENT_APPROVAL").EnvName(),
+        ApprovalModeName(CurrentApprovalMode()));
   }
   for (const auto& [key, value] : overrides) set(key, value);
   pointers_.reserve(values_.size() + 1);

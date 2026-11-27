@@ -82,7 +82,7 @@ void LoadSessionJournal(AppSession& session, bool resumed) {
   const json settings = session.ActiveAgent().SessionSettings();
   RuntimeConfig::Values taken =
       RestoreChoices(settings, session.context.config_manager);
-  const std::string& route = taken["UAGENT_MODEL"];
+  const std::string& route = taken[Cfg("UAGENT_MODEL").EnvName()];
   if (!route.empty()) {
     if (SelectModel(session.ApiClient(), session.context.provider.routes,
                     session.context.provider.providers, route)

@@ -16,6 +16,7 @@
 #include "include/api/client.h"
 #include "include/core/capture.h"
 #include "include/core/child_env.h"
+#include "include/core/config_registry.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/private_store.h"
@@ -80,11 +81,16 @@ std::string Prefix() {
              : "";
 }
 
+// The installer's own variables (install.sh).
+constexpr char kInstallEnv[] = "UAGENT_INSTALL";
+
 std::string Command(const std::string& install) {
   if (install == "checkout") return "git pull && ./install.sh";
   return std::string("curl -fsSL https://raw.githubusercontent.com/") +
          kRepository + "/master/install.sh | " +
-         (install == "container" ? "UAGENT_INSTALL=container " : "") + "sh";
+         (install == "container" ? std::string(kInstallEnv) + "=container "
+                                 : "") +
+         "sh";
 }
 
 }  // namespace
@@ -111,7 +117,7 @@ json UpdateState(bool terminal) {
   state["blocked"] = blocked;
   state["apply"] = here && available && blocked.empty();
   // A container keeps its own Chrome: which one, and when it last looked.
-  if (const char* data = std::getenv("UAGENT_BROWSER_DATA")) {
+  if (const char* data = std::getenv(Cfg("UAGENT_BROWSER_DATA").EnvName())) {
     const std::string path = std::string(data) + "/chrome/status";
     struct stat written{};
     if (stat(path.c_str(), &written) == 0) {
@@ -190,7 +196,7 @@ std::string ApplyUpdate(const std::string& version, bool terminal,
   // Asking nothing, the installer replaces the files and leaves the service
   // alone: the host restarts itself.
   ChildEnvironment environment({{"UAGENT_NONINTERACTIVE", "1"},
-                                {"UAGENT_INSTALL", "here"},
+                                {kInstallEnv, "here"},
                                 {"UAGENT_VERSION", version},
                                 {"UAGENT_PREFIX", prefix}});
   const CapturedProcess ran = CaptureProcess({"/bin/sh", "-s"}, kInstallSeconds,

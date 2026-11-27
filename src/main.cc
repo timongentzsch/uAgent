@@ -102,7 +102,7 @@ void ResolveTerminalProfile(const Options& options) {
     ParseBool(settings.Get(key), value);
     return value;
   };
-  ApplyTerminalProfile(on("UAGENT_PLAIN"));
+  ApplyTerminalProfile(on(Cfg("UAGENT_PLAIN").EnvName()));
 }
 
 // Emit is a no-op when the event stream never started.
@@ -156,7 +156,8 @@ int WebMain(const Options& options, char** argv) {
     return 2;
   }
   for (const auto& [key, value] : options.overrides) {
-    if (key != "UAGENT_WEB_PORT" && key != "UAGENT_WEB_ORIGIN") {
+    if (key != Cfg("UAGENT_WEB_PORT").EnvName() &&
+        key != Cfg("UAGENT_WEB_ORIGIN").EnvName()) {
       fprintf(stderr,
               "configure each web session through its own folder or "
               "controls\n");
@@ -173,7 +174,7 @@ int WebMain(const Options& options, char** argv) {
   // refused here: a clamped one would listen where nobody asked.
   const ConfigDescriptor& range = Cfg("UAGENT_WEB_PORT");
   int64_t port = std::get<int64_t>(range.default_value);
-  const auto saved = settings.values.find("UAGENT_WEB_PORT");
+  const auto saved = settings.values.find(Cfg("UAGENT_WEB_PORT").EnvName());
   if ((saved != settings.values.end() &&
        !ParseInt64(saved->second.c_str(), port)) ||
       port < range.minimum || port > range.maximum) {
@@ -183,7 +184,7 @@ int WebMain(const Options& options, char** argv) {
     return 2;
   }
   std::string bind =
-      setting("UAGENT_WEB_BIND",
+      setting(Cfg("UAGENT_WEB_BIND").EnvName(),
               std::get<std::string_view>(Cfg("UAGENT_WEB_BIND").default_value));
   if (bind != "127.0.0.1" && bind != "0.0.0.0") {
     fprintf(stderr, "web bind must be 127.0.0.1 or 0.0.0.0\n");
@@ -191,21 +192,23 @@ int WebMain(const Options& options, char** argv) {
   }
   const ConfigDescriptor& terminal = Cfg("UAGENT_WEB_TERMINAL");
   bool terminal_on = std::get<bool>(terminal.default_value);
-  ParseBool(setting("UAGENT_WEB_TERMINAL"), terminal_on);
+  ParseBool(setting(Cfg("UAGENT_WEB_TERMINAL").EnvName()), terminal_on);
   const ConfigDescriptor& detail = Cfg("UAGENT_WEB_NOTIFICATION_DETAIL");
   bool notification_detail = std::get<bool>(detail.default_value);
-  ParseBool(setting("UAGENT_WEB_NOTIFICATION_DETAIL"), notification_detail);
+  ParseBool(setting(Cfg("UAGENT_WEB_NOTIFICATION_DETAIL").EnvName()),
+            notification_detail);
   const ConfigDescriptor& idle = Cfg("UAGENT_WEB_TERMINAL_IDLE_MINUTES");
   int64_t idle_minutes = std::get<int64_t>(idle.default_value);
-  ParseInt64(setting("UAGENT_WEB_TERMINAL_IDLE_MINUTES").c_str(), idle_minutes);
+  ParseInt64(setting(Cfg("UAGENT_WEB_TERMINAL_IDLE_MINUTES").EnvName()).c_str(),
+             idle_minutes);
   bool update_check = false;
-  ParseBool(setting("UAGENT_WEB_UPDATE_CHECK"), update_check);
+  ParseBool(setting(Cfg("UAGENT_WEB_UPDATE_CHECK").EnvName()), update_check);
   return web::MasterMain(
-      {static_cast<int>(port), setting("UAGENT_WEB_ORIGIN"),
-       setting("UAGENT_WEB_PUSH_CONTACT"), notification_detail, bind,
-       setting("UAGENT_BROWSER_DATA"), terminal_on,
+      {static_cast<int>(port), setting(Cfg("UAGENT_WEB_ORIGIN").EnvName()),
+       setting(Cfg("UAGENT_WEB_PUSH_CONTACT").EnvName()), notification_detail,
+       bind, setting(Cfg("UAGENT_BROWSER_DATA").EnvName()), terminal_on,
        std::clamp(idle_minutes, idle.minimum, idle.maximum),
-       setting("UAGENT_REMOTE_BUNDLE"), update_check},
+       setting(Cfg("UAGENT_REMOTE_BUNDLE").EnvName()), update_check},
       argv);
 }
 

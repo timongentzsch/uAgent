@@ -114,7 +114,7 @@ using ConfigDefault = std::variant<int64_t, double, bool, std::string_view>;
 
 struct ConfigDescriptor {
   // `environment` holds a string literal, so `.data()` is null-terminated.
-  const char* EnvName() const {
+  constexpr const char* EnvName() const {
     return environment
         .data();  // NOLINT(bugprone-suspicious-stringview-data-usage)
   }

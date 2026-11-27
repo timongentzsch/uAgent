@@ -7,7 +7,6 @@ import type {
 import { useAction } from "../../shared/use-action.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { useCallback, useContext } from "preact/hooks";
-import { observeResize } from "../../shared/layout.ts";
 import {
   LoadError,
   Notice,
@@ -115,9 +114,11 @@ function Chat({
         pane.style.setProperty("--gutter-right", `${right}px`);
       };
       measure();
-      const stop = observeResize(measure, box);
+      // Measured before the frame is painted, so the rails never lag a frame.
+      const observer = new ResizeObserver(measure);
+      observer.observe(box);
       return () => {
-        stop();
+        observer.disconnect();
         attachScroller(null);
       };
     },

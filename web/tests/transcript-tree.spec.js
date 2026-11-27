@@ -114,6 +114,43 @@ test("the composer and open receipt share the transcript's text edges", async ({
   }
 });
 
+test("the composer keeps the transcript's text edges in every frame of a resize across the narrow width", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "default");
+  for (const width of [390, 1440]) {
+    // Each frame from before the resize until it has settled.
+    await page.evaluate(() => {
+      const off = () => {
+        const column = document
+          .querySelector(".transcript-content")
+          .getBoundingClientRect();
+        const draft = document
+          .querySelector(".message-box")
+          .getBoundingClientRect();
+        return Math.max(
+          Math.abs(column.left - draft.left),
+          Math.abs(column.right - draft.right),
+        );
+      };
+      window.edgeFrames = [];
+      const tick = () => {
+        window.edgeFrames.push(Math.round(off()));
+        if (window.edgeFrames.length < 12) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(() => page.evaluate(() => window.edgeFrames.length))
+      .toBe(12);
+    expect(await page.evaluate(() => window.edgeFrames)).toEqual(
+      Array(12).fill(0),
+    );
+  }
+});
+
 for (const [device, viewport] of [
   // Tall enough to hold the whole conversation open at full.
   ["desktop", { width: 1280, height: 1400 }],

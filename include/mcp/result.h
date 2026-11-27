@@ -94,7 +94,9 @@ inline ToolResult McpResultText(const McpServer& s, const json& resp,
                           McpStderrHint(s.name)
                     : "(empty result)";
   }
-  if (is_error && !text.starts_with("error")) text = "error: " + text;
+  if (is_error && !text.starts_with("error")) {
+    text = std::string(kToolErrorPrefix) + text;
+  }
   ToolResult result =
       is_error ? ToolFailure(ToolErrorCode::kRemoteError, std::move(text))
       : local_error != ToolErrorCode::kNone

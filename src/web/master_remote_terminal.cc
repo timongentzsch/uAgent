@@ -221,7 +221,7 @@ bool Master::RemoteTerminalSocket(const std::string& id,
   const std::string attach_error = JsonValue(command("attach"), "error", "");
   if (!attach_error.empty()) {
     // A transport failure must not discard a surviving folder shell's identity.
-    if (Panel(record) || attach_error == "Remote terminal was interrupted.") {
+    if (Panel(record) || attach_error == execution::kTerminalInterrupted) {
       ForgetRemoteTerminal(id);
     }
     socket.send(JsonDump({{"type", "exit"}, {"code", -1}}));

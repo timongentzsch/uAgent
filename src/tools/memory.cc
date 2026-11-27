@@ -36,6 +36,7 @@
 #include "include/core/strings.h"
 #include "include/core/workspace.h"
 #include "include/tools/files.h"
+#include "include/tools/tool.h"
 
 namespace uagent {
 namespace {
@@ -163,7 +164,7 @@ ToolResult SearchMemoryText(const std::string& query,
   int64_t matches = 0;
   auto capped = [&] {
     if (++matches < kMaxMatches) return false;
-    output += "[more matches; narrow the query]";
+    output += kMoreMatches;
     return true;
   };
   for (const MemoryEntry& memory : ListMemories(cwd)) {

@@ -41,8 +41,10 @@ bool InGitRepository(const std::filesystem::path& dir);
 
 // A directory contributes the first that exists, CLAUDE.md only where
 // UAGENT_OTHER_AGENTS names claude. AGENTS.md is the one to create.
+inline constexpr char kAgentsFile[] = "AGENTS.md";
+inline constexpr char kClaudeFile[] = "CLAUDE.md";
 inline constexpr const char* kInstructionNames[] = {"AGENTS.override.md",
-                                                    "AGENTS.md", "CLAUDE.md"};
+                                                    kAgentsFile, kClaudeFile};
 
 std::filesystem::path InstructionFileIn(const std::filesystem::path& dir);
 

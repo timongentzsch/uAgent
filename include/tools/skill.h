@@ -64,7 +64,6 @@ inline ToolResult OpenSkill(const Skill& skill,
 inline std::string SkillCatalogue(const std::vector<Skill>& skills,
                                   std::string_view query) {
   constexpr size_t kCatalogueChars = KiB(8);
-  constexpr std::string_view kMore = "\n[more matches; narrow query]";
   bool descriptions = !Trim(std::string(query)).empty();
   std::string out;
   for (const Skill& skill : skills) {
@@ -73,8 +72,10 @@ inline std::string SkillCatalogue(const std::vector<Skill>& skills,
         skill.name +
         (descriptions ? ": " + OneLine(skill.description, 96) : "");
     if (!out.empty()) line.insert(0, "\n");
-    if (out.size() + line.size() + kMore.size() > kCatalogueChars) {
-      out += kMore;
+    // The marker goes on a line of its own.
+    if (out.size() + line.size() + 1 + kMoreMatches.size() > kCatalogueChars) {
+      out += '\n';
+      out += kMoreMatches;
       break;
     }
     out += line;

@@ -156,7 +156,7 @@ class Worker {
       const std::string token = JsonValue(request, "viewer", "");
       {
         std::lock_guard lock(terminal_mutex_);
-        if (!terminals_) return {{"error", "Remote terminal was interrupted."}};
+        if (!terminals_) return {{"error", kTerminalInterrupted}};
         if (action == "close") {
           return terminals_->Close(JsonValue(request, "terminal", ""))
                      ? json::object()
@@ -174,7 +174,7 @@ class Worker {
         if (action == "attach") {
           auto attached =
               terminals_->Attach(JsonValue(request, "terminal", ""));
-          if (!attached) return {{"error", "Remote terminal was interrupted."}};
+          if (!attached) return {{"error", kTerminalInterrupted}};
           viewers_[token] = {std::move(attached), Clock::now()};
           return json::object();
         }

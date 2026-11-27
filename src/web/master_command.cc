@@ -357,7 +357,7 @@ json Master::BrowserControl(const json& command, const std::string& device,
                              {"instance_id", instance},
                              {"interaction_id", interaction}});
   error = JsonValue(result, "error", "");
-  if (error == "browser service timed out or disconnected") {
+  if (error == browser::kServiceTimedOut) {
     json current = browser::Request(
         {{"op", "status"}, {"instance_id", instance}}, browser::kProbeMs);
     if (current.value("ok", false) &&

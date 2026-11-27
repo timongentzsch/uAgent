@@ -179,7 +179,7 @@ json Request(const json& command, int timeout_ms) {
   json copy = command, answer;
   if (!Packet(fd.Get(), copy, true, timeout_ms) ||
       !Packet(fd.Get(), answer, false, timeout_ms)) {
-    return {{"error", "browser service timed out or disconnected"}};
+    return {{"error", kServiceTimedOut}};
   }
   return answer;
 }

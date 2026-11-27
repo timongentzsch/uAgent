@@ -48,6 +48,9 @@
 namespace uagent {
 
 namespace {
+// What a wait that stopped for queued steering says, before what still runs.
+constexpr std::string_view kSteeringYield =
+    "[wait yielded for queued steering; ";
 
 // A wait bounded by the caller's request and by the turn deadline. The note
 // says which one ended it, so a capped wait does not read as a full one.
@@ -564,8 +567,7 @@ std::string CollectSessionOutput(const ActivitySupervisor& supervisor,
                     /*keep=*/false);
     }
     if (SteeringYieldRequested()) {
-      return finish(
-          "[wait yielded for queued steering; process still running]");
+      return finish(std::string(kSteeringYield) + "process still running]");
     }
     if (std::chrono::steady_clock::now() >= window.deadline) {
       return finish("[" + window.Note("waited") + "; process still running]");
@@ -694,7 +696,7 @@ ToolResult ToolActivityOutput(const ActivitySupervisor& supervisor, int64_t id,
         bool no_change = accumulated == current && !steering_yield;
         std::string note;
         if (steering_yield) {
-          note = "[wait yielded for queued steering; process still running]";
+          note = std::string(kSteeringYield) + "process still running]";
         } else if (expired && !found) {
           // The log alone would read as the state asked for, when the marker
           // never appeared or the turn deadline cut the wait short.
@@ -1250,8 +1252,8 @@ ToolResult ToolActivityWait(ActivitySupervisor& supervisor,
     }
     if (SteeringYieldRequested()) {
       return WaitResult(taken,
-                        "[wait yielded for queued steering; " +
-                            ActivityCount(running) + " still running]",
+                        std::string(kSteeringYield) + ActivityCount(running) +
+                            " still running]",
                         cap);
     }
     if (std::chrono::steady_clock::now() >= window.deadline) {

@@ -65,6 +65,9 @@ bool StartService(const std::string& executable, ServiceProcess& process,
 int ServiceMain(int owner_fd);
 
 // One bounded request/reply per connection; no caller-selected CDP method.
+// What Request answers when the service took longer than the caller waits.
+inline constexpr char kServiceTimedOut[] =
+    "browser service timed out or disconnected";
 json Request(const json& command, int timeout_ms = kRequestDefaultMs);
 
 }  // namespace uagent::browser

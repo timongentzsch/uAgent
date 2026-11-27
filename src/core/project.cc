@@ -40,13 +40,13 @@ bool InGitRepository(const std::filesystem::path& dir) {
 std::filesystem::path InstructionFileIn(const std::filesystem::path& dir) {
   for (const char* name : kInstructionNames) {
     // Claude's file speaks for a folder only where Claude is read from.
-    if (std::string_view(name) == "CLAUDE.md" && !ReadsAgent("claude")) {
+    if (std::string_view(name) == kClaudeFile && !ReadsAgent("claude")) {
       continue;
     }
     std::error_code ec;
     if (std::filesystem::is_regular_file(dir / name, ec)) return dir / name;
   }
-  return dir / "AGENTS.md";
+  return dir / kAgentsFile;
 }
 
 std::filesystem::path InstructionPath(bool project,
@@ -54,7 +54,7 @@ std::filesystem::path InstructionPath(bool project,
   if (project && RemoteWorkspace()) {
     return JsonValue(
         WorkspaceRequest({{"op", "instructions"}, {"action", "path"}}), "path",
-        Workspace().path + "/AGENTS.md");
+        Workspace().path + "/" + kAgentsFile);
   }
   return InstructionFileIn(project ? ProjectRoot(cwd)
                                    : std::filesystem::path(GlobalBase()));

@@ -13,6 +13,7 @@
 #include <string_view>
 #include <utility>
 
+#include "include/core/defaults.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
@@ -26,11 +27,12 @@ namespace uagent {
 
 namespace {
 
-constexpr std::string_view kSkillFile = "/SKILL.md";
+// A skill's URI ends in a slash and kSkillFile; the length of that end.
+constexpr size_t kSkillUriEndChars = std::string_view(kSkillFile).size() + 1;
 
 // The skill's folder: its SKILL.md URI without that last segment.
 std::string SkillRoot(const std::string& uri) {
-  return uri.substr(0, uri.size() - kSkillFile.size());
+  return uri.substr(0, uri.size() - kSkillUriEndChars);
 }
 
 bool Digest(const json& value) {
@@ -47,12 +49,14 @@ std::string SkillIssue(const std::string& server, const json& entry,
                        McpSkill& skill) {
   const std::string uri = JsonValue(entry, "uri", "");
   const size_t scheme = uri.find("://");
-  if (scheme == std::string::npos || !uri.ends_with(kSkillFile) ||
-      uri.size() <= scheme + 3 + kSkillFile.size()) {
+  if (scheme == std::string::npos ||
+      uri.size() <= scheme + 3 + kSkillUriEndChars ||
+      !uri.ends_with(kSkillFile) ||
+      uri[uri.size() - kSkillUriEndChars] != '/') {
     return "its uri is not a SKILL.md";
   }
   const std::string path =
-      uri.substr(scheme + 3, uri.size() - scheme - 3 - kSkillFile.size());
+      uri.substr(scheme + 3, uri.size() - scheme - 3 - kSkillUriEndChars);
   // A colon would let `a` + `b:c` read as server `a:b` + `c`.
   const auto plain = [](char c) { return c > ' ' && c < 127 && c != ':'; };
   if (!std::ranges::all_of(path, plain)) {
@@ -212,14 +216,15 @@ ToolResult McpReadSkill(McpServer& server, const McpSkill& skill,
   }
   if (!entry) {
     return ToolFailure(ToolErrorCode::kNotFound,
-                       "error: " + file + " is not a file of " + skill.name +
+                       std::string(kToolErrorPrefix) + file +
+                           " is not a file of " + skill.name +
                            "; its files: " + (files.empty() ? "none" : files));
   }
   const auto size = JsonValue(*entry, "size", int64_t{0});
   if (static_cast<size_t>(size) > kSkillBodyBytes) {
     return ToolFailure(ToolErrorCode::kUnavailable,
-                       "error: " + uri + " is " + std::to_string(size) +
-                           " bytes, more than the " +
+                       std::string(kToolErrorPrefix) + uri + " is " +
+                           std::to_string(size) + " bytes, more than the " +
                            std::to_string(kSkillBodyBytes) +
                            " a skill file may have here; it cannot be read, "
                            "so continue without it");
@@ -233,7 +238,7 @@ ToolResult McpReadSkill(McpServer& server, const McpSkill& skill,
       Sha256(bytes) != JsonValue(*entry, "digest", "")) {
     return ToolFailure(
         ToolErrorCode::kRemoteError,
-        "error: " + uri + " from " + server.name +
+        std::string(kToolErrorPrefix) + uri + " from " + server.name +
             (reply.contains("result")
                  ? " does not match its listed size and digest; not used"
                  : ": " + JsonErrorMessage(reply, "resources/read failed")));

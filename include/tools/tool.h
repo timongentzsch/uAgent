@@ -43,6 +43,8 @@ const char* ToolErrorCodeName(ToolErrorCode code);
 
 // ToolFailure prepends it when missing; ToolCancelled and ToolTimedOut do not.
 inline constexpr std::string_view kToolErrorPrefix = "error: ";
+// Where a capped search stops listing.
+inline constexpr std::string_view kMoreMatches = "[more matches; narrow query]";
 
 struct ToolArgumentIssue {
   std::string code;

@@ -9,6 +9,8 @@
 
 namespace uagent {
 
+inline constexpr char kMcpConfigFile[] = ".mcp.json";
+
 // Credential stores under the home folder that sandboxed commands cannot read
 // and the file tools refuse; `sandbox.reveal` and `sandbox.hide` adjust them.
 // ~/.ssh and ~/.config/gh stay out: git over ssh and gh need their login.
@@ -44,7 +46,7 @@ inline constexpr std::string_view kAuthorityPaths[] = {
     ".gitconfig",
     ".config/git",
     // the MCP servers every conversation starts
-    ".mcp.json",
+    kMcpConfigFile,
     // other agents' settings, hooks and skills, which µAgent reads too
     ".agents",
     ".claude",
@@ -87,7 +89,6 @@ inline constexpr std::string_view kHiddenEnvMarkers[] = {
     "_access_key", "_private_key", "_cookie"};
 
 inline constexpr char kSkillFile[] = "SKILL.md";
-inline constexpr char kMcpConfigFile[] = ".mcp.json";
 
 }  // namespace uagent
 

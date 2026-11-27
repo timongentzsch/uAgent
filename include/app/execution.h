@@ -9,6 +9,9 @@
 #include "include/tools/tool.h"
 
 namespace uagent::execution {
+// A terminal whose remote side is gone; the web host forgets it on seeing this.
+inline constexpr char kTerminalInterrupted[] =
+    "Remote terminal was interrupted.";
 // SSH/control details are private main-side launch data, never provider config.
 struct Target {
   std::string address, control, executable, client, runtime, cwd, auth;

@@ -61,6 +61,10 @@ constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_TITLE_SECONDS", TitleTimeoutSeconds},
     {"UAGENT_MEMORY_SECONDS", MemoryTimeoutSeconds},
     {"UAGENT_PARENT_DECISION_SECONDS", ParentDecisionSeconds},
+    {"UAGENT_AGENT_REPORT_CHARS", AgentReportChars},
+    {"UAGENT_WEB_SEARCH_MAX_TOKENS", WebSearchMaxTokens},
+    {"UAGENT_COMPACTION_INPUT_KB", CompactionInputKb},
+    {"UAGENT_ATTACHMENT_STORE_MB", AttachmentStoreMb},
 };
 
 // A setting that replaced a named constant keeps it as its default, and is
@@ -78,6 +82,11 @@ constexpr ConstantDefault kConstantDefaults[] = {
     {"UAGENT_PARENT_DECISION_SECONDS", kParentDecisionSeconds},
     {"UAGENT_WEB_TERMINAL_SCROLLBACK_KB",
      static_cast<int64_t>(kWebTerminalScrollbackBytes / KiB(1))},
+    {"UAGENT_AGENT_REPORT_CHARS", kAgentReportChars},
+    {"UAGENT_WEB_SEARCH_MAX_TOKENS", kWebSearchMaxTokens},
+    {"UAGENT_COMPACTION_INPUT_KB",
+     static_cast<int64_t>(kCompactionTranscriptBytes / KiB(1))},
+    {"UAGENT_ATTACHMENT_STORE_MB", kAttachmentStoreMegabytes},
 };
 
 std::vector<std::string> DirectRuntimeSettingLookups(std::string_view source) {

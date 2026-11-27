@@ -22,7 +22,8 @@ namespace uagent::session {
 inline constexpr size_t kUploadBytes = MiB(8);
 inline constexpr size_t kUploadCount = 8;
 inline constexpr size_t kSessionAssetBytes = MiB(64);
-inline constexpr size_t kGlobalAssetBytes = MiB(512);
+// The space for uploads across conversations, from attachments.storeMb.
+size_t GlobalAssetBytes();
 // An asset's record (`<id>.json` beside its bytes), small by construction.
 inline constexpr size_t kAssetRecordBytes = KiB(1);
 

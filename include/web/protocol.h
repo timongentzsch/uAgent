@@ -12,7 +12,6 @@
 namespace uagent::web {
 using session::kCommandBytes;
 using session::kFrameBytes;
-using session::kGlobalAssetBytes;
 using session::kProtocol;
 using session::kQueueBytes;
 using session::kSessionAssetBytes;

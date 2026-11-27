@@ -15,6 +15,7 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 | `contextWindow` | `UAGENT_CONTEXT` | `0` |  | user, project | restart | context-window tokens; 0 uses the provider profile |
 | `maxOutputTokens` (advanced) | `UAGENT_MAX_TOKENS` | `-1` |  | user, project | next message | maximum response tokens; -1 omits the optional cap |
 | `context.autoCompactPercent` | `UAGENT_AUTO_COMPACT_PCT` | `85` |  | user, project | next message | context percentage that triggers compaction |
+| `context.compactionInputKb` (advanced) | `UAGENT_COMPACTION_INPUT_KB` | `256` | 16–4096 | user | next message | kibibytes of the conversation the summary model reads when the context is compacted |
 
 ### Providers
 
@@ -99,6 +100,7 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 | `agents.max` | `UAGENT_AGENTS_MAX` | `8` | 1–64 | user, project | next message | agents one conversation may have at work at once |
 | `agents.depth` (advanced) | `UAGENT_AGENTS_DEPTH` | `2` | 0– | user, project | restart | how deep agents may start agents of their own |
 | `agents.parentDecisionSeconds` (advanced) | `UAGENT_PARENT_DECISION_SECONDS` | `300` | 1–86400 | user | next message | seconds an agent waits for its parent to decide on an approval before asking the person |
+| `agents.reportChars` (advanced) | `UAGENT_AGENT_REPORT_CHARS` | `6000` | 500–48000 | user | next message | characters of an agent's final answer its parent reads |
 
 ### Web search
 
@@ -107,6 +109,7 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 | `webSearch.backend` | `UAGENT_WEB_SEARCH_BACKEND` | `auto` | `auto`, `off` | user, project | restart | auto or off |
 | `webSearch.model` | `UAGENT_WEB_SEARCH_MODEL` | empty |  | user, project | next message | model route used for search |
 | `webSearch.maxResults` (advanced) | `UAGENT_WEB_SEARCH_RESULTS` | `5` | 1–50 | user, project | restart | results one search query returns |
+| `webSearch.maxTokens` (advanced) | `UAGENT_WEB_SEARCH_MAX_TOKENS` | `6000` | 500–64000 | user | next message | tokens the web-search model's answer may take |
 | `webSearch.maxUses` (advanced) | `UAGENT_WEB_SEARCH_MAX_USES` | `3` | 1–10 | user, project | restart | queries one web_search call may carry |
 | `webSearch.callsPerTurn` (advanced) | `UAGENT_WEB_SEARCH_CALLS` | `4` | 1–100 | user, project | restart | web_search calls one turn may make |
 | `webSearch.timeout` (advanced) | `UAGENT_WEB_SEARCH_TIMEOUT` | `60` | 1–600 | user, project | restart | seconds one search request may take |
@@ -155,6 +158,7 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 | --- | --- | --- | --- | --- | --- | --- |
 | `attachments.maxMb` (advanced) | `UAGENT_ATTACHMENT_MB` | `10` | 1–17592186044415 | user, project | next message | largest attachment in mebibytes |
 | `attachments.maxCount` (advanced) | `UAGENT_ATTACHMENT_COUNT` | `8` | 1–64 | user, project | next message | attachments queued for one model request |
+| `attachments.storeMb` (advanced) | `UAGENT_ATTACHMENT_STORE_MB` | `512` | 64–65536 | user | next message | mebibytes kept for files uploaded in the web app, across conversations; a full store refuses new ones |
 | `attachments.maxImagePx` (advanced) | `UAGENT_IMAGE_MAX_PX` | `2048` | 256–8192 | user, project | next message | longest image side in pixels; larger images are scaled down |
 
 ### History

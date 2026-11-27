@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "include/app/session.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
@@ -20,6 +21,11 @@
 #include "include/media/attachments.h"
 
 namespace uagent::session {
+
+size_t GlobalAssetBytes() {
+  return MiB(static_cast<size_t>(AttachmentStoreMb()));
+}
+
 namespace {
 
 struct AssetUsage {
@@ -55,8 +61,8 @@ AssetUsage InspectAssets(const std::string& folder, bool cleanup) {
       }
     }
     uintmax_t bytes = entry.file_size(ec);
-    if (ec || bytes > kGlobalAssetBytes ||
-        usage.bytes > kGlobalAssetBytes - bytes) {
+    if (ec || bytes > GlobalAssetBytes() ||
+        usage.bytes > GlobalAssetBytes() - bytes) {
       usage.valid = false;
       break;
     }
@@ -170,8 +176,8 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
       }
       AssetUsage usage = InspectAssets(entry.path().string(), true);
       if (++scanned > kMaxCatalogueEntries || !usage.valid ||
-          usage.bytes > kGlobalAssetBytes - bytes_) {
-        bytes_ = kGlobalAssetBytes;
+          usage.bytes > GlobalAssetBytes() - bytes_) {
+        bytes_ = GlobalAssetBytes();
         break;
       }
       bytes_ += usage.bytes;
@@ -234,7 +240,8 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
   if (!usage.valid || usage.count >= kMaxSessionAssets ||
       bytes.size() >
           kSessionAssetBytes - std::min(usage.bytes, kSessionAssetBytes) ||
-      bytes.size() > kGlobalAssetBytes - std::min(bytes_, kGlobalAssetBytes)) {
+      bytes.size() >
+          GlobalAssetBytes() - std::min(bytes_, GlobalAssetBytes())) {
     return {{}, "attachment storage limit reached", 413};
   }
   std::string id = RandomToken(kIdBytes), stem = folder + "/" + id, error;

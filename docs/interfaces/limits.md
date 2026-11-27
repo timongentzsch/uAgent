@@ -116,6 +116,8 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kWebTerminalScrollbackBytes` | `256 KiB` |  |
 | `kWebTerminalMessageBytes` | `64 KiB` |  |
 | `kWebSearchMaxTokens` | `6000` | A hosted search's own work counts against this as well as its answer. |
+| `kAgentReportChars` | `6000` | Enough for a whole agent's answer in most cases: reading the rest costs the parent a call and a model round. |
+| `kAttachmentStoreMegabytes` | `512` | The space for web uploads across conversations, in mebibytes. |
 | `kMemoryExtractBytes` | `32 KiB` |  |
 | `kMemoryExtractSeconds` | `300` |  |
 | `kMemoryCrowdedParts` | `3` | A scope this full of its limit, as a fraction, lets an extraction fold one of its notes into the one it writes. |

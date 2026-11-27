@@ -19,6 +19,7 @@
 #include "include/api/types.h"
 #include "include/core/debug.h"
 #include "include/core/defaults.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
@@ -47,7 +48,7 @@ std::string SummarizeInstruction() {
 }  // namespace
 
 json Agent::CompactionMessages() const {
-  size_t transcript_bytes = kCompactionTranscriptBytes;
+  size_t transcript_bytes = KiB(static_cast<size_t>(CompactionInputKb()));
   if (api_.ctx_window > 0 && api_.ctx_window < kCompactionSmallWindowTokens) {
     size_t route_bytes = static_cast<size_t>(api_.ctx_window) * 2;
     transcript_bytes = std::clamp(route_bytes, kCompactionTranscriptFloorBytes,

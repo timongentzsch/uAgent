@@ -193,8 +193,9 @@ class Agent {
   bool FinishCommandRow(const EndedCommand& ended);
 
   // Takes the pending mail session_links.h allows; true when any was taken.
-  // Outside a turn a note from an agent of this one waits for the next.
-  bool DeliverMail(bool in_turn = false);
+  // A note from an agent of this one is taken only `with_notes`, before a
+  // model call that reads it; otherwise it waits for the next turn.
+  bool DeliverMail(bool with_notes = false);
   // Starts a turn when idle; a working session reads it at its next step.
   void Arrive(const std::string& text, json origin);
   // Writes a message into the conversation without a turn.

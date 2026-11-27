@@ -547,6 +547,7 @@ def test_escape_ends_a_hold_and_an_earlier_agent_holds_no_later_answer(root, hom
 
 def test_reports_after_the_turn_start_one_turn_and_a_note_none(root, home, *, binary):
     ended = threading.Event()
+    noted = threading.Event()
     asked = []
 
     def route(_, body):
@@ -557,6 +558,11 @@ def test_reports_after_the_turn_start_one_turn_and_a_note_none(root, home, *, bi
                     (child,) = [p for p in agent_files(home) if "a" == header(p)["agent"]["name"]]
                     parent = header(child)["agent"]["parent"]
                     return tool_call("agent_send", {"id": parent, "text": "note from a"})
+                # The note is mailed; the report comes once the first turn is over.
+                noted.set()
+                wait_until(
+                    lambda: header(parent_file(home))["turns"] >= 1, "the first turn did not end"
+                )
                 return event({"content": "a done"})
             time.sleep(1)
             return event({"content": "b done"})
@@ -567,6 +573,8 @@ def test_reports_after_the_turn_start_one_turn_and_a_note_none(root, home, *, bi
             )
         if len(asked) == 5:
             ended.set()
+            # The note waits in the mailbox while the answer that stands is read.
+            noted.wait(budget(30))
         return event({"content": "answer " + str(len(asked))})
 
     with Server([route]) as server:

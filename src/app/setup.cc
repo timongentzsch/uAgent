@@ -143,7 +143,7 @@ KeyCheck CheckKey(const Known& known, const std::string& key) {
   }
   if (known.free_only) {
     auto models = CachedModels(api);
-    if (!models) models = QueryModels(api, /*abortable=*/false, 15);
+    if (!models) models = QueryModels(api);
     if (!models) {
       check.reason =
           "could not fetch the free-model catalogue; try setup again";
@@ -155,8 +155,7 @@ KeyCheck CheckKey(const Known& known, const std::string& key) {
   }
   JsonResponse response =
       api.Get(std::string_view(known.name) == "anthropic" ? "/models?limit=1000"
-                                                          : "/models",
-              false, 15);
+                                                          : "/models");
   if (response.http_status == 401 || response.http_status == 403) {
     check.accepted = false;
     check.reason = "rejected (" + std::to_string(response.http_status) + ")";

@@ -727,7 +727,7 @@ def test_a_decision_its_parent_yields_or_leaves_reaches_the_person(root, home, *
     route, state = ask_then(None, path="late.txt")
     with Server([route]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_INTERNAL_PARENT_DECISION_S"] = "1"
+        env["UAGENT_PARENT_DECISION_SECONDS"] = "1"
         result = run(root, env, "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         client = client_of(home, next(p for p in agent_files(home) if p != first))

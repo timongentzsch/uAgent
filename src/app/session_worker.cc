@@ -295,10 +295,8 @@ class WorkerChannel final : public ApplicationChannel {
     }
     state_["phase"] = "decision";
     SendState();
-    const auto routed_until =
-        std::chrono::steady_clock::now() +
-        std::chrono::seconds(
-            EnvLong("UAGENT_INTERNAL_PARENT_DECISION_S", kParentDecisionS));
+    const auto routed_until = std::chrono::steady_clock::now() +
+                              std::chrono::seconds(ParentDecisionSeconds());
     while (!closed_ && !reply_ && !AbortRequested()) {
       const bool routed = RoutedToParent(decision_);
       lock.unlock();
@@ -866,8 +864,6 @@ class WorkerChannel final : public ApplicationChannel {
   static constexpr auto kLetGo = std::chrono::milliseconds(2000);
   static constexpr auto kLetGoPoll = std::chrono::milliseconds(50);
   static constexpr auto kAgentIdle = std::chrono::milliseconds(1000);
-  // How long a parent has to decide before its agent asks the person.
-  static constexpr int64_t kParentDecisionS = 300;
   bool closed_ UAGENT_GUARDED_BY(mutex_) = false;
   bool busy_ UAGENT_GUARDED_BY(mutex_) = true;
   bool turn_active_ UAGENT_GUARDED_BY(mutex_) = false;

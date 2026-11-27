@@ -31,7 +31,11 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kRemoteBuildDays` | `30` | A remote host keeps a build no main has connected with for this long. |
 | `kUserTitleChars` | `256` | The longest title a user may give a session, and the longest workspace name, in characters. The web form mirrors both (web/src/shared/limits.ts). |
 | `kSpaceNameChars` | `64` |  |
-| `kTitleTimeoutSeconds` | `30` |  |
+| `kTitleTimeoutSeconds` | `30` | Defaults of the settings that bound waits on other servers and models. |
+| `kConnectSeconds` | `10` |  |
+| `kProbeSeconds` | `15` |  |
+| `kParentDecisionSeconds` | `300` | How long an agent waits for its parent to decide before asking the person. |
+| `kWaitedModelListSeconds` | `8` | A model list read while a request waits on it; shorter than a probe. |
 | `kTitleMaxTokens` | `96` | Enough for a title once the model does not think first. |
 | `kAssetNameChars` | `128` | Upload and subsequent claim validation must accept the same display names. |
 | `kImageAnalysisCacheEntries` | `8` |  |

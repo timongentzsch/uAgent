@@ -128,9 +128,8 @@ std::optional<std::vector<ModelInfo>> ParseModels(const json& response,
                                                   bool free_only = false);
 // The catalogue the last successful query left, while at most a day old.
 std::optional<std::vector<ModelInfo>> CachedModels(const Api& api);
-std::optional<std::vector<ModelInfo>> QueryModels(Api& api,
-                                                  bool abortable = false,
-                                                  int64_t timeout_s = 15);
+std::optional<std::vector<ModelInfo>> QueryModels(
+    Api& api, bool abortable = false, int64_t timeout_s = ProbeSeconds());
 std::string NormalizeModelQuery(std::string query);
 // Exact substring first, then one that unifies spaces, underscores and
 // hyphens. Selection stays id-based; only matching is lenient.

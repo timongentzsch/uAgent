@@ -12,11 +12,12 @@ import {
   slide,
   writeFiles,
 } from "./fixtures.js";
-import { uneven } from "./insets.js";
+import { eachTheme, uneven } from "./insets.js";
 
 test.use({ viewport: { width: 1440, height: 900 }, places: true });
 
-const even = async (page) => expect(await uneven(page)).toEqual([]);
+const even = (page) =>
+  eachTheme(page, async () => expect(await uneven(page)).toEqual([]));
 const listed = (page, name) =>
   page.locator("aside.sidebar").getByRole("button", { name, exact: true });
 

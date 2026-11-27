@@ -1,3 +1,5 @@
+import { expect } from "@playwright/test";
+
 // A control that stands in a corner of the box it is in is as far from one
 // edge as from the other. Each that is not is named with both distances.
 
@@ -19,7 +21,18 @@ export const uneven = (page) =>
       };
       const named = (node) =>
         `${node.tagName.toLowerCase()}${[...node.classList].map((name) => `.${name}`).join("")}`;
-      const painted = (color) => !/, 0\)$|^transparent$/.test(color);
+      // A colour with alpha left: not "transparent", nor a last "/ a" or
+      // fourth "rgba(…, a)" argument of 0.
+      const painted = (color) => {
+        if (color === "transparent") return false;
+        const parts = color.slice(color.indexOf("(") + 1, -1).split(/[\s,/]+/);
+        const alpha = color.includes("/")
+          ? parts.at(-1)
+          : color.startsWith("rgba")
+            ? parts[3]
+            : "1";
+        return Number.parseFloat(alpha) !== 0;
+      };
       // The ground an element stands on: its own, or the nearest one under it.
       const ground = (node) => {
         for (let at = node; at; at = at.parentElement) {
@@ -83,3 +96,17 @@ export const uneven = (page) =>
     },
     [CONTROLS, NEAR],
   );
+
+// Runs a probe's checks in the light and the dark theme on the page as it
+// stands, then gives the page back its scheme: a box may show in one only.
+export const eachTheme = async (page, check) => {
+  const html = page.locator("html");
+  const was = await html.getAttribute("data-theme");
+  for (const theme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(html).toHaveAttribute("data-theme", theme);
+    await check();
+  }
+  await page.emulateMedia({ colorScheme: was });
+  await expect(html).toHaveAttribute("data-theme", was);
+};

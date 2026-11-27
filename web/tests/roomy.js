@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import { uneven } from "./insets.js";
+import { eachTheme, uneven } from "./insets.js";
 import { unanswered } from "./press.js";
 
 // What is cramped on the page now, each named so a failure says where.
@@ -163,10 +163,11 @@ export const cramped = (page) =>
     return [...new Set(found)];
   });
 
-export const roomy = async (page) => {
-  await expect.poll(() => cramped(page)).toEqual([]);
-  expect(await uneven(page)).toEqual([]);
-  // The press probe reads styles through CDP, which only Chromium has.
-  if (page.context().browser().browserType().name() === "chromium")
-    expect(await unanswered(page)).toEqual([]);
-};
+export const roomy = (page) =>
+  eachTheme(page, async () => {
+    await expect.poll(() => cramped(page)).toEqual([]);
+    expect(await uneven(page)).toEqual([]);
+    // The press probe reads styles through CDP, which only Chromium has.
+    if (page.context().browser().browserType().name() === "chromium")
+      expect(await unanswered(page)).toEqual([]);
+  });

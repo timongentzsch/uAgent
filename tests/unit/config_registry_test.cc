@@ -61,7 +61,6 @@ constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_TITLE_SECONDS", TitleTimeoutSeconds},
     {"UAGENT_MEMORY_SECONDS", MemoryTimeoutSeconds},
     {"UAGENT_PARENT_DECISION_SECONDS", ParentDecisionSeconds},
-    {"UAGENT_WEB_TERMINAL_SCROLLBACK_KB", TerminalScrollbackKb},
 };
 
 // A setting that replaced a named constant keeps it as its default, and is

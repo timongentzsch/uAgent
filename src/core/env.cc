@@ -75,9 +75,6 @@ std::string PlanFile() {
 int64_t ReadFileLines() { return LongSetting(Cfg("UAGENT_READ_FILE_LINES")); }
 
 int64_t AttachmentLimitMb() { return LongSetting(Cfg("UAGENT_ATTACHMENT_MB")); }
-int64_t TerminalScrollbackKb() {
-  return LongSetting(Cfg("UAGENT_WEB_TERMINAL_SCROLLBACK_KB"));
-}
 
 int64_t HistoryDays() { return LongSetting(Cfg("UAGENT_HISTORY_DAYS")); }
 int64_t HistoryFiles() { return LongSetting(Cfg("UAGENT_HISTORY_FILES")); }

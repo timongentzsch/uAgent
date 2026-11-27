@@ -373,7 +373,7 @@ bool Master::Initialize(std::string& error) {
     // Every device lists the folders' shells as they come and go.
     terminals_ = std::make_unique<Terminals>(
         kWebTerminals, std::chrono::minutes(options_.terminal_idle_minutes),
-        [this] {
+        KiB(static_cast<size_t>(options_.terminal_scrollback_kb)), [this] {
           host_.Publish(
               "", "",
               {{"kind", "terminals.changed"}, {"terminals", TerminalList()}});

@@ -52,6 +52,9 @@ namespace {
 constexpr std::string_view kSteeringYield =
     "[wait yielded for queued steering; ";
 
+// After output, a settling read waits this long for more.
+constexpr int kOutputSettleMs = 100;
+
 // A wait bounded by the caller's request and by the turn deadline. The note
 // says which one ended it, so a capped wait does not read as a full one.
 struct WaitWindow {
@@ -537,8 +540,8 @@ std::string CollectSessionOutput(const ActivitySupervisor& supervisor,
     if (chunk != kNoNewActivityOutput) {
       collected.Push(chunk);
       if (settle) {
-        quiet_deadline =
-            std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+        quiet_deadline = std::chrono::steady_clock::now() +
+                         std::chrono::milliseconds(kOutputSettleMs);
       }
     }
     // One snapshot per iteration serves every exit test below.
@@ -961,8 +964,8 @@ void ActivityShutdownAll(ActivitySupervisor& supervisor) {
     return job.Detached() || job.McpTask();
   });
   for (const Activity& job : jobs) SignalProcessGroup(job.pid, SIGTERM);
-  auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+  auto deadline = std::chrono::steady_clock::now() +
+                  std::chrono::milliseconds(kStopGraceMs);
   while (!jobs.empty()) {
     uint64_t generation = supervisor.Generation();
     std::erase_if(jobs, [](const Activity& job) {

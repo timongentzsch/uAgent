@@ -19,6 +19,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/workspace.h"
@@ -27,6 +28,8 @@
 
 namespace uagent::execution {
 namespace {
+// How long a client waits for another to hand over the connection's lock.
+constexpr auto kLeaseWait = std::chrono::seconds(20);
 using Clock = std::chrono::steady_clock;
 std::shared_ptr<Client> current;
 json Unavailable() {
@@ -84,10 +87,10 @@ struct Client::Impl {
     FileLease lease;
     std::string lease_error;
     error.clear();
-    const auto until = Clock::now() + std::chrono::seconds(20);
+    const auto until = Clock::now() + kLeaseWait;
     while (!lease.Acquire(socket + ".lock", lease_error)) {
       if (Clock::now() >= until) return false;
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+      std::this_thread::sleep_for(std::chrono::milliseconds(kPollTickMs));
     }
     if (!Exchange({{"op", "ping"}}).is_null()) return true;
     // Never bypass the main's explicit Disconnect with a fresh SSH session.
@@ -245,7 +248,7 @@ json Client::Call(json request, const ToolContext* context) {
     if (JsonValue(receipt, "done", false)) {
       return received(receipt.value("result", json()));
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(kWaitTickMs));
   }
   return Unavailable();
 }

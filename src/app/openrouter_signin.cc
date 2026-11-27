@@ -22,6 +22,8 @@
 
 namespace uagent {
 namespace {
+// How long the browser's redirect gets to send its request line.
+constexpr int kCallbackReadMs = 2000;
 
 // OpenRouter's site, where the API is served under /api/v1.
 std::string Site(std::string base_url) {
@@ -112,8 +114,9 @@ std::string AcceptSignIn(int listener, const std::string& state, int seconds) {
     if (client < 0) continue;
     char buffer[4096];
     pollfd reading{.fd = client, .events = POLLIN, .revents = 0};
-    const ssize_t count =
-        poll(&reading, 1, 2000) > 0 ? read(client, buffer, sizeof(buffer)) : 0;
+    const ssize_t count = poll(&reading, 1, kCallbackReadMs) > 0
+                              ? read(client, buffer, sizeof(buffer))
+                              : 0;
     // The request line: GET /callback?code=…&state=… HTTP/1.1
     std::string line(buffer, count > 0 ? static_cast<size_t>(count) : 0);
     line.resize(std::min(line.find('\r'), line.size()));

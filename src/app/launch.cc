@@ -62,6 +62,8 @@ bool LaunchWorktree(const std::string& cwd) {
 }
 
 namespace {
+// A live runtime answers at once; a stuck one must not hold up who asks.
+constexpr auto kLiveAnswer = std::chrono::milliseconds(500);
 // Why removing the launch worktree `cwd` would lose work, or empty.
 std::string WorktreeKeepsWork(const std::string& cwd) {
   auto changes = HostGit(cwd, {"status", "--porcelain"});
@@ -231,9 +233,7 @@ std::string RuntimeStatus(const std::string& path) {
                           JsonValue(frame, "busy", false));
         return false;
       },
-      // A live runtime answers at once; a stuck one must not hold up who
-      // asks.
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(500));
+      std::chrono::steady_clock::now() + kLiveAnswer);
   return status;
 }
 }  // namespace uagent

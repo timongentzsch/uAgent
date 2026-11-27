@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/time.h"
 #include "include/mcp/server.h"
@@ -223,7 +224,8 @@ json McpAwaitUntil(McpServer& s, int64_t id, int64_t timeout_s,
   McpSend(s, -1, "notifications/cancelled",
           {{"requestId", id},
            {"reason", cancelled ? "user cancelled" : "request timed out"}},
-          std::chrono::steady_clock::now() + std::chrono::milliseconds(50));
+          std::chrono::steady_clock::now() +
+              std::chrono::milliseconds(kMcpNoticeMs));
   if (cancelled) {
     RequestAbort();
     return McpErrorReply("cancelled");

@@ -52,6 +52,13 @@ namespace {
 constexpr size_t kMaxConnections = 64;
 constexpr auto kReceiveWait = std::chrono::seconds(30);
 constexpr size_t kStartupLineBytes = KiB(4);
+// The listener wakes this often to sweep idle entries.
+constexpr int kAcceptTickMs = 1000;
+// A new runtime gets this long to read its startup line, then this many
+// pings, a tick apart, to answer.
+constexpr int kStartupWriteMs = 2000;
+constexpr int kStartupPings = 100;
+constexpr int kStartupPingTickMs = 50;
 using Clock = std::chrono::steady_clock;
 struct CallState {
   std::atomic<bool> cancel{false};
@@ -488,7 +495,7 @@ int Serve(const std::string& directory, const std::string& cwd,
       }
     }
     pollfd ready{listener.Get(), POLLIN, 0};
-    if (poll(&ready, 1, 1000) > 0 && (ready.revents & POLLIN)) {
+    if (poll(&ready, 1, kAcceptTickMs) > 0 && (ready.revents & POLLIN)) {
       Fd fd(accept(listener.Get(), nullptr, nullptr));
       if (!fd || connections.size() >= kMaxConnections) continue;
       touched = Clock::now();
@@ -583,10 +590,11 @@ int Main(int argc, char** argv) {
       return 68;
     }
     source.Reset();
-    if (!WriteAllWithin(sink.Get(), startup + "\n", 2000)) return 68;
+    if (!WriteAllWithin(sink.Get(), startup + "\n", kStartupWriteMs)) return 68;
     sink.Reset();
-    for (int i = 0; i < 100 && identity.is_null(); ++i) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    for (int i = 0; i < kStartupPings && identity.is_null(); ++i) {
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(kStartupPingTickMs));
       identity = ping();
     }
   }

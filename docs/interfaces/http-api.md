@@ -24,7 +24,9 @@ are in [Web host](../architecture/web-host.md#protocol).
 `GET /api/sessions` (`?refresh` rescans the disk) returns `v`, `epoch`,
 `cursor` (integer), `sessions` (metadata), `spaces`, `pins`, `scheduled`,
 `terminals` (null with `web.terminal` off), `devices` (`{id, name}`),
-`device` (the caller's), `commands`, `detail`, `thinking`, `capabilities`.
+`device` (the caller's), `commands`, `detail`, `thinking`, `capabilities`,
+`upload_bytes` (the largest upload this host accepts: `attachments.maxMb` as
+it was when the host started).
 
 Session metadata (`SessionHost::Metadata`): `id`, `generation`, `cwd`,
 `host`, `parent`, `title`, `model`, `status` (`draft`, `saved`,

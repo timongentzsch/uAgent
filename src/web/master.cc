@@ -539,20 +539,25 @@ void Master::RegisterApiRoutes() {
           device = DeviceId(request);
           devices = PublicDevices();
         }
-        const json body = {{"v", kProtocol},
-                           {"epoch", epoch_},
-                           {"cursor", std::move(catalogue["cursor"])},
-                           {"sessions", std::move(catalogue["sessions"])},
-                           {"spaces", std::move(catalogue["spaces"])},
-                           {"pins", std::move(catalogue["pins"])},
-                           {"commands", CommandSchemaJson()},
-                           {"detail", ConfiguredDetail()},
-                           {"thinking", ConfiguredThinking()},
-                           {"capabilities", push_->Capabilities(device)},
-                           {"devices", std::move(devices)},
-                           {"scheduled", std::move(catalogue["scheduled"])},
-                           {"terminals", TerminalList()},
-                           {"device", device}};
+        const json body = {
+            {"v", kProtocol},
+            {"epoch", epoch_},
+            {"cursor", std::move(catalogue["cursor"])},
+            {"sessions", std::move(catalogue["sessions"])},
+            {"spaces", std::move(catalogue["spaces"])},
+            {"pins", std::move(catalogue["pins"])},
+            {"commands", CommandSchemaJson()},
+            {"detail", ConfiguredDetail()},
+            {"thinking", ConfiguredThinking()},
+            {"capabilities", push_->Capabilities(device)},
+            {"devices", std::move(devices)},
+            {"scheduled", std::move(catalogue["scheduled"])},
+            {"terminals", TerminalList()},
+            // What one upload may be, as this host enforces
+            // it: the client refuses a larger file before
+            // sending it.
+            {"upload_bytes", MiB(static_cast<size_t>(options_.upload_mb))},
+            {"device", device}};
         Reply(response, body);
       });
   server_.Get(R"(/api/sessions/([a-f0-9]{16,64}))",

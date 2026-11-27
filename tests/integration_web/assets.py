@@ -641,6 +641,9 @@ def test_a_web_upload_is_bounded_by_the_saved_attachment_limit(root, home, *, bi
         with Server([event({"content": "unused"})]) as provider:
             with web_host(binary, root, home, provider.url) as (client, code, _, _):
                 client.pair(code)
+                # The client learns the limit before its first upload.
+                served = client.json("/api/sessions")[1]["upload_bytes"]
+                assert_true(served == (limit or 10) * mib, served)
                 session = client.create(project)
                 endpoint = f"/api/sessions/{session['id']}/attachments?name=nine.txt"
                 headers = {"Content-Type": "text/plain"}

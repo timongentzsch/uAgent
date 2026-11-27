@@ -24,6 +24,8 @@
 
 namespace uagent::web {
 namespace {
+// The largest message a viewer may send; a longer one ends the connection.
+constexpr size_t kViewerMessageBytes = KiB(256);
 // How often the relay re-reads the lease; input follows control within this.
 constexpr int kLeaseCheckMs = 250;
 
@@ -109,7 +111,8 @@ ViewerSession RelayBrowserViewer(httplib::ws::WebSocket& socket,
   std::string data, forwarded;
   while (!stopped) {
     auto result = socket.read(data);
-    if (result != httplib::ws::ReadResult::Binary || data.size() > 262144) {
+    if (result != httplib::ws::ReadResult::Binary ||
+        data.size() > kViewerMessageBytes) {
       break;
     }
     std::lock_guard lock(input);

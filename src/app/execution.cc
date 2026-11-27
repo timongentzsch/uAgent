@@ -34,6 +34,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
+#include "include/core/limits.h"
 #include "include/core/project.h"
 #include "include/core/sandbox.h"
 #include "include/core/signals.h"
@@ -45,6 +46,12 @@
 
 namespace uagent::execution {
 namespace {
+// Bounds on the gateway's socket, which answers before authentication: how
+// many connections at once, how long one may take to send its request, and
+// the size of the startup line.
+constexpr size_t kMaxConnections = 64;
+constexpr auto kReceiveWait = std::chrono::seconds(30);
+constexpr size_t kStartupLineBytes = KiB(4);
 using Clock = std::chrono::steady_clock;
 struct CallState {
   std::atomic<bool> cancel{false};
@@ -320,7 +327,7 @@ class Worker {
       const std::string error =
           RestoreFile(path, JsonValue(request, "hash", ""),
                       JsonValue(request, "existed", false), before,
-                      JsonValue(request, "mode", uint32_t{0644}));
+                      JsonValue(request, "mode", uint32_t{kSharedFileMode}));
       return error.empty() ? json::object() : json{{"error", error}};
     }
     if (operation == "sandbox") {
@@ -483,13 +490,13 @@ int Serve(const std::string& directory, const std::string& cwd,
     pollfd ready{listener.Get(), POLLIN, 0};
     if (poll(&ready, 1, 1000) > 0 && (ready.revents & POLLIN)) {
       Fd fd(accept(listener.Get(), nullptr, nullptr));
-      if (!fd || connections.size() >= 64) continue;
+      if (!fd || connections.size() >= kMaxConnections) continue;
       touched = Clock::now();
       auto done = std::make_shared<std::atomic<bool>>(false);
       connections.push_back(
           {std::thread([fd = std::move(fd), &worker, done, &auth]() {
              const json request =
-                 Receive(fd.Get(), Clock::now() + std::chrono::seconds(30));
+                 Receive(fd.Get(), Clock::now() + kReceiveWait);
              if (request.is_object()) {
                Send(fd.Get(),
                     JsonValue(request, "auth", "") == auth
@@ -522,7 +529,9 @@ int Main(int argc, char** argv) {
     return 64;
   }
   std::string startup;
-  if (!std::getline(std::cin, startup) || startup.size() > KiB(4)) return 64;
+  if (!std::getline(std::cin, startup) || startup.size() > kStartupLineBytes) {
+    return 64;
+  }
   const json options = json::parse(startup, nullptr, false);
   const std::string auth = JsonValue(options, "auth", "");
   const std::string preset = JsonValue(options, "sandbox", "");

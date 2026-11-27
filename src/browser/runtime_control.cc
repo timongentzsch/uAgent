@@ -93,7 +93,7 @@ json Runtime::Control(const std::string& op, const json& command) {
           return {{"error", "Chrome profile name already exists"}};
         }
       }
-      std::string id = RandomToken(16);
+      std::string id = RandomToken(kIdBytes);
       if (id.empty()) return {{"error", "cannot create Chrome profile ID"}};
       profiles_.push_back({id, name});
       if (!SaveProfiles()) {

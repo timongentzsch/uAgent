@@ -27,6 +27,8 @@
 
 namespace uagent::web {
 namespace {
+// Hosts one serving host connects to at most.
+constexpr size_t kMaxRemoteHosts = 16;
 using Clock = std::chrono::steady_clock;
 struct Host {
   std::string id, address, control, log, client, executable, auth;
@@ -161,8 +163,8 @@ bool Connect(Host& host, const std::string& bundle, std::string& error,
   ChildEnvironment environment({}, ChildEnvironmentPolicy::kUserShell);
   spec.environment = environment.Data();
   spec.group = SpawnSpec::Group::kOwn;
-  Fd log(
-      open(host.log.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600));
+  Fd log(open(host.log.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW,
+              kPrivateFileMode));
   if (!log) {
     error = "Cannot open the private SSH log.";
     return false;
@@ -372,8 +374,8 @@ struct RemoteHosts::Impl {
     host->client = JsonValue(private_identity, "client", "");
     host->auth = JsonValue(private_identity, "auth", "");
     if (!OpaqueId(host->client) || !OpaqueId(host->auth)) {
-      host->client = RandomToken(16);
-      host->auth = RandomToken(32);
+      host->client = RandomToken(kIdBytes);
+      host->auth = RandomToken(kSecretBytes);
       std::string error;
       if (!WritePrivateFile(
               private_path,
@@ -420,7 +422,8 @@ RemoteHosts::RemoteHosts(const std::string& executable,
     for (const json& row : saved) {
       const std::string id = JsonValue(row, "id", ""),
                         address = JsonValue(row, "address", "");
-      if (OpaqueId(id) && Address(address) && impl_->hosts.size() < 16) {
+      if (OpaqueId(id) && Address(address) &&
+          impl_->hosts.size() < kMaxRemoteHosts) {
         const auto host = impl_->Add(id, address);
         if (host && JsonValue(row, "connected", false)) {
           std::lock_guard state(host->mutex);
@@ -488,7 +491,7 @@ json RemoteHosts::Change(const json& action, std::string& error) {
   std::shared_ptr<Host> host;
   if (kind == "add") {
     const std::string address = JsonValue(action, "address", "");
-    if (!Address(address) || impl_->hosts.size() >= 16) {
+    if (!Address(address) || impl_->hosts.size() >= kMaxRemoteHosts) {
       error = "Enter an SSH alias or user@machine (maximum 16 hosts).";
       return nullptr;
     }
@@ -498,7 +501,7 @@ json RemoteHosts::Change(const json& action, std::string& error) {
         return nullptr;
       }
     }
-    host = impl_->Add(RandomToken(16), address);
+    host = impl_->Add(RandomToken(kIdBytes), address);
     if (!host) {
       error = "Cannot create the private SSH runtime directory.";
       return nullptr;

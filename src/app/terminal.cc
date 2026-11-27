@@ -262,7 +262,7 @@ std::string Terminals::Open(const std::string& directory,
     path = resolved->string();
   }
   auto shell = std::make_shared<TerminalShell>();
-  shell->id = RandomToken(16);
+  shell->id = RandomToken(kIdBytes);
   shell->cwd = paths[0];
   shell->folder = paths[1];
   shell->started = NowMillis();

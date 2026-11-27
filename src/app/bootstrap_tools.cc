@@ -190,8 +190,8 @@ std::vector<Tool> BuildTools(AppContext& context,
   // use it, one at a time. A one-shot run has no session file to be named by.
   if (!RemoteWorkspace() && !browser::DataDirectory().empty() &&
       browser::Request({{"op", "ping"}}, 3000).value("ok", false)) {
-    context.browser_lease =
-        session_path.empty() ? RandomToken(16) : SessionIdFor(session_path);
+    context.browser_lease = session_path.empty() ? RandomToken(kIdBytes)
+                                                 : SessionIdFor(session_path);
     tools.push_back(BrowserTool(
         context.browser_lease,
         // A one-shot run has nobody to take the browser over.

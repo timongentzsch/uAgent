@@ -40,8 +40,9 @@ std::string PkceChallenge(std::string_view verifier) {
 }
 
 SignIn BeginSignIn(const std::string& base_url, const std::string& callback) {
-  SignIn start{
-      .url = "", .verifier = RandomToken(32), .state = RandomToken(16)};
+  SignIn start{.url = "",
+               .verifier = RandomToken(kSecretBytes),
+               .state = RandomToken(kIdBytes)};
   start.url = Site(base_url) +
               "/auth?code_challenge=" + PkceChallenge(start.verifier) +
               "&code_challenge_method=S256&key_label=uAgent";

@@ -331,8 +331,8 @@ SessionCommandResult SessionHost::ExecuteCommand(
     if (!resolved) return result;
     const std::filesystem::path& cwd = *resolved;
     auto session =
-        CreateSession(cwd.string(), HistoryPath("web-" + RandomToken(16)), "",
-                      result.error, host);
+        CreateSession(cwd.string(), HistoryPath("web-" + RandomToken(kIdBytes)),
+                      "", result.error, host);
     if (session) {
       result.wake = true;
       result.outcome["session"] = Metadata(*session);

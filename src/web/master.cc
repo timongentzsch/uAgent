@@ -206,7 +206,7 @@ Master::Master(WebOptions options, std::string executable,
       local_("http://127.0.0.1:" + std::to_string(options_.port)),
       local_authority_(local_.substr(7)),
       origin_(options_.origin.empty() ? local_ : options_.origin),
-      epoch_(RandomToken(16)),
+      epoch_(RandomToken(kIdBytes)),
       secret_(RandomToken()),
       host_(epoch_, kQueueBytes, executable_, directory_) {
   host_.SetPreview(

@@ -665,7 +665,7 @@ json Move(const fs::path& folder, const json& moves) {
       return {{"error", name + " is already there"}, {"status", 409}};
     }
   }
-  const std::string stem = ".move-" + RandomToken(8) + "-";
+  const std::string stem = ".move-" + RandomToken(kNameBytes) + "-";
   const auto staged = [&](size_t index) {
     return folder / (stem + std::to_string(index));
   };
@@ -847,7 +847,8 @@ json Request(const fs::path& root, const json& request) {
       return refused;
     }
     // A new file is linked into place, which a file already there refuses.
-    if (!AtomicWriteFile(target->string(), text, 0644, true, error, !create)) {
+    if (!AtomicWriteFile(target->string(), text, kSharedFileMode, true, error,
+                         !create)) {
       std::error_code ec;
       if (create && fs::exists(fs::symlink_status(*target, ec))) {
         return {{"error", target->filename().string() + " is already there"},

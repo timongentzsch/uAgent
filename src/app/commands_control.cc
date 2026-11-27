@@ -203,7 +203,7 @@ json TurnDiff(const json& texts) {
   namespace fs = std::filesystem;
   std::error_code ec;
   const fs::path folder =
-      fs::temp_directory_path(ec) / ("uagent-diff-" + RandomToken(8));
+      fs::temp_directory_path(ec) / ("uagent-diff-" + RandomToken(kNameBytes));
   const std::string before = (folder / "before").string(),
                     after = (folder / "after").string();
   std::string error;

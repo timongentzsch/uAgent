@@ -962,7 +962,8 @@ int WorkerMain(int argc, char** argv) {
     ::setenv(kPreviewEnv,
              (std::string(argv[2]) + "\n" + options.preview).c_str(), 1);
   }
-  WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5], agent);
+  WorkerChannel channel(argv[3], argv[4], RandomToken(kIdBytes), argv[5],
+                        agent);
   if (const int failed = channel.Start()) return failed;
   Observability observation;
   SetObservability(&observation);

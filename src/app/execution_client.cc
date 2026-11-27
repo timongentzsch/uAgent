@@ -177,7 +177,7 @@ json Client::Call(json request, const ToolContext* context) {
   if (completion) {
     std::lock_guard lock(impl_->mutex);
     if (impl_->completion_request.empty()) {
-      impl_->completion_request = RandomToken(16);
+      impl_->completion_request = RandomToken(kIdBytes);
     }
     request["id"] = impl_->completion_request;
   }
@@ -189,7 +189,7 @@ json Client::Call(json request, const ToolContext* context) {
        (mode == "write" || mode == "move" || mode == "delete_design")) ||
       (op == "instructions" && JsonValue(request, "action", "") == "write");
   if (run) {
-    if (!completion) request["id"] = RandomToken(16);
+    if (!completion) request["id"] = RandomToken(kIdBytes);
     if (context) {
       request["call_id"] = context->call_id;
       request["turn_id"] = context->turn_id;

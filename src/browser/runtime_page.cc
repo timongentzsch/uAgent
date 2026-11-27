@@ -309,7 +309,7 @@ json Runtime::Observe(bool image) {
     }
     picture = JsonValue(*taken, "data", "");
   }
-  observation_ = RandomToken(12);
+  observation_ = RandomToken(kNonceBytes);
   json page = Evaluate(
       {{"expression", PageScript() + "(0,\"\"," + JsonDump(observation_) + ")"},
        {"returnByValue", true}});

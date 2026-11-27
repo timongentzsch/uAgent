@@ -135,7 +135,7 @@ struct BrowserAccess {
 
 ToolResult Acquire(const std::string& session_id, const json& args,
                    const ToolContext& context, BrowserAccess& access) {
-  const std::string request = RandomToken(16);
+  const std::string request = RandomToken(kIdBytes);
   if (request.empty()) {
     return ToolFailure(ToolErrorCode::kInternal,
                        "cannot create browser request");
@@ -192,7 +192,7 @@ ToolResult Acquire(const std::string& session_id, const json& args,
 
 ToolResult Handover(const BrowserAccess& access, const std::string& reason,
                     const BrowserAsk& ask) {
-  std::string interaction = RandomToken(16);
+  std::string interaction = RandomToken(kIdBytes);
   json outcome = access.Request({{"op", "request_human"},
                                  {"session_id", access.session_id},
                                  {"interaction_id", interaction}});
@@ -263,7 +263,7 @@ json Subject(const json& args, Seen& seen) {
   const std::string site = browser::Origin(seen.url);
   if (site.empty()) {
     return seen.view_id.empty()
-               ? json{{"call", args}, {"once", RandomToken(12)}}
+               ? json{{"call", args}, {"once", RandomToken(kNonceBytes)}}
                : json{{"call", args}, {"look", seen.view_id}};
   }
   // An upload is approved for its file, never for any file; a batch for the

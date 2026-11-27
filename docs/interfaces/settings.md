@@ -28,6 +28,7 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 | --- | --- | --- | --- | --- | --- | --- |
 | `image.model` | `UAGENT_IMAGE_MODEL` | empty |  | user, project | next message | model route that reads attached images; empty uses the main route when it reads images, else the first model on its endpoint that does |
 | `title.model` | `UAGENT_TITLE_MODEL` | empty |  | user, project | next message | model route that names new sessions, or off |
+| `title.timeoutSeconds` (advanced) | `UAGENT_TITLE_SECONDS` | `30` | 5–600 | user | next message | seconds the call that names a conversation may take |
 
 ### Requests
 
@@ -35,6 +36,8 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 | --- | --- | --- | --- | --- | --- | --- |
 | `request.streamTimeout` (advanced) | `UAGENT_STREAM_TIMEOUT` | `300` |  | user, project | next message | seconds of stream silence allowed, before the first event or between events |
 | `request.timeout` (advanced) | `UAGENT_REQUEST_TIMEOUT` | `600` |  | user, project | next message | total seconds allowed for one model request |
+| `request.connectSeconds` (advanced) | `UAGENT_CONNECT_SECONDS` | `10` | 1–300 | user | next message | seconds a request waits for the server to accept the connection |
+| `request.probeSeconds` (advanced) | `UAGENT_PROBE_SECONDS` | `15` | 1–120 | user | next message | seconds a quick check may take: a key, a model list, the update check |
 
 ## Approvals and safety
 
@@ -95,6 +98,7 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 | --- | --- | --- | --- | --- | --- | --- |
 | `agents.max` | `UAGENT_AGENTS_MAX` | `8` | 1–64 | user, project | next message | agents one conversation may have at work at once |
 | `agents.depth` (advanced) | `UAGENT_AGENTS_DEPTH` | `2` | 0– | user, project | restart | how deep agents may start agents of their own |
+| `agents.parentDecisionSeconds` (advanced) | `UAGENT_PARENT_DECISION_SECONDS` | `300` | 1–86400 | user | next message | seconds an agent waits for its parent to decide on an approval before asking the person |
 
 ### Web search
 
@@ -142,6 +146,7 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 | `memory.max` (advanced) | `UAGENT_MEMORY_MAX` | `32` | 1–1000 | user, project | next message | memories kept per scope |
 | `memory.maxBytes` (advanced) | `UAGENT_MEMORY_BYTES` | `2048` | 256–65536 | user, project | next message | bytes one memory may hold |
 | `memory.alwaysBytes` (advanced) | `UAGENT_MEMORY_ALWAYS_BYTES` | `2048` | 0–65536 | user, project | restart | bytes of global memories placed whole in every conversation's context |
+| `memory.timeoutSeconds` (advanced) | `UAGENT_MEMORY_SECONDS` | `300` | 30–3600 | user | next message | seconds the memory extractor may take for one conversation |
 | `memory.idleHours` (advanced) | `UAGENT_MEMORY_IDLE_HOURS` | `6` | 1–720 | user, project | next message | hours a saved conversation sits idle before memories are extracted from it |
 
 ### Attachments

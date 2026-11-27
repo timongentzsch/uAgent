@@ -53,7 +53,14 @@ inline constexpr int kRemoteBuildDays = 30;
 // name, in characters. The web form mirrors both (web/src/shared/limits.ts).
 inline constexpr size_t kUserTitleChars = 256;
 inline constexpr size_t kSpaceNameChars = 64;
+// Defaults of the settings that bound waits on other servers and models.
 inline constexpr int64_t kTitleTimeoutSeconds = 30;
+inline constexpr int64_t kConnectSeconds = 10;
+inline constexpr int64_t kProbeSeconds = 15;
+// How long an agent waits for its parent to decide before asking the person.
+inline constexpr int64_t kParentDecisionSeconds = 300;
+// A model list read while a request waits on it; shorter than a probe.
+inline constexpr int64_t kWaitedModelListSeconds = 8;
 // Enough for a title once the model does not think first.
 inline constexpr int64_t kTitleMaxTokens = 96;
 // Upload and subsequent claim validation must accept the same display names.

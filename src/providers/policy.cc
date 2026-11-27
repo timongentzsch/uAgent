@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "include/core/config_registry.h"
+#include "include/core/limits.h"
 #include "include/providers/providers.h"
 
 namespace uagent {
@@ -76,7 +77,8 @@ std::optional<std::string> VisionModelOnEndpoint(const Api& api) {
     Api catalog_api(api.config);
     static_cast<Endpoint&>(catalog_api) = api;
     catalog_api.capabilities = api.capabilities;
-    models = QueryModels(catalog_api, /*abortable=*/false, /*timeout_s=*/8);
+    models =
+        QueryModels(catalog_api, /*abortable=*/false, kWaitedModelListSeconds);
   }
   if (models) {
     for (const ModelInfo& info : *models) {

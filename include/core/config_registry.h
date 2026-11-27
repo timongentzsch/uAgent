@@ -13,6 +13,7 @@
 #include <string_view>
 #include <variant>
 
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 
 namespace uagent {
@@ -401,6 +402,22 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       ReloadPolicy::kNextUserTurn, "requests",
                       "total seconds allowed for one model request"),
         "Request timeout")),
+    registry::Advanced(registry::Named(
+        registry::Int("request.connectSeconds", "UAGENT_CONNECT_SECONDS", {},
+                      kConnectSeconds, 1, 300, ReloadPolicy::kNextUserTurn,
+                      "requests",
+                      "seconds a request waits for the server to accept the "
+                      "connection",
+                      kScopeUser),
+        "Connect timeout")),
+    registry::Advanced(registry::Named(
+        registry::Int("request.probeSeconds", "UAGENT_PROBE_SECONDS", {},
+                      kProbeSeconds, 1, 120, ReloadPolicy::kNextUserTurn,
+                      "requests",
+                      "seconds a quick check may take: a key, a model list, "
+                      "the update check",
+                      kScopeUser),
+        "Quick-check timeout")),
 
     registry::Advanced(registry::Named(
         registry::Int("limits.maxSteps", "UAGENT_MAX_STEPS", "max_steps", 0, 0,
@@ -573,6 +590,15 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       kConfigAnyMax, ReloadPolicy::kRestartRequired, "agents",
                       "how deep agents may start agents of their own"),
         "Agent depth")),
+    registry::Advanced(registry::Named(
+        registry::Int("agents.parentDecisionSeconds",
+                      "UAGENT_PARENT_DECISION_SECONDS", {},
+                      kParentDecisionSeconds, 1, 86400,
+                      ReloadPolicy::kNextUserTurn, "agents",
+                      "seconds an agent waits for its parent to decide on an "
+                      "approval before asking the person",
+                      kScopeUser),
+        "Parent decision wait")),
 
     registry::Named(
         registry::Choice(
@@ -646,6 +672,14 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "bytes of global memories placed whole in every "
                       "conversation's context"),
         "Always-on memory")),
+    registry::Advanced(registry::Named(
+        registry::Int("memory.timeoutSeconds", "UAGENT_MEMORY_SECONDS", {},
+                      kMemoryExtractSeconds, 30, 3600,
+                      ReloadPolicy::kNextUserTurn, "memory",
+                      "seconds the memory extractor may take for one "
+                      "conversation",
+                      kScopeUser),
+        "Memory extraction timeout")),
     registry::Advanced(registry::Named(
         registry::Int("memory.idleHours", "UAGENT_MEMORY_IDLE_HOURS", {}, 6, 1,
                       720, ReloadPolicy::kNextUserTurn, "memory",
@@ -802,6 +836,13 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                       "approval", "restrict the exposed tool capability set"),
         "Tool capabilities")),
+    registry::Advanced(registry::Named(
+        registry::Int("title.timeoutSeconds", "UAGENT_TITLE_SECONDS", {},
+                      kTitleTimeoutSeconds, 5, 600, ReloadPolicy::kNextUserTurn,
+                      "other-models",
+                      "seconds the call that names a conversation may take",
+                      kScopeUser),
+        "Title timeout")),
     registry::Advanced(registry::Named(
         registry::Str(
             "shell.envAllow", "UAGENT_SHELL_ENV_ALLOW", {}, "",

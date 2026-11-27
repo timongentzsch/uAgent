@@ -121,6 +121,18 @@ int64_t WebSearchTimeoutSeconds() {
   return LongSetting(Cfg("UAGENT_WEB_SEARCH_TIMEOUT"));
 }
 
+int64_t ConnectSeconds() { return LongSetting(Cfg("UAGENT_CONNECT_SECONDS")); }
+int64_t ProbeSeconds() { return LongSetting(Cfg("UAGENT_PROBE_SECONDS")); }
+int64_t TitleTimeoutSeconds() {
+  return LongSetting(Cfg("UAGENT_TITLE_SECONDS"));
+}
+int64_t MemoryTimeoutSeconds() {
+  return LongSetting(Cfg("UAGENT_MEMORY_SECONDS"));
+}
+int64_t ParentDecisionSeconds() {
+  return LongSetting(Cfg("UAGENT_PARENT_DECISION_SECONDS"));
+}
+
 size_t MaxMemories() {
   return static_cast<size_t>(LongSetting(Cfg("UAGENT_MEMORY_MAX")));
 }

@@ -16,6 +16,7 @@
 #include "include/cli/cli.h"
 #include "include/cli/options.h"
 #include "include/core/env.h"
+#include "include/core/limits.h"
 #include "include/core/runtime_config.h"
 #include "include/core/strings.h"
 #include "tests/unit/test_support.h"
@@ -55,6 +56,26 @@ constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_WEB_SEARCH_TIMEOUT", WebSearchTimeoutSeconds},
     {"UAGENT_MCP_MAX_SERVERS", MaxMcpServers},
     {"UAGENT_REPEATED_CALL_STOP", RepeatedCallStopAfter},
+    {"UAGENT_CONNECT_SECONDS", ConnectSeconds},
+    {"UAGENT_PROBE_SECONDS", ProbeSeconds},
+    {"UAGENT_TITLE_SECONDS", TitleTimeoutSeconds},
+    {"UAGENT_MEMORY_SECONDS", MemoryTimeoutSeconds},
+    {"UAGENT_PARENT_DECISION_SECONDS", ParentDecisionSeconds},
+};
+
+// A setting that replaced a named constant keeps it as its default, and is
+// set by a person only: a folder cannot move it.
+struct ConstantDefault {
+  const char* environment;
+  int64_t constant;
+};
+
+constexpr ConstantDefault kConstantDefaults[] = {
+    {"UAGENT_CONNECT_SECONDS", kConnectSeconds},
+    {"UAGENT_PROBE_SECONDS", kProbeSeconds},
+    {"UAGENT_TITLE_SECONDS", kTitleTimeoutSeconds},
+    {"UAGENT_MEMORY_SECONDS", kMemoryExtractSeconds},
+    {"UAGENT_PARENT_DECISION_SECONDS", kParentDecisionSeconds},
 };
 
 std::vector<std::string> DirectRuntimeSettingLookups(std::string_view source) {
@@ -228,6 +249,18 @@ TEST_CASE(TestConfigRegistryContract) {
 // With a loose parse UAGENT_MEMORY=false switches memory on.
 // Settings and the docs page list topics in order, each topic's groups
 // together, and no group empty.
+TEST_CASE(TestSettingsKeepTheConstantsTheyReplaced) {
+  for (const ConstantDefault& entry : kConstantDefaults) {
+    const ConfigDescriptor* descriptor =
+        FindConfigDescriptor(entry.environment);
+    CHECK(descriptor != nullptr);
+    if (!descriptor) continue;
+    const int64_t* value = std::get_if<int64_t>(&descriptor->default_value);
+    CHECK(value && *value == entry.constant);
+    CHECK(descriptor->scopes == kScopeUser);
+  }
+}
+
 TEST_CASE(TestConfigTopicsAndGroups) {
   size_t topic = 0;
   for (const ConfigGroup& group : kConfigGroups) {

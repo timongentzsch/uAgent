@@ -127,7 +127,7 @@ bool ProbeModel(Api& api, bool discover_efforts) {
   // A cached catalogue that lacks the chosen model may predate it.
   auto models = CachedModels(api);
   if (!models || !listed(*models)) {
-    models = QueryModels(api, /*abortable=*/false, 8);
+    models = QueryModels(api, /*abortable=*/false, kWaitedModelListSeconds);
   }
   if (models && !models->empty()) {
     if (const ModelInfo* info = listed(*models)) {

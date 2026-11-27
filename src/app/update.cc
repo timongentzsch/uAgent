@@ -17,6 +17,7 @@
 #include "include/core/capture.h"
 #include "include/core/child_env.h"
 #include "include/core/config_registry.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/private_store.h"
@@ -138,7 +139,7 @@ json CheckForUpdate(bool terminal) {
     WebResponse answer =
         api.GetUrl(std::string("https://api.github.com/repos/") + kRepository +
                        "/releases/latest",
-                   15, kReleaseBytes);
+                   ProbeSeconds(), kReleaseBytes);
     text = std::move(answer.body);
     error = std::move(answer.error);
   }

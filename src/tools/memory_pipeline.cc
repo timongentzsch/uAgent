@@ -329,7 +329,7 @@ std::string StartMemoryExtractor(Agent& agent, const Api& api,
       Agent::kMemoryPurpose, SettingText(Cfg("UAGENT_MEMORY_MODEL")),
       json::array({{{"role", "system"}, {"content", std::move(rules)}},
                    {{"role", "user"}, {"content", std::move(evidence)}}}),
-      kMemoryExtractSeconds,
+      MemoryTimeoutSeconds(),
       [&agent, source, cwd,
        observed = std::move(observed)](const ChatResult& result) {
         FileLease writing;

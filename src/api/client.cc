@@ -21,6 +21,7 @@
 #include "include/api/wire.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
@@ -803,7 +804,8 @@ CURL* Api::Prepare(const std::string& url) {
   curl_easy_reset(handle_);  // clears options, keeps the connection cache
   curl_easy_setopt(handle_, CURLOPT_URL, url.c_str());
   curl_easy_setopt(handle_, CURLOPT_NOSIGNAL, 1L);
-  curl_easy_setopt(handle_, CURLOPT_CONNECTTIMEOUT, 10L);
+  curl_easy_setopt(handle_, CURLOPT_CONNECTTIMEOUT,
+                   CurlTimeout(ConnectSeconds()));
   // API redirects are unexpected and can cross an origin boundary.
   // Reject them rather than risk forwarding a bearer token.
   curl_easy_setopt(handle_, CURLOPT_FOLLOWLOCATION, 0L);

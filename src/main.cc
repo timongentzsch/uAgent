@@ -165,6 +165,10 @@ int WebMain(const Options& options, char** argv) {
     }
   }
   auto settings = ConfigManager::Capture(options.overrides, "").Read();
+  // Read once, like the options below: what the host reads through the
+  // registry (the quick-check and connect timeouts of its update check) is
+  // the saved value, and a restart applies a changed one.
+  PublishSettings(settings.values);
   auto setting = [&](const char* key, std::string_view fallback = {}) {
     auto found = settings.values.find(key);
     return found == settings.values.end() ? std::string(fallback)

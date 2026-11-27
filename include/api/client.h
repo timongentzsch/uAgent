@@ -84,7 +84,7 @@ class Api : public ApiSettings {
                     std::chrono::steady_clock::time_point deadline =
                         std::chrono::steady_clock::time_point::max());
   JsonResponse Get(const std::string& path, bool abortable = false,
-                   int64_t timeout_s = 15);
+                   int64_t timeout_s = ProbeSeconds());
   // GET of an absolute public URL: no credentials, no environment proxy, and
   // every address resolved across redirects must be public. A redirect off
   // the first address's host ends the fetch with that address in

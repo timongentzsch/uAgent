@@ -1,3 +1,4 @@
+// @webkit
 // Every popup has the same chrome: its title and Close on one bar as high as
 // a bar is, Close's icon as far from the corner's two edges as the title is
 // from the other side, Close in the same place, a body inset alike on every

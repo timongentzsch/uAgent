@@ -1,3 +1,4 @@
+// @webkit
 // A column's conditional formatting is set by a person in a dialog: the
 // rules the file holds, in words, and what is set there written as the
 // agent writes it.

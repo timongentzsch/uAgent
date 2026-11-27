@@ -1,3 +1,4 @@
+// @webkit
 import { test, expect, online, selectProbeModel } from "./fixtures.js";
 import { roomy } from "./roomy.js";
 

@@ -1,3 +1,4 @@
+// @webkit
 // A sheet is edited in the pane as in a spreadsheet, and every change is
 // saved into its file: the tab's table, in the form the file keeps one.
 import { readFile } from "node:fs/promises";

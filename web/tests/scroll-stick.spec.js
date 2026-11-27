@@ -1,3 +1,4 @@
+// @webkit
 // Follow-tail under live streaming: while pinned the transcript stays at the
 // end, and a reader who scrolled up mid-stream is never pulled back down.
 import { test, expect, online, selectProbeModel } from "./fixtures.js";

@@ -1,3 +1,4 @@
+// @webkit
 // A formula being typed, in a cell or in the formula bar, is offered the
 // functions its letters name and told the arguments of the one it stands in.
 import { test, expect, openSheet, sheet } from "./fixtures.js";

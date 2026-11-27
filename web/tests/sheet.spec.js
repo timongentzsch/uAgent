@@ -1,3 +1,4 @@
+// @webkit
 // A sheet opens in the viewer as its own grid, calculated and drawn by the
 // page in its sandboxed frame; the pane adds its tabs, its cell and its errors.
 import {

@@ -1,3 +1,4 @@
+// @webkit
 import { connected, test, expect, saveHistory } from "./fixtures.js";
 
 // A long conversation open at a paragraph in the middle of one message.

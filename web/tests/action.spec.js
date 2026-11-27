@@ -1,3 +1,4 @@
+// @webkit
 import { devServerTest as test, expect, DEV_SERVER_URL } from "./fixtures.js";
 
 test.beforeEach(async ({ page }) => {

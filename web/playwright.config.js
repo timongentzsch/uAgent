@@ -4,6 +4,16 @@ import { defineConfig, devices } from "@playwright/test";
 delete process.env.NO_COLOR;
 process.env.FORCE_COLOR = "0";
 import { devServerUrl } from "./tests/dev-server.js";
+import { readdirSync, readFileSync } from "node:fs";
+
+// A spec whose file has the line "// @webkit" runs in WebKit as well. Each
+// file says it for itself, so specs added on parallel branches never meet.
+const tests = new URL("./tests/", import.meta.url);
+const inWebKit = readdirSync(tests).filter(
+  (name) =>
+    name.endsWith(".spec.js") &&
+    /^\/\/ @webkit$/m.test(readFileSync(new URL(name, tests), "utf8")),
+);
 export default defineConfig({
   testDir: "./tests",
   forbidOnly: !!process.env.CI,
@@ -34,8 +44,7 @@ export default defineConfig({
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     {
       name: "webkit",
-      testMatch:
-        "**/{start-attachments,popups,working-indicator,first-run,action,artifact-links,btw,side-chats,dead-runtime,context-parts,guidance-queue,keyboard-tap,phone-layout,phone-home,edge-swipe,reload,mobile-navigation,loading-surfaces,session-state,ui-quality,browser,model-picker,ask,menu,image-viewer,dismiss,history-anchor,load-at-end,scroll-restore,scroll-stick,search,screen-motion,canvas,sheet,sheet-edit,sheet-files,sheet-rules,sheet-suggest,management,selection,hosts,doc-edit,drag-release,answer-hold}.spec.js",
+      testMatch: inWebKit.map((name) => `**/${name}`),
       use: { ...devices["Desktop Safari"] },
     },
   ],

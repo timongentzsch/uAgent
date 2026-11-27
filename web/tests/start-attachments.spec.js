@@ -1,3 +1,4 @@
+// @webkit
 import { expect, test } from "./fixtures.js";
 
 // Files attached on the home screen go with the conversation's first message.

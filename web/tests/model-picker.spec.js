@@ -1,3 +1,4 @@
+// @webkit
 import { test, expect, withoutServiceWorker } from "./fixtures.js";
 
 for (const width of [390, 1280]) {

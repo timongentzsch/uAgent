@@ -1,3 +1,4 @@
+// @webkit
 import { test, expect, headerAction } from "./fixtures.js";
 
 const profiles = {

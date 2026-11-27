@@ -1,3 +1,4 @@
+// @webkit
 // A swipe from the left edge is the app's own back on a phone: it closes the
 // topmost layer, or opens the conversations drawer where none is open, and
 // the touch is cancelled so Safari's own back swipe never starts. Touches are

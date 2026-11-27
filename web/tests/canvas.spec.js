@@ -1,3 +1,4 @@
+// @webkit
 // A design's pages open as a canvas in the Files pane, a deck's slides and a
 // document's pages in a viewer with a legend, each page in a sandboxed frame.
 import { readFile, readdir, rename, writeFile } from "node:fs/promises";

@@ -1,3 +1,4 @@
+// @webkit
 import { test, expect, headerAction, savedConversation } from "./fixtures.js";
 
 test.describe("back closes what is open", () => {

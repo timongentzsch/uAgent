@@ -1,3 +1,4 @@
+// @webkit
 // A block's edit applied to a file's text, and the saver that writes it:
 // doc-edit.ts as the browser runs it, with no app and no host.
 import { devServerTest as test, expect, DEV_SERVER_URL } from "./fixtures.js";

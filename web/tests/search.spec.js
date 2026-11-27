@@ -1,3 +1,4 @@
+// @webkit
 // Search: words in any conversation from Mod+K, and a find bar that steps
 // through every occurrence in the open one.
 import { connected, test, expect, saveHistory } from "./fixtures.js";

@@ -135,6 +135,8 @@ test.describe("back closes what is open", () => {
     await page.goto(`/#session=${session.id}`);
     await headerAction(page, "Settings");
     await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+    // The address is written the frame after Settings draws.
+    await expect(page).toHaveURL(/&settings=/);
     await page.reload();
     await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
     await page.goBack();

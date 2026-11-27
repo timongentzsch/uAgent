@@ -80,7 +80,14 @@ Each step:
 2. `Agent::Chat` sends the request. A `kPause` stop with replay data is a
    provider continuation: pushed, and the step repeats (at most 8 a turn).
 3. No tool call: `FinishWithProse` takes mail once more; guidance or mail
-   reopens the turn, otherwise it is complete.
+   reopens the turn. While an agent this turn started owes a report
+   (working or about to; not one waiting on a person), `HoldAnswer` holds
+   the answer as a step of the work and waits under a `Waiting for` row as
+   the `agents` wait does (at most 300 s), with no model call; a host note
+   then asks for one complete answer. Three holds in a row without a report
+   let the answer stand, with an `Answered before` row; Escape or the
+   person's message ends a hold and the answer stands, its agents still
+   working. Otherwise the turn is complete.
 4. Tool calls: `RunCalls` validates and asks approval for every call in
    order, executes the approved ones (a run of adjacent `parallel_safe`
    calls concurrently), then appends results in call order, capped per call
@@ -135,7 +142,9 @@ reads the reports from the parent's mailbox itself and returns
 `[{id, state, answer}]` when all have reported or one needs a decision;
 `items` (≤ 24) start one agent each as slots free. Without `wait` the
 report is mail: a running parent applies it at its next step, an idle one
-starts a turn on it. `agent_send` mails the parent, an own agent or a
+starts a turn on it, which first waits up to 45 s (`kReportBundleS`) for the
+other reports owed so they share the turn. A note from an own agent starts
+no turn; the next turn reads it. `agent_send` mails the parent, an own agent or a
 sibling, labelled `[parent guidance]` or `[session <title> (<id>)]` for the
 model and carrying its sender as data (`agent`, outcome `note`, the title
 the sender's `name`, else its conversation's title); a note is not judged

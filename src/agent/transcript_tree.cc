@@ -444,9 +444,13 @@ void EntryNodes(const Conversation& conversation, uint64_t sequence,
     json thought;
     SetBody(thought, "text", EntryText(facts, sequence, message, true));
     if (thought.contains("body")) add(ThinkingNode(id, work, thought));
-    // A reply that made calls is a step of its work; the one after the
-    // last call is its turn's answer.
-    node = MakeNode(id, tool_calls && !tool_calls->empty() ? work : turn,
+    // A reply that made calls, or one held while agents worked, is a step
+    // of its work; the one after the last call is its turn's answer.
+    node = MakeNode(id,
+                    (tool_calls && !tool_calls->empty()) ||
+                            JsonValue(metadata, "held", false)
+                        ? work
+                        : turn,
                     "message", {{"role", "assistant"}});
     Keep(node, metadata,
          {"request_id", "route", "served_by", "duration_ms", "ttft_ms",

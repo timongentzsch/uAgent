@@ -49,6 +49,10 @@ int64_t AutoCompactTokens() {
 
 int64_t AgentDepth() { return EnvLong("UAGENT_INTERNAL_DEPTH", 0); }
 
+int64_t AgentsWaitSeconds() {
+  return EnvLong("UAGENT_INTERNAL_AGENTS_WAIT_S", kAgentsWaitSeconds);
+}
+
 bool CanDelegate() {
   return AgentDepth() < LongSetting(Cfg("UAGENT_AGENTS_DEPTH"));
 }

@@ -215,7 +215,13 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data,
     auto found = Find(nodes, id);
     if (found == nodes.end()) {
       nodes.push_back(
-          answer ? MakeNode(id, JsonValue(data, "turn_root", ""), "message",
+          answer ? MakeNode(id,
+                            JsonValue(data,
+                                      JsonValue(data, "step_reply", false)
+                                          ? "work"
+                                          : "turn_root",
+                                      ""),
+                            "message",
                             {{"role", "assistant"}, {"streaming", true}})
                  : ThinkingNode(response_id, JsonValue(data, "work", ""),
                                 {{"streaming", true}}));

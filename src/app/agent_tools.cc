@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "include/agent/conversation.h"
+#include "include/agent/node.h"
 #include "include/agent/session_links.h"
 #include "include/agent/session_role.h"
 #include "include/agent/session_search.h"
@@ -57,8 +58,6 @@ constexpr size_t kWaitChars = KiB(48);
 constexpr auto kTick = std::chrono::milliseconds(250);
 // How often a wait looks whether the agents it waits for still run.
 constexpr int kTicksPerLook = 20;
-// As long as the longest wait on a command.
-constexpr auto kAgentsWait = std::chrono::minutes(5);
 
 using ReportJudge =
     std::function<std::string(const std::string&, const std::string&, int64_t)>;
@@ -386,13 +385,12 @@ ToolResult StartAgents(const Api& api,
   ToolResult result;
   if (!wait) {
     if (batch.running == 0) return Unavailable(rows[0].answer);
-    // Said where it applies: waiting costs nothing, polling does.
+    // Said where it applies: an answer is held until the reports.
     json started = {
-        {"next", std::string(items ? "Each" : "It") +
-                     " reports when its turn ends. To have that in this "
-                     "turn, call agents with action wait once your own work "
-                     "is done; else end this turn with one line saying what "
-                     "you started, and the report starts your next."}};
+        {"next", std::string(items ? "Each reports" : "It reports") +
+                     " before this turn ends: work on meanwhile, and answer "
+                     "with " +
+                     (items ? "their reports." : "its report.")}};
     if (items) {
       started["agents"] = json::array();
       for (const Child& row : rows) {
@@ -595,13 +593,27 @@ std::string Row(const SessionInfo& info, const std::string& state) {
                                                         : "");
 }
 
-// Returns once an agent of `own` has mail for it, none works or the bound
-// passes. The mail stays for ordinary delivery after this call.
-ToolResult AwaitAgents(const std::string& own, const ToolContext& context) {
+// The agents `own` started, or only those its agent_start `calls` did.
+std::vector<SessionInfo> Started(const std::string& own,
+                                 const std::set<std::string>& calls) {
+  std::vector<SessionInfo> children = Children(own);
+  if (!calls.empty()) {
+    std::erase_if(children, [&](const SessionInfo& info) {
+      return !calls.contains(info.agent_call);
+    });
+  }
+  return children;
+}
+
+// Returns once an agent of `own` (of `calls`) has mail for it (with
+// `on_mail`), none works or the bound passes. The mail stays for ordinary
+// delivery after this call.
+ToolResult AwaitAgents(const std::string& own, const ToolContext& context,
+                       bool on_mail = true,
+                       const std::set<std::string>& calls = {}) {
   const std::string box = SessionIdFor(own);
-  const std::vector<SessionInfo> children = Children(own);
+  const std::vector<SessionInfo> children = Started(own, calls);
   const auto start = std::chrono::steady_clock::now();
-  const auto end = std::min(context.deadline, start + kAgentsWait);
   for (;;) {
     const std::vector<Mail> mail = PendingMail(box);
     std::map<std::string, std::string> names;  // by state
@@ -621,8 +633,8 @@ ToolResult AwaitAgents(const std::string& own, const ToolContext& context) {
       list += (list.empty() ? "" : ", ") + info.name;
     }
     const bool working = names.contains("working");
-    const bool bound = std::chrono::steady_clock::now() >= end;
-    if (sent || !working || bound || AbortRequested() ||
+    const bool bound = context.Expired();
+    if ((sent && on_mail) || !working || bound || AbortRequested() ||
         SteeringYieldRequested()) {
       std::string text;
       for (const auto& [state, list] : names) {
@@ -647,7 +659,9 @@ ToolResult AwaitAgents(const std::string& own, const ToolContext& context) {
 ToolResult Agents(const json& a, const ToolContext& context) {
   const std::string own = OwnSessionFile();
   const std::string action = JsonValue(a, "action", "");
-  if (action == "wait") return AwaitAgents(own, context);
+  if (action == "wait") {
+    return AwaitAgents(own, context.WithTimeout(AgentsWaitSeconds()));
+  }
   if (action == "list") {
     std::string list;
     const auto children = Children(own);
@@ -768,7 +782,7 @@ Tool AgentStartTool(const Api& api, std::function<std::string()> own_model,
       "be able to finish alone. edits: none reads only (the default), "
       "worktree edits a fresh git worktree, folder edits this folder. With "
       "wait (the default) its answer is this call's result; without, its "
-      "report starts your next turn. items starts one agent per item, the "
+      "report comes later in this turn. items starts one agent per item, the "
       "item appended to the brief; with wait, the result holds all their "
       "answers. One agent per "
       "independent part; keep dependent steps in one.",
@@ -818,9 +832,9 @@ Tool AgentStartTool(const Api& api, std::function<std::string()> own_model,
     const size_t count = items ? items->size() : 1;
     const std::string agents =
         count == 1 ? "agent" : Plural(count, "agent") + ":";
-    return Headline{
-        JsonValue(a, "wait", true) ? "Waiting for" : "Starting " + agents,
-        "Started " + agents, names};
+    return Headline{JsonValue(a, "wait", true) ? std::string(kWaitingFor)
+                                               : "Starting " + agents,
+                    "Started " + agents, names};
   };
   return tool;
 }
@@ -899,7 +913,7 @@ Tool AgentsTool() {
       for (const SessionInfo& info : Children(OwnSessionFile())) {
         if (Working(info)) names += (names.empty() ? "" : ", ") + info.name;
       }
-      return Headline{"Waiting for", "Waited for",
+      return Headline{std::string(kWaitingFor), std::string(kWaitedFor),
                       names.empty() ? "agents" : names};
     }
     const std::string part = JsonValue(a, "part", "");
@@ -972,6 +986,21 @@ void AddAgentTools(std::vector<Tool>& tools, const Api& api,
   tools.push_back(DecideTool());
 }
 
+std::vector<std::string> AgentsOwing(
+    const std::string& path, const std::set<std::string>& calls,
+    std::chrono::steady_clock::time_point until, bool on_mail) {
+  if (path.empty()) return {};
+  if (until > std::chrono::steady_clock::now()) {
+    AwaitAgents(path, ToolContext(until), on_mail, calls);
+  }
+  const std::string box = SessionIdFor(path);
+  std::vector<std::string> names;
+  for (const SessionInfo& info : Started(path, calls)) {
+    if (AgentState(info, box) == "working") names.push_back(info.name);
+  }
+  return names;
+}
+
 bool AgentsOwe(const std::string& path) {
   const std::vector<SessionInfo> children = Children(path);
   const std::string box = SessionIdFor(path);
@@ -980,10 +1009,13 @@ bool AgentsOwe(const std::string& path) {
     senders.insert(SessionIdFor(info.path));
     if (AgentState(info, box) == "working") return true;
   }
-  // Mail from anyone else may never be taken, and is not waited for.
-  return std::ranges::any_of(
-             PendingMail(box),
-             [&](const Mail& mail) { return senders.contains(mail.from); }) ||
+  // Only a report is owed: a note waits for the next turn. Mail from anyone
+  // else may never be taken, and is not waited for.
+  return std::ranges::any_of(PendingMail(box),
+                             [&](const Mail& mail) {
+                               return senders.contains(mail.from) &&
+                                      mail.body.contains("state");
+                             }) ||
          MailTaken(box);
 }
 

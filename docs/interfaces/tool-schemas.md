@@ -182,7 +182,7 @@ Read one http(s) URL as text when a specific page is the answer; do not crawl. P
 
 Offered: agent depth. Parallel: yes.
 
-Start an agent: a conversation of its own on brief, which it must be able to finish alone. edits: none reads only (the default), worktree edits a fresh git worktree, folder edits this folder. With wait (the default) its answer is this call's result; without, its report starts your next turn. items starts one agent per item, the item appended to the brief; with wait, the result holds all their answers. One agent per independent part; keep dependent steps in one.
+Start an agent: a conversation of its own on brief, which it must be able to finish alone. edits: none reads only (the default), worktree edits a fresh git worktree, folder edits this folder. With wait (the default) its answer is this call's result; without, its report comes later in this turn. items starts one agent per item, the item appended to the brief; with wait, the result holds all their answers. One agent per independent part; keep dependent steps in one.
 
 | Parameter | Type | Required | What |
 | --- | --- | --- | --- |

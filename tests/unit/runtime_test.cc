@@ -715,7 +715,8 @@ TEST_CASE(TestAWakeSurvivesARuntimeKilledBeforeItsTurn) {
   WriteSessionFile(
       agent, {{"cwd", folder}, {"agent", {{"parent", SessionIdFor(path)}}}});
   const Mail wake =
-      MailFrom(agent.string(), own, {{"text", "the agent finished\n"}});
+      MailFrom(agent.string(), own,
+               {{"state", "completed"}, {"text", "the agent finished\n"}});
   CHECK(wake.from == SessionIdFor(wake.sender_path));
   CHECK(SendMail(wake).empty());
 

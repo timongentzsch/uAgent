@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 
@@ -106,6 +107,8 @@ struct Agent::TurnExecution {
   int64_t model_calls_before = 0;
   // Stopped at a limit and answered all the same: not reported as a failure.
   bool answered_at_limit = false;
+  // Its agent_start calls: only their agents hold its answer.
+  std::set<std::string> agent_calls;
 };
 
 // A model's mistake never ends a turn outright: it is counted and advised,
@@ -258,6 +261,8 @@ struct Agent::StepState {
   int64_t provider_continuations = 0;
   bool context_overflow_recovery_attempted = false;
   bool midturn_compaction_enabled = true;
+  // Answers held in a row while agents owed reports and none came.
+  int64_t holds = 0;
   // Sent as the last message of the next request and erased once answered,
   // so a nudge never accumulates in history.
   std::string note;

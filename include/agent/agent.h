@@ -122,6 +122,14 @@ class Agent {
   using ReportJudge = std::function<std::string(
       const std::string& sender, const std::string& report, int64_t turn)>;
   void JudgeReports(ReportJudge judge) { judge_report_ = std::move(judge); }
+  // The names of the agents this conversation started (with `calls`, only
+  // those these agent_start calls did) that still owe a report: at once, or
+  // after waiting until `until` for mail from one (with `on_mail`) or for
+  // none to work, Escape or steering.
+  using AgentWait = std::function<std::vector<std::string>(
+      const std::set<std::string>& calls,
+      std::chrono::steady_clock::time_point until, bool on_mail)>;
+  void AwaitAgentsWith(AgentWait wait) { agent_wait_ = std::move(wait); }
   // An agent's role ({agent}), saved in the session header.
   void SetSessionRole(json role) { session_role_ = std::move(role); }
   void RetainExchanges(bool enabled) {
@@ -185,7 +193,8 @@ class Agent {
   bool FinishCommandRow(const EndedCommand& ended);
 
   // Takes the pending mail session_links.h allows; true when any was taken.
-  bool DeliverMail();
+  // Outside a turn a note from an agent of this one waits for the next.
+  bool DeliverMail(bool in_turn = false);
   // Starts a turn when idle; a working session reads it at its next step.
   void Arrive(const std::string& text, json origin);
   // Writes a message into the conversation without a turn.
@@ -319,6 +328,14 @@ class Agent {
   void PushAssistantMessage(ChatResult& response,
                             const std::vector<ToolCall>& calls);
   StepFlow FinishWithProse(TurnExecution& state, StepState& loop);
+  StepFlow HoldAnswer(TurnExecution& state, StepState& loop);
+  // Shows the last reply as a held step of the work, or as the answer again.
+  void HoldReply(bool held);
+  // Waits for the agents `owed` names under a row, with no model call; who
+  // still owes a report after.
+  std::vector<std::string> AwaitAgents(
+      const std::vector<std::string>& owed, const std::set<std::string>& calls,
+      std::chrono::steady_clock::time_point until, bool on_mail);
   StepFlow ExecuteToolCalls(const std::vector<ToolCall>& calls,
                             const std::string& served_by, TurnExecution& state,
                             StepState& loop);
@@ -414,7 +431,7 @@ class Agent {
   void PublishWork(const std::vector<CallTask>& tasks);
   // Ends the work replying to the latest message of yours as `outcome`.
   void CloseWork(const std::string& outcome);
-  void RecordWorkNotice(json notice);
+  json RecordWorkNotice(json notice);
   // True when the user interrupted the batch.
   bool RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                 StepState& loop, std::vector<ToolRejection>& rejections,
@@ -441,6 +458,10 @@ class Agent {
   Approver approve_;
   ToolRefresher refresh_tools_;
   ReportJudge judge_report_;
+  AgentWait agent_wait_;
+  // The reply being written streams as a step of the work: agents this turn
+  // started owe a report, so it would be held.
+  bool reply_as_step_ = false;
   ProjectInstructions project_instructions_;
   std::vector<Skill> skills_;
   // Read once: a later edit must not rewrite a running conversation's prefix.

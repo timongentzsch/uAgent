@@ -32,12 +32,16 @@ bool MailAllowed(const Mail& mail, const std::string& own_path,
 }
 }  // namespace
 
-bool Agent::DeliverMail() {
+bool Agent::DeliverMail(bool in_turn) {
   const std::string own_path = OwnSessionFile();
   const std::string own = SessionIdFor(own_path);
   if (own.empty()) return false;
+  // A note from an agent of this one does not start a turn: it is read with
+  // the next, as its report is.
   std::vector<Mail> taken = TakeMail(own, [&](const Mail& mail) {
-    return MailAllowed(mail, own_path, session_role_);
+    return MailAllowed(mail, own_path, session_role_) &&
+           (in_turn || mail.body.contains("state") ||
+            SessionParty(mail.sender_path).parent != own);
   });
   for (Mail& mail : taken) {
     const bool seen = std::find(delivered_mail_.begin(), delivered_mail_.end(),

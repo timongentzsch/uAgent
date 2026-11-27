@@ -3,27 +3,43 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "include/agent/agent.h"
+#include "include/agent/node.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_role.h"
+#include "include/agent/transcript.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/core/checked.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/time.h"
 #include "include/providers/providers.h"
 #include "src/agent/turn_internal.h"
 
 namespace uagent {
+namespace {
+std::string NameList(const std::vector<std::string>& names) {
+  std::string list;
+  for (const std::string& name : names) {
+    list += (list.empty() ? "" : ", ") + name;
+  }
+  return list;
+}
+}  // namespace
+
 void Agent::RecordModelResponse(
     ChatResult& response, TurnExecution& state,
     std::unordered_map<std::string, int64_t>& tool_counts) {
@@ -243,6 +259,8 @@ void Agent::PushAssistantMessage(ChatResult& response,
     facts["tokens_per_second"] = static_cast<double>(usage.GeneratedTokens()) *
                                  1000 / response.duration_ms;
   }
+  // Streamed as a step, it is published as one: never once as the answer.
+  if (reply_as_step_) facts["held"] = true;
   conversation_.RecordDisplay(conversation_.LastDisplayId(), std::move(facts));
   // Only the preview the view shows is kept; more would crowd out other facts.
   conversation_.RecordDisplay(
@@ -253,12 +271,99 @@ void Agent::PushAssistantMessage(ChatResult& response,
 
 // Plain prose and no call: the turn is done unless steering reopened it.
 Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
-  // Mail that arrived during the final model call reopens the turn too.
-  DeliverMail();
+  // Mail that arrived during the final model call reopens the turn too; a
+  // reply written as a step then stays one.
+  DeliverMail(true);
   if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
+  if (!SteeringState().Requested()) {
+    if (StepFlow held = HoldAnswer(state, loop); held != StepFlow::kProceed) {
+      return held;
+    }
+  }
+  // It stands as the answer.
+  if (reply_as_step_) HoldReply(false);
   if (SteeringState().Requested()) return InterruptTurn(state);
   state.stop.outcome = TurnOutcome::kComplete;
   return StepFlow::kEndTurn;
+}
+
+void Agent::HoldReply(bool held) {
+  conversation_.RecordDisplay(conversation_.LastDisplayId(), {{"held", held}});
+  for (json& node : LastNodes(conversation_)) {
+    Emit(Event{EventId::kMessageChanged, {{"node", std::move(node)}}});
+  }
+}
+
+std::vector<std::string> Agent::AwaitAgents(
+    const std::vector<std::string>& owed, const std::set<std::string>& calls,
+    std::chrono::steady_clock::time_point until, bool on_mail) {
+  const json row = RecordWorkNotice(
+      {{"view",
+        {{"verb", {kWaitingFor, kWaitedFor}}, {"target", NameList(owed)}}},
+       {"state", "running"}});
+  const std::string id = row["id"];
+  // The status line says who the turn waits for.
+  Emit(Event{
+      EventId::kMessageChanged,
+      {{"node", EntryNode(row)},
+       {"waiting_for", std::string(kWaitingFor) + " " + NameList(owed)}}});
+  std::vector<std::string> left = agent_wait_(calls, until, on_mail);
+  conversation_.RecordDisplay(
+      id, {{"state", AbortRequested() ? "cancelled" : "ok"}});
+  Emit(Event{EventId::kMessageChanged,
+             {{"node", EntryNode(JsonValue(conversation_.DisplayFacts(),
+                                           id.c_str(), json::object()))},
+              {"waiting_for", ""}}});
+  return left;
+}
+
+// An answer given while agents this turn started still owe a report is held
+// as a step of the work: the host waits for them, with no model call, and the
+// model writes one answer with what arrived. Agents of earlier turns never
+// hold it: their reports come with a turn of their own.
+Agent::StepFlow Agent::HoldAnswer(TurnExecution& state, StepState& loop) {
+  if (!agent_wait_ || state.agent_calls.empty()) return StepFlow::kProceed;
+  const std::vector<std::string> owed =
+      agent_wait_(state.agent_calls, {}, true);
+  if (owed.empty()) {
+    // One that ended since the mail was taken mailed its report first.
+    DeliverMail(true);
+    return ApplyQueuedSteering(loop) ? StepFlow::kNextStep : StepFlow::kProceed;
+  }
+  const std::string names = NameList(owed);
+  if (loop.holds >= kAnswerHolds) {
+    RecordWorkNotice({{"view",
+                       {{"verb", {kAnsweredBefore, kAnsweredBefore}},
+                        {"target", names + " reported"}}},
+                      {"state", "ok"}});
+    return StepFlow::kProceed;
+  }
+  ++loop.holds;
+  HoldReply(true);
+  const std::vector<std::string> left = AwaitAgents(
+      owed, state.agent_calls,
+      std::min(state.deadline, DeadlineAfter(AgentsWaitSeconds())), true);
+  // Escape or the person's message ends the hold: the answer stands.
+  if (AbortRequested() || SteeringState().Requested() ||
+      SteeringYieldRequested()) {
+    HoldReply(false);
+    if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
+    return InterruptTurn(state);
+  }
+  ++work_.notes;
+  if (left.size() < owed.size()) loop.holds = 0;
+  // Kept after the held answer, so the history reads in order.
+  conversation_.Push(
+      HarnessMessage("[Your answer was held" +
+                     (left.empty() ? " until " + names + " finished"
+                                   : ": " + NameList(left) + " still working") +
+                     ". Write one complete answer with what has arrived" +
+                     (loop.holds == kAnswerHolds && !left.empty()
+                          ? ", and say who has not reported."
+                          : ".") +
+                     "]"),
+      MessageKind::kInternal);
+  return StepFlow::kNextStep;
 }
 
 }  // namespace uagent

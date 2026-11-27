@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -20,6 +21,7 @@
 #include "include/agent/prompt.h"
 #include "include/agent/session_store.h"
 #include "include/api/client.h"
+#include "include/app/agent_tools.h"
 #include "include/app/asset_store.h"
 #include "include/app/commands.h"
 #include "include/app/execution.h"
@@ -463,6 +465,11 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       std::move(instructions), std::move(skills));
   context->agent->SetSessionRole(context->options.session);
   context->agent->JudgeReports(MakeReportJudge(app));
+  context->agent->AwaitAgentsWith(
+      [](const std::set<std::string>& calls,
+         std::chrono::steady_clock::time_point until, bool on_mail) {
+        return AgentsOwing(OwnSessionFile(), calls, until, on_mail);
+      });
   if (context->channel && !context->channel->SessionPath().empty()) {
     context->agent->OpenEditJournal(context->channel->SessionPath() +
                                     kSessionEditsSuffix);

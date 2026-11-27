@@ -57,8 +57,8 @@ export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
 
 // Reads like "Working · 4m 02s · 1 command · 1 side chat". It
-// never names a step, which its own row shows, and is absent while nothing
-// needs saying. Side chats stay listed while they exist, at work or not.
+// never names a step, which its own row shows, but says whom a turn waits
+// for in place of "Working", and is absent while nothing needs saying. Side chats stay listed while they exist, at work or not.
 function ActivityButtonView({
   items,
   sides,
@@ -67,6 +67,7 @@ function ActivityButtonView({
   online,
   connection,
   running,
+  waiting,
   started,
   pending,
   stopped,
@@ -81,6 +82,7 @@ function ActivityButtonView({
   online: boolean;
   connection?: ConnectionPhase;
   running: boolean;
+  waiting?: string;
   started?: number;
   pending: boolean;
   stopped?: string;
@@ -149,9 +151,8 @@ function ActivityButtonView({
       </>
     );
   const details = [waitingFor, elapsed, ...counts].filter(Boolean).join(" · ");
-  const summary = [running ? "Working" : "", details]
-    .filter(Boolean)
-    .join(" · ");
+  const doing = waiting || "Working";
+  const summary = [running ? doing : "", details].filter(Boolean).join(" · ");
   if (!summary) return announce;
   return (
     <>
@@ -166,7 +167,7 @@ function ActivityButtonView({
             {live && <WorkBand />}
             <span class="truncate">
               <DataText>
-                {running && "Working"}
+                {running && doing}
                 {running && details && " · "}
                 {details}
               </DataText>
@@ -191,7 +192,7 @@ function ActivityButtonView({
                   <span class="activity-text">
                     <strong>This turn</strong>
                     <small>
-                      {["Working", elapsed].filter(Boolean).join(" · ")}
+                      {[doing, elapsed].filter(Boolean).join(" · ")}
                     </small>
                   </span>
                 </Button>

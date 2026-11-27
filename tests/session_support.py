@@ -80,6 +80,18 @@ def close_sessions(home):
             pass
 
 
+# How long no runtime of a home may appear before its sessions count as
+# ended: a runtime that ends can start another (an agent's report wakes its
+# parent).
+SETTLE_SECONDS = 1
+
+
+def late_wakers(home):
+    """Whether a runtime of `home` can still start another once its sessions
+    are closed: only an agent, saved beside its parent, reports to one."""
+    return any((home / ".uagent" / "history").rglob("agent-*.json"))
+
+
 def stop_sessions(home, settle=0.0):
     """Close every runtime of `home`. With `settle`, also those a finishing
     session starts meanwhile, until none appears for that many seconds."""

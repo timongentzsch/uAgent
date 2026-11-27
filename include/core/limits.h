@@ -67,6 +67,13 @@ inline constexpr size_t kKqueueWatchTargets = 64;
 inline constexpr int64_t kModelRequestDeadlineReserveSeconds = 1;
 // What the answering round of a turn stopped at a limit may take.
 inline constexpr int64_t kLimitAnswerSeconds = 60;
+// How long a turn a report started waits for the other reports owed.
+inline constexpr int64_t kReportBundleS = 45;
+// One wait for agents, by the agents tool or a held answer, at most: as long
+// as the longest wait on a command.
+inline constexpr int64_t kAgentsWaitSeconds = 300;
+// Answers held in a row while agents owe reports and none arrives.
+inline constexpr int64_t kAnswerHolds = 3;
 
 // Shared by model callbacks and browser publication.
 inline constexpr int64_t kUsageProgressIntervalMs = 100;

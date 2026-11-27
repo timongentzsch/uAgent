@@ -169,6 +169,7 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   };
   task.args = json::parse(call.args, nullptr, false);
   task.tool = FindTool(tools_, call.name);
+  if (call.name == "agent_start") state.agent_calls.insert(call.id);
   const Tool* tool = task.tool;
   if (tool) CanonicalizeToolArguments(*tool, task.args, &task.clamped);
   const json& arguments = task.args;

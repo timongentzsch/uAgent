@@ -256,8 +256,10 @@ def test_a_command_leaves_running_agents_as_they_are(root, home, *, binary):
         return event({"content": "agent ok"})
 
     turns = {
-        # The agent's report names its brief, so it is looked for first.
+        # The agent's report and the note on the held answer name its brief,
+        # so they are looked for first.
         "finished (": [event({"content": "heard-ok"})],
+        "answer was held": [event({"content": "heard-ok"})],
         "BRIEF": [held, tries, reports],
         "delegate": [
             open_config_skill,
@@ -271,10 +273,10 @@ def test_a_command_leaves_running_agents_as_they_are(root, home, *, binary):
             client.command("submit", session, text="delegate")
             assert_true(holding.wait(budget(20)), "the agent never ran its brief")
             decide(client, session)
-            done = client.until(session, settled("delegated"))
-            assert_true(mode_of(done) == "yolo", done["state"]["permissions"])
+            # The answer waits for the agent's report; the command runs after.
             release.set()
-            client.until(session, settled("heard-ok"))
+            done = client.until(session, settled("heard-ok"))
+            assert_true(mode_of(done) == "yolo", done["state"]["permissions"])
         finally:
             release.set()
     assert_true(seen["actions"] == ["show", "set", "write"], seen)

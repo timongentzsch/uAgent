@@ -156,7 +156,9 @@
     --opacity-disabled: 0.45;
     --indent: var(--icon-l);
     /* Motion: the only durations and easings in the app. Reduced motion
-       zeroes the durations below, which turns every transition off. */
+       turns every transition off and sets this scale to 0, which script
+       multiplies each duration by. */
+    --motion-scale: 1;
     --motion-fast: 120ms;
     --motion-base: 200ms;
     --motion-slow: 280ms;

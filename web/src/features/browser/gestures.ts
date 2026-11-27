@@ -1,8 +1,8 @@
 import { longPressMs } from "../../shared/limits.ts";
-import type { Point } from "../../shared/zoom.ts";
+import { type Point, TAP_SLOP_PX } from "../../shared/zoom.ts";
 
 export const BROWSER_GESTURE = Object.freeze({
-  movementSlopPx: 8,
+  movementSlopPx: TAP_SLOP_PX,
   holdMs: longPressMs,
   tapMs: 300,
   // Finger travel per wheel notch; a notch scrolls Chrome about 100px.

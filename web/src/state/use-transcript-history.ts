@@ -33,6 +33,8 @@ const MOVE = 1;
 // WebKit cancels a wheel's scroll when scrollTop is written meanwhile, so
 // compensation waits for the wheel's first scroll and then for quiet, counted
 // in painted frames: a busy machine stretches the scroll and this wait alike.
+// The glide covers 1 − e^−3, all but 5%, of the way in --motion-glide.
+const GLIDE_SPANS = 3;
 const WHEEL_SETTLE_MS = 250;
 const WHEEL_SETTLE_FRAMES = 15;
 const WHEEL_QUIET_FRAMES = 5;
@@ -299,7 +301,7 @@ export function useTranscriptHistory(
   // about --motion-glide. It stops when following does.
   const glide = useCallback(() => {
     if (gliding.current) return;
-    const tau = motionMs("glide") / 3;
+    const tau = motionMs("glide") / GLIDE_SPANS;
     let last = performance.now();
     glideTop.current = scroller.current?.scrollTop ?? 0;
     const step = (now: number) => {

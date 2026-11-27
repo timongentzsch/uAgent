@@ -61,6 +61,7 @@ constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_TITLE_SECONDS", TitleTimeoutSeconds},
     {"UAGENT_MEMORY_SECONDS", MemoryTimeoutSeconds},
     {"UAGENT_PARENT_DECISION_SECONDS", ParentDecisionSeconds},
+    {"UAGENT_WEB_TERMINAL_SCROLLBACK_KB", TerminalScrollbackKb},
 };
 
 // A setting that replaced a named constant keeps it as its default, and is
@@ -76,6 +77,8 @@ constexpr ConstantDefault kConstantDefaults[] = {
     {"UAGENT_TITLE_SECONDS", kTitleTimeoutSeconds},
     {"UAGENT_MEMORY_SECONDS", kMemoryExtractSeconds},
     {"UAGENT_PARENT_DECISION_SECONDS", kParentDecisionSeconds},
+    {"UAGENT_WEB_TERMINAL_SCROLLBACK_KB",
+     static_cast<int64_t>(kWebTerminalScrollbackBytes / KiB(1))},
 };
 
 std::vector<std::string> DirectRuntimeSettingLookups(std::string_view source) {

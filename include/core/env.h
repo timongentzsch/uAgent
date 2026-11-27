@@ -49,6 +49,7 @@ std::string PlanFile();
 
 int64_t ReadFileLines();
 int64_t AttachmentLimitMb();
+int64_t TerminalScrollbackKb();
 int64_t HistoryDays();
 int64_t HistoryFiles();
 int64_t LogKeepDays();

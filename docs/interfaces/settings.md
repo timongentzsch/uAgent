@@ -187,6 +187,7 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 | `web.origin` (advanced) | `UAGENT_WEB_ORIGIN` | empty |  | user | restart | exact browser origin via an explicitly configured HTTPS or tailnet proxy |
 | `web.terminal` | `UAGENT_WEB_TERMINAL` | on |  | user | restart | a shell of yours, unsandboxed, for paired devices in the web interface |
 | `web.terminalIdleMinutes` (advanced) | `UAGENT_WEB_TERMINAL_IDLE_MINUTES` | `60` | 1–10080 | user | restart | minutes a terminal no device shows may stay silent before it ends |
+| `web.terminalScrollbackKb` (advanced) | `UAGENT_WEB_TERMINAL_SCROLLBACK_KB` | `256` | 64–16384 | user | restart | kibibytes of a web terminal's output kept for scrolling back and for a device that connects later |
 | `runtime.idleMinutes` (advanced) | `UAGENT_IDLE_MINUTES` | `15` | 1–1440 | user, project | next message | minutes with nothing to do before a conversation's runtime and Chrome stop; the next message starts them again |
 
 ### Notifications

@@ -71,8 +71,8 @@ struct TerminalShell {
   std::mutex input_mutex;
   std::mutex mutex;
   std::condition_variable changed;
-  // The newest output, at most kWebTerminalScrollbackBytes of it, and how
-  // much the shell printed in all.
+  // The newest output, at most web.terminalScrollbackKb of it, and how much
+  // the shell printed in all.
   std::string output UAGENT_GUARDED_BY(mutex);
   uint64_t produced UAGENT_GUARDED_BY(mutex) = 0;
   // The viewer that may type, 0 for none, and the last one given out.
@@ -90,7 +90,8 @@ namespace {
 // terminal hung up (every process holding it has gone).
 bool Drain(TerminalShell& shell) {
   std::array<char, kReadBytes> buffer;
-  for (size_t taken = 0; taken < kWebTerminalScrollbackBytes;) {
+  const size_t kept = KiB(static_cast<size_t>(TerminalScrollbackKb()));
+  for (size_t taken = 0; taken < kept;) {
     const ssize_t count =
         read(shell.controller.Get(), buffer.data(), buffer.size());
     if (count < 0 && errno == EINTR) continue;
@@ -101,8 +102,8 @@ bool Drain(TerminalShell& shell) {
     taken += bytes;
     std::lock_guard lock(shell.mutex);
     shell.output.append(buffer.data(), bytes);
-    if (shell.output.size() > kWebTerminalScrollbackBytes) {
-      shell.output.erase(0, shell.output.size() - kWebTerminalScrollbackBytes);
+    if (shell.output.size() > kept) {
+      shell.output.erase(0, shell.output.size() - kept);
     }
     shell.produced += bytes;
     shell.quiet_since = Clock::now();

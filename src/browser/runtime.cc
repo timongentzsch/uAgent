@@ -31,6 +31,11 @@
 
 namespace uagent::browser {
 namespace {
+// The programs the browser runs, each looked for on PATH before a start.
+constexpr char kChromeProgram[] = "google-chrome-stable";
+constexpr char kAuthProgram[] = "xauth";
+constexpr char kDisplayProgram[] = "Xtigervnc";
+constexpr char kCompositorProgram[] = "xcompmgr";
 constexpr size_t kProfilesBytes = KiB(64);
 pid_t Launch(const std::vector<std::string>& arguments,
              std::vector<SpawnFd> fds = {},
@@ -290,29 +295,9 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   }
   if (Alive(chrome_pid_) && Alive(vnc_pid_)) return true;
   Stop(true);
+  error = CannotStart();
+  if (!error.empty()) return false;
   std::string base = directory_;
-  // The container fetches Chrome onto the data volume once it has started.
-  if (!ExecutableOnPath("google-chrome-stable")) {
-    const std::string fetch =
-        Trim(ReadFile(base + "/chrome/status", 256).value_or(""));
-    constexpr std::string_view kDownloading = "downloading ";
-    constexpr std::string_view kFailed = "failed ";
-    error = fetch.starts_with(kDownloading)
-                ? "Chrome " + fetch.substr(kDownloading.size()) +
-                      " is still downloading; try again in a minute"
-            : fetch.starts_with(kFailed) ? "Chrome could not be downloaded: " +
-                                               fetch.substr(kFailed.size())
-                                         : "Google Chrome is not installed";
-    return false;
-  }
-  if (const size_t memory = MemoryLimitBytes();
-      memory && memory < kBrowserMemoryBytes) {
-    error = "The agent's browser needs about " +
-            std::to_string(kBrowserMemoryBytes / MiB(1)) +
-            " MB of memory; this machine allows " +
-            std::to_string(memory / MiB(1)) + " MB";
-    return false;
-  }
   std::string profile = ProfilePath();
   if (!EnsureDataDirectory(profile)) {
     error = "cannot create persistent Chrome profile";
@@ -340,7 +325,8 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   const std::string display = FreeDisplay();
   // Entries of displays that earlier runs used are of no use.
   unlink(authority.c_str());
-  pid_t xauth = Launch({"xauth", "-f", authority, "add", display, ".", cookie});
+  pid_t xauth =
+      Launch({kAuthProgram, "-f", authority, "add", display, ".", cookie});
   int xauth_status = 0;
   if (xauth < 0 || WaitPid(xauth, &xauth_status) < 0 ||
       !WIFEXITED(xauth_status) || WEXITSTATUS(xauth_status) != 0) {
@@ -353,7 +339,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   unlink(RfbSocket().c_str());
   const std::string screen =
       std::to_string(kScreenWidth) + "x" + std::to_string(kScreenHeight);
-  vnc_pid_ = Launch({"Xtigervnc",
+  vnc_pid_ = Launch({kDisplayProgram,
                      display,
                      "-geometry",
                      screen,
@@ -377,7 +363,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
                      "-nolisten",
                      "tcp"});
   if (vnc_pid_ < 0) {
-    error = "cannot launch Xtigervnc";
+    error = std::string("cannot launch ") + kDisplayProgram;
     return false;
   }
   for (int waited = 0;
@@ -386,14 +372,15 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     poll(nullptr, 0, kPollTickMs);
   }
   if (access(RfbSocket().c_str(), F_OK)) {
-    error = "Xtigervnc did not create its Unix display socket";
+    error = std::string(kDisplayProgram) +
+            " did not create its Unix display socket";
     Stop(true);
     return false;
   }
   // Chrome draws its popups' shadows on transparent windows; with no
   // compositing manager their margins show black.
-  if (ExecutableOnPath("xcompmgr")) {
-    compositor_pid_ = Launch({"xcompmgr"}, {}, environment);
+  if (ExecutableOnPath(kCompositorProgram)) {
+    compositor_pid_ = Launch({kCompositorProgram}, {}, environment);
   }
   // Off: pages kept alive for Back (a renderer each) and the search for
   // casting devices on the network.
@@ -401,7 +388,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
       "--disable-features=OptimizationGuideModelDownloading,"
       "OptimizationHintsFetching,BackForwardCache,MediaRouter";
   std::vector<std::string> chrome = {
-      "google-chrome-stable", "--user-data-dir=" + profile, "--no-first-run",
+      kChromeProgram, "--user-data-dir=" + profile, "--no-first-run",
       "--no-default-browser-check",
       // With no window manager Chrome restores its saved placement unless
       // pinned, and shrinks a window that exactly fills the screen by a pixel.
@@ -710,6 +697,39 @@ bool Runtime::AttachPage(std::string target, std::string& error) {
   return true;
 }
 
+// Why a start would fail before it launches anything, in words for the
+// person and the model alike; empty when nothing stands in its way.
+std::string Runtime::CannotStart() const {
+  // The container fetches Chrome onto the data volume once it has started.
+  if (!ExecutableOnPath(kChromeProgram)) {
+    const std::string fetch =
+        Trim(ReadFile(directory_ + "/chrome/status", 256).value_or(""));
+    constexpr std::string_view kDownloading = "downloading ";
+    constexpr std::string_view kFailed = "failed ";
+    return fetch.starts_with(kDownloading)
+               ? "Chrome " + fetch.substr(kDownloading.size()) +
+                     " is still downloading; try again in a minute"
+           : fetch.starts_with(kFailed) ? "Chrome could not be downloaded: " +
+                                              fetch.substr(kFailed.size())
+                                        : "Google Chrome is not installed";
+  }
+  for (const char* program : {kAuthProgram, kDisplayProgram}) {
+    if (!ExecutableOnPath(program)) {
+      return std::string("The agent's browser cannot start: ") + program +
+             " is not installed on this host (see \"The agent's browser "
+             "without Docker\" in docs/operations/container.md)";
+    }
+  }
+  if (const size_t memory = MemoryLimitBytes();
+      memory && memory < kBrowserMemoryBytes) {
+    return "The agent's browser needs about " +
+           std::to_string(kBrowserMemoryBytes / MiB(1)) +
+           " MB of memory; this machine allows " +
+           std::to_string(memory / MiB(1)) + " MB";
+  }
+  return "";
+}
+
 json Runtime::Status(bool include_page) {
   bool running = Alive(chrome_pid_) && Alive(vnc_pid_);
   json profiles = json::array();
@@ -730,6 +750,9 @@ json Runtime::Status(bool include_page) {
                  {"generation", generation_},
                  {"display", display_}};
   if (!profile_error_.empty()) result["error"] = profile_error_;
+  if (std::string blocked = running ? "" : CannotStart(); !blocked.empty()) {
+    result["unavailable"] = std::move(blocked);
+  }
   if (running && include_page && !profile_setup_) {
     for (const json& info : Targets()) {
       if (JsonValue(info, "targetId", "") == target_) {

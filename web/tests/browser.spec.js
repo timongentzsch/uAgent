@@ -69,6 +69,48 @@ test("browser panel fits the viewport on a desktop", async ({
   ).toBeLessThanOrEqual(1440);
 });
 
+test("a browser that cannot start says why, and Retry starts it again", async ({
+  page,
+  session,
+}) => {
+  const why =
+    "The agent's browser cannot start: Xtigervnc is not installed on this host";
+  const status = await browserStatus(page, {
+    mode: "idle",
+    running: false,
+    leased: false,
+    unavailable: why,
+  });
+  const actions = [];
+  await page.route("**/api/command", (route) => {
+    const command = route.request().postDataJSON();
+    if (command.kind !== "browser") return route.continue();
+    actions.push(command.action);
+    // Installed meanwhile: the start goes through.
+    delete status.unavailable;
+    return route.fulfill({
+      json: { accepted: true, pending: false, result: { ok: true } },
+    });
+  });
+  const dialog = await openBrowser(page, session);
+  const notice = dialog.locator(".notice[data-tone='error']");
+  await expect(notice).toContainText(why);
+  // The reason stands on the popup's own surface, not on an empty dark screen.
+  expect(
+    await dialog
+      .locator(".browser-screen")
+      .evaluate(
+        (node) =>
+          getComputedStyle(node).backgroundColor ===
+          getComputedStyle(node.closest("dialog")).backgroundColor,
+      ),
+  ).toBe(true);
+  await expect(dialog.getByText(/Chrome is stopped/)).toHaveCount(0);
+  await notice.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect.poll(() => actions).toEqual(["takeover"]);
+  await expect(notice).toHaveCount(0);
+});
+
 test("clipboard card keeps native editing shortcuts local", async ({
   page,
   session,

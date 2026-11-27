@@ -32,6 +32,7 @@ class Runtime {
 
  private:
   bool Start(std::string& error, bool profile_setup = false);
+  std::string CannotStart() const;
   void Stop(bool preserve_lease = false);
   json Call(const std::string& method, const json& parameters = json::object(),
             const std::string& session = {});

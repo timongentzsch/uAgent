@@ -1199,18 +1199,25 @@
     gap: var(--space-2);
     margin-left: auto;
   }
+  /* A link on the bar is a control: as high and as padded as a button. */
+  .dialog-header-actions > a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control);
+    padding: 0 var(--inset-x);
+  }
   dialog:focus,
   dialog > header > h2:focus {
     outline: none;
   }
-  /* A long path or name breaks; a dialog never scrolls sideways for text. */
+  /* Its content lines up with the title above it. A long path or name
+     breaks; a dialog never scrolls sideways for text. */
   .dialog-body {
-    padding: var(--inset-x);
+    padding: var(--bar-text);
     overflow: auto;
     overflow-wrap: anywhere;
     overscroll-behavior: contain;
     scroll-padding-block: var(--pad);
-    scrollbar-gutter: stable;
     min-height: 0;
   }
   /* Shared shells exist before their lazy feature CSS arrives. */
@@ -1309,7 +1316,8 @@
     margin: 0;
     height: calc(var(--content-height) + var(--safe-bottom));
     max-height: none;
-    padding-bottom: var(--safe-bottom);
+    /* Its header and body are a popup's: the list's own inset is not. */
+    padding: 0 0 var(--safe-bottom);
     border-width: 0 var(--line-width) 0 0;
     width: min(var(--popover), calc(var(--content-width) - 2 * var(--pad)));
     gap: 0;
@@ -1326,7 +1334,6 @@
     flex-direction: column;
     flex: 1;
     gap: var(--gap);
-    padding: var(--space-4);
   }
   /* The header carries --roomy for useRoomyColumn: --chat-min and two
      panes of --popover fit. */

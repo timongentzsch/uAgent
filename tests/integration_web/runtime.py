@@ -99,6 +99,48 @@ def test_a_conversation_uses_the_shared_browser(root, home, *, binary):
         assert_true(missing == 503 and "error" in answer, answer)
 
 
+def test_a_browser_that_cannot_start_says_which_program_is_missing(root, home, *, binary):
+    # The service looks for its programs on a fixed PATH: the data volume's
+    # chrome/bin, then the system's.
+    system = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    if shutil.which("Xtigervnc", path=system):
+        raise Skipped("TigerVNC is installed")
+    missing = "Xtigervnc is not installed on this host"
+    steps = [
+        tool_call("browser", {"action": "open", "url": "http://127.0.0.1:9/"}),
+        event({"content": "said"}),
+    ]
+    with tempfile.TemporaryDirectory(prefix="ua-b-", dir=os.path.realpath("/tmp")) as data:
+        # Chrome and xauth are there, as stubs; the display server is not.
+        programs = pathlib.Path(data) / "chrome/bin"
+        programs.mkdir(parents=True)
+        for name in ("google-chrome-stable", "xauth"):
+            (programs / name).write_text("#!/bin/sh\nexit 1\n")
+            (programs / name).chmod(0o755)
+        with (
+            Server(steps) as provider,
+            web_host(binary, root, home, provider.url, extra_env={"UAGENT_BROWSER_DATA": data}) as (
+                web,
+                code,
+                _,
+                _,
+            ),
+        ):
+            web.pair(code)
+            _, status, _ = web.json("/api/browser/status")
+            assert_true(missing in status.get("unavailable", ""), status)
+            project = root / "browsing"
+            project.mkdir()
+            session = web.command("create", cwd=str(project))["session"]
+            session = web.command("activate", session)["session"]
+            web.until(session, lambda value: value["metadata"]["status"] == "idle")
+            web.command("permissions", session, mode="yolo")
+            web.command("submit", session, text="Open a page")
+            web.until(session, lambda value: "said" in json.dumps(value))
+            results = tool_results(provider.requests[-1][1]["messages"])
+            assert_true(len(results) == 1 and results[0].count(missing) == 1, results)
+
+
 def test_a_crashed_tab_is_not_an_opened_page(root, home, *, binary):
     if not (shutil.which("google-chrome-stable") and shutil.which("Xtigervnc")):
         raise Skipped("needs Google Chrome and TigerVNC")

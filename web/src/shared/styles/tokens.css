@@ -79,6 +79,9 @@
        from the next control. */
     --bar-pad: var(--space-2);
     --bar-min: calc(var(--control) + 2 * var(--bar-pad));
+    /* Where a bar's title stands from its edge: where the icon of a control
+       at its other end stands, so both ends and its height match. */
+    --bar-text: calc(var(--bar-pad) + (var(--control) - var(--icon)) / 2);
     --line-width: 1px;
     --icon-l: calc(20rem / 14);
     --logo: calc(48rem / 14);

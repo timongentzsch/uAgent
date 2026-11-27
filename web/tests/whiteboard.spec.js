@@ -442,6 +442,8 @@ test("items picked with Shift or a frame move together, line up and spread out, 
     );
   await undo.click();
   await expect.poll(saved).toBe(BOARD);
+  // Redrawn once the write is answered, which lets go of the four picked.
+  await expect(picked).toHaveCount(0);
 
   // Three spread out across: the first and the last stay.
   await stage.locator("#ad").click();

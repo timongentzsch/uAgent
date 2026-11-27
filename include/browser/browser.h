@@ -33,6 +33,10 @@ inline constexpr int kCdpIoMs = 10000;
 inline constexpr int kServiceStartMs = 2000;
 inline constexpr int kPingMs = 100;
 inline constexpr int kRfbSocketWaitMs = 3000;
+// A cold start reads all of Chrome from disk before it answers; it may take
+// what an action's caller can spare after the service and Xvnc started.
+inline constexpr int kChromeStartMs =
+    kActionMs - kServiceStartMs - kRfbSocketWaitMs;
 // The display Chrome runs on.
 inline constexpr int kScreenWidth = 1280;
 inline constexpr int kScreenHeight = 800;

@@ -462,7 +462,13 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   }
   cdp_in_ = std::move(parent_write);
   cdp_out_ = std::move(parent_read);
-  if (!SelectPage(error)) {
+  const json first =
+      Call("Browser.getVersion", json::object(), {}, kChromeStartMs);
+  if (!JsonObject(first, "result")) {
+    error = "Chrome did not answer within " +
+            std::to_string(kChromeStartMs / 1000) + " s of starting";
+  }
+  if (!error.empty() || !SelectPage(error)) {
     if (!Alive(chrome_pid_)) {
       error =
           "Chrome exited during startup; check its sandbox and container logs";
@@ -485,7 +491,7 @@ int64_t Runtime::Send(const std::string& method, const json& parameters,
 }
 
 json Runtime::Call(const std::string& method, const json& parameters,
-                   const std::string& session) {
+                   const std::string& session, int wait_ms) {
   if (!cdp_in_ || !cdp_out_) return {{"error", "Chrome is stopped"}};
   // A page held by a dialog answers nothing but the dialog's own answer.
   const bool held = !session.empty() && session == page_session_ &&
@@ -596,7 +602,7 @@ json Runtime::Call(const std::string& method, const json& parameters,
       return {{"error", "Chrome response exceeded limit"}};
     }
     pollfd ready{cdp_out_.Get(), POLLIN, 0};
-    if (PollRetry(&ready, 1, kCdpIoMs) <= 0) {
+    if (PollRetry(&ready, 1, wait_ms) <= 0) {
       return {{"error", "Chrome read timed out"}};
     }
     char bytes[16384];

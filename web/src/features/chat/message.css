@@ -10,11 +10,12 @@
   padding: 0 var(--inset-x);
   margin: 0;
 }
-/* User bubbles inherit the opposite palette from styles/tokens.css. */
+/* User bubbles inherit the opposite palette from styles/tokens.css. Their
+   controls stand as far from the bubble's ends as from its sides. */
 .message.user {
   background: var(--bg);
   color: var(--text);
-  padding-block: var(--space-2);
+  padding-block: var(--inset-x);
 }
 .message.mail {
   color: var(--muted);

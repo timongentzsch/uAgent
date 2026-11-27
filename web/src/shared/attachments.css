@@ -61,6 +61,10 @@
   gap: var(--space-3);
   padding: var(--space-3) 0;
 }
+/* Last in its box, the box's own inset is the space under it. */
+.attachment-list:last-child {
+  padding-bottom: 0;
+}
 .attachment-tile {
   display: block;
   width: calc(var(--thumb) * 4 / 3);

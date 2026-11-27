@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/browser/browser.h"
 #include "include/core/fd.h"
 #include "include/core/json.h"
 
@@ -34,8 +35,9 @@ class Runtime {
   bool Start(std::string& error, bool profile_setup = false);
   std::string CannotStart() const;
   void Stop(bool preserve_lease = false);
+  // `wait_ms` bounds each read of the reply.
   json Call(const std::string& method, const json& parameters = json::object(),
-            const std::string& session = {});
+            const std::string& session = {}, int wait_ms = kCdpIoMs);
   // Runtime.evaluate on the attached page, in the isolated world kWorld.
   json Evaluate(json parameters);
   // Writes a command without waiting for its reply; its id, or -1.

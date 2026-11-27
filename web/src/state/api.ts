@@ -137,6 +137,7 @@ function createApi(host = "") {
         new Error(data?.error || `HTTP ${response.status}`),
       );
       error.status = response.status;
+      error.code = data?.code;
       if (response.status === 409 && Array.isArray(data?.choices))
         error.choices = data.choices;
       error.rejected = data?.accepted === false;

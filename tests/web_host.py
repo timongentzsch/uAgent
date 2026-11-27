@@ -28,6 +28,8 @@ parser.add_argument("--binary", type=pathlib.Path, required=True)
 parser.add_argument("--port", type=int, default=8765)
 parser.add_argument("--fixture", type=pathlib.Path, required=True)
 parser.add_argument("--no-model", action="store_true")
+# No provider saved: a conversation the host is asked to run is refused.
+parser.add_argument("--no-provider", action="store_true")
 # Approval is Auto and a decision model on the mock provider is sure but
 # worried about where the data goes.
 parser.add_argument("--auto-review", action="store_true")
@@ -469,7 +471,11 @@ with (
         }
     # Saved, not exported: what the environment sets cannot be edited in
     # Settings, and the providers are edited there.
-    save_settings(home, binary=args.binary, UAGENT_PROVIDERS=json.dumps(providers))
+    save_settings(
+        home,
+        binary=args.binary,
+        UAGENT_PROVIDERS=None if args.no_provider else json.dumps(providers),
+    )
     # GitHub's newest release, as the About page reads it.
     (root / "releases").mkdir()
     (root / "releases/latest.json").write_text(
@@ -490,7 +496,7 @@ with (
         extra_env={
             # The saved providers apply, not the test environment's.
             "UAGENT_PROVIDERS": None,
-            "UAGENT_MODEL": None if args.no_model else "mock/main:high",
+            "UAGENT_MODEL": None if args.no_model or args.no_provider else "mock/main:high",
             # The terminal's shell, the same on every machine.
             "SHELL": "/bin/sh",
             "PATH": f"{fake_bin}:{os.environ['PATH']}",

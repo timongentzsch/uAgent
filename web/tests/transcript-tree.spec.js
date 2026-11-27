@@ -581,8 +581,6 @@ test("the stack and the panel pass the inset and press probes", async ({
     agentOf(i, { agent_name: "Agent " + i, turn_active: i === 1 }),
   );
   await open(page, "default", agents, children);
-  // This mock host lacks routes the page asks for, and says so in a banner.
-  await page.getByRole("button", { name: "Dismiss" }).click();
   expect(await uneven(page)).toEqual([]);
   expect(await unanswered(page)).toEqual([]);
   await page.getByRole("button", { name: "Agents 2" }).click();
@@ -849,10 +847,6 @@ test("a merged side chat stays inline and opens its side conversation", async ({
   });
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(message).toContainText("Include the cheaper flight.");
-  // The fixture has no service worker. Its dismissible toast can cover the
-  // first row on a short desktop viewport.
-  const dismiss = page.getByRole("button", { name: "Dismiss", exact: true });
-  if (await dismiss.isVisible()) await dismiss.click();
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(message).not.toContainText("Include the cheaper flight.");

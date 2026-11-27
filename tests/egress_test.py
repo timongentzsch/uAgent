@@ -29,6 +29,7 @@ MENTIONED = {
     "example.com": "what deploy/check-network.sh proves unreachable",
     "passwords.google.com": "blocked in Chrome's policy",
     "docs.docker.com": "the installer's link to Docker's install guide",
+    "host.docker.internal": "the local server preset's address inside the container: this machine",
 }
 
 

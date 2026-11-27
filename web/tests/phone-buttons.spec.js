@@ -338,6 +338,13 @@ test.describe("a conversation", () => {
   });
 
   test("a sent picture and file", async ({ page, session }) => {
+    // The uploads wait until the chips have been measured as they upload.
+    let release;
+    const uploaded = new Promise((resolve) => (release = resolve));
+    await page.route("**/attachments?*", async (route) => {
+      await uploaded;
+      await route.continue();
+    });
     await page.goto(`/#session=${session.id}`);
     await online(page);
     await page.locator('.composer input[type="file"]').setInputFiles([
@@ -351,6 +358,12 @@ test.describe("a conversation", () => {
       { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hi") },
     ]);
     await expect(page.locator(".composer .file-chip")).toHaveCount(2);
+    await expect(page.locator(".composer .file-chip[aria-busy]")).toHaveCount(
+      2,
+    );
+    await roomy(page);
+    release();
+    await expect(page.locator(".composer [aria-busy]")).toHaveCount(0);
     await roomy(page);
     await page.getByLabel("Message or guidance").fill("with files");
     await page.getByRole("button", { name: "Send", exact: true }).click();

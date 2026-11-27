@@ -7,12 +7,25 @@ import { useApi } from "../state/api.ts";
 import { useHostContext } from "../state/host-context.ts";
 import "./free-start.css";
 
+export const freeStartId = "free-start";
+
+// Whether the host has a provider to start a conversation with; asked only
+// while `asked`.
+export function useProvider(asked: boolean) {
+  const { manage } = useApi();
+  return useResource(() => (asked ? manage("provider") : undefined), [asked]);
+}
+
 // Shown while no provider is set up, and when a sign-in started anywhere
 // comes back from OpenRouter.
-export function FreeStart({ online }: { online: boolean }) {
-  const { manage } = useApi();
+export function FreeStart({
+  online,
+  provider,
+}: {
+  online: boolean;
+  provider: ReturnType<typeof useProvider>;
+}) {
   const { setModal } = useHostContext();
-  const { value: provider } = useResource(() => manage("provider"), []);
   // A sign-in that comes back from OpenRouter, or was just finished here,
   // shows its outcome whether or not the host had a provider.
   const [arriving] = useState(() =>
@@ -20,9 +33,10 @@ export function FreeStart({ online }: { online: boolean }) {
   );
   const [signed, setSigned] = useState(false);
   const bare = arriving || signed;
-  if (!bare && provider?.configured !== false) return null;
+  if (!bare && provider.value?.configured !== false) return null;
   return (
     <section
+      id={freeStartId}
       class={bare ? undefined : "free-start"}
       aria-label={bare ? "OpenRouter sign-in" : "Start with a free model"}
     >
@@ -37,7 +51,10 @@ export function FreeStart({ online }: { online: boolean }) {
         key="sign-in"
         online={online}
         arrival
-        done={() => setSigned(true)}
+        done={() => {
+          setSigned(true);
+          provider.retry();
+        }}
       >
         <Button
           onClick={() =>

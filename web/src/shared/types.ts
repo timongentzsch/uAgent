@@ -12,6 +12,8 @@ export type JSONValue =
 // "inline": the surface that failed shows it; the banner stays clear.
 export type Report = (error: unknown, scope?: "inline") => void;
 interface Failure extends Error {
+  // The host's name for a refusal a client acts on (docs/interfaces/http-api.md).
+  code?: string;
   network?: boolean;
   status?: number;
   rejected?: boolean;
@@ -20,6 +22,9 @@ interface Failure extends Error {
 export function failure(error: unknown): Failure {
   return error instanceof Error ? error : new Error(String(error));
 }
+// A refusal the host sent, with its code when it names one.
+export const refusal = (message = "", code?: string): Failure =>
+  Object.assign(new Error(message), { code });
 export interface Asset {
   id: string;
   name: string;
@@ -656,6 +661,7 @@ export interface Outcome {
   pending?: boolean;
   unknown?: boolean;
   error?: string;
+  code?: string;
 }
 interface EventData extends Omit<Partial<Exchange>, "status"> {
   request_id?: string;

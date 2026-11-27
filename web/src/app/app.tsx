@@ -1,3 +1,4 @@
+import { SETTINGS_AT } from "../shared/settings-topics.ts";
 import { failure } from "../shared/types.ts";
 import type { FileTarget } from "../shared/file-types.ts";
 import type {
@@ -201,6 +202,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
     setSelected,
     drafts,
     error,
+    errorCode,
     setError,
     unread,
     outgoing,
@@ -853,6 +855,11 @@ function App({ host, bindResult, reading }: HostAppProps) {
     [open, closeTerminal],
   );
   const settings = useCallback(() => open({ type: "settings" }), [open]);
+  // Where providers are set up.
+  const providers = useCallback(
+    () => open({ type: "settings", address: SETTINGS_AT.providers }),
+    [open],
+  );
   const pins = useMemo(
     () =>
       livePins(
@@ -931,11 +938,13 @@ function App({ host, bindResult, reading }: HostAppProps) {
           <ImageViewer.Provider value={setViewed}>
             <Toasts
               error={error}
+              code={errorCode}
               notice={notice}
               dismiss={() => {
                 setError("");
                 setNotice("");
               }}
+              providers={providers}
               update={update}
               updateBlocked={updateBlocked}
             />

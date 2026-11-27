@@ -1,7 +1,7 @@
 // Providers are a list, each edited in a sheet. A key is never shown, and
 // one that is not retyped is kept, under a new name too.
 import { test, expect } from "./fixtures.js";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 test("a provider is added, edited, renamed and removed in its sheet", async ({
   page,
@@ -95,4 +95,84 @@ test("a provider is added, edited, renamed and removed in its sheet", async ({
   await expect(sheet).toHaveCount(0);
   await expect(row).toHaveCount(0);
   await expect.poll(async () => (await providers())?.lab2).toBeUndefined();
+});
+
+// Opens a new provider's sheet from Settings.
+async function addProvider(page, session) {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#session=${session.id}`);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .locator(".settings-nav")
+    .getByRole("button", { name: "Models and providers", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Add a provider" }).first().click();
+  return page.getByRole("dialog", { name: "Add a provider" });
+}
+
+test("in the container, the local server preset reaches this machine", async ({
+  page,
+  session,
+}) => {
+  await page.route("**/api/command", (route) => {
+    const body = route.request().postDataJSON();
+    if (body?.kind !== "update") return route.continue();
+    return route.fulfill({
+      json: {
+        request_id: body.request_id,
+        accepted: true,
+        result: { version: "1", install: "container", available: false },
+      },
+    });
+  });
+  const adding = await addProvider(page, session);
+  await adding
+    .getByRole("button", { name: "Local server", exact: true })
+    .click();
+  await expect(adding.getByLabel(/^Name/)).toHaveValue("local");
+  await expect(adding.getByLabel(/^Address/)).toHaveValue(
+    "http://host.docker.internal:11434/v1",
+  );
+});
+
+test("a preset whose name is taken never writes over that provider", async ({
+  page,
+  session,
+  host,
+}) => {
+  const settings = `${host.home}/.uagent/config/settings.json`;
+  const mine = { base_url: "http://10.0.0.5:8080/v1", wire_api: "responses" };
+  const current = JSON.parse(
+    await readFile(settings, "utf8").catch(() => "{}"),
+  );
+  await writeFile(
+    settings,
+    JSON.stringify({
+      ...current,
+      all: { ...current.all, providers: { local: mine } },
+    }),
+  );
+  const adding = await addProvider(page, session);
+  await adding
+    .getByRole("button", { name: "Local server", exact: true })
+    .click();
+  await expect(adding.getByLabel(/^Address/)).toHaveValue(
+    "http://localhost:11434/v1",
+  );
+  await expect(adding).toContainText("A provider named local exists");
+  await expect(adding.getByRole("button", { name: "Save" })).toBeDisabled();
+  await adding.getByLabel(/^Name/).fill("local-2");
+  await adding.getByRole("button", { name: "Save" }).click();
+  await expect(adding).toHaveCount(0);
+  await expect
+    .poll(
+      async () => JSON.parse(await readFile(settings, "utf8")).all.providers,
+    )
+    .toEqual({
+      local: mine,
+      "local-2": {
+        base_url: "http://localhost:11434/v1",
+        wire_api: "chat_completions",
+      },
+    });
 });

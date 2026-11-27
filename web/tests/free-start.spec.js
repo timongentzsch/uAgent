@@ -49,6 +49,28 @@ test("without a provider, home signs in to OpenRouter with a pasted code", async
   await expect(card).toHaveCount(0);
 });
 
+test("without a provider, Start keeps the text and offers a provider instead of starting", async ({
+  page,
+  host,
+}) => {
+  await withoutProvider(page);
+  const kinds = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/command"))
+      kinds.push(request.postDataJSON()?.kind);
+  });
+  await page.goto("/");
+  const field = page.getByLabel("Start a conversation");
+  await field.fill("hello");
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  const card = page.getByRole("region", { name: "Start with a free model" });
+  await expect(
+    card.getByRole("button", { name: "Sign in with OpenRouter" }),
+  ).toBeFocused();
+  await expect(field).toHaveValue("hello");
+  expect(kinds).not.toContain("create");
+});
+
 test("a return from OpenRouter redeems the code and leaves the address clean", async ({
   page,
   host,

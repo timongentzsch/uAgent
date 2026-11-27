@@ -504,6 +504,8 @@ export const test = base.extend({
   paired: [true, { option: true }],
   // A host whose conversations start with no model chosen.
   noModel: [false, { option: true }],
+  // A host with no provider: it refuses to run a conversation.
+  noProvider: [false, { option: true }],
   // A host in Auto approval whose decision model is wary of sending data.
   autoReview: [false, { option: true }],
   // A host whose model titles conversations and places unfiled ones.
@@ -511,7 +513,7 @@ export const test = base.extend({
   // A device that chose Places for the list, for tests about places.
   places: [false, { option: true }],
   page: failOnPageErrors,
-  host: async ({ noModel, autoReview, titles }, use, testInfo) => {
+  host: async ({ noModel, noProvider, autoReview, titles }, use, testInfo) => {
     const path = testInfo.outputPath("host.json");
     const child = spawn("python3", [
       "../tests/web_host.py",
@@ -524,6 +526,7 @@ export const test = base.extend({
       "--fixture",
       path,
       ...(noModel ? ["--no-model"] : []),
+      ...(noProvider ? ["--no-provider"] : []),
       ...(autoReview ? ["--auto-review"] : []),
       ...(titles ? ["--titles"] : []),
     ]);

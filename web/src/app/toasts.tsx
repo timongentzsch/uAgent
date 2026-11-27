@@ -2,16 +2,25 @@ import { useExit } from "../shared/motion.ts";
 import { focusComposer } from "../shared/navigation.ts";
 import { Button, Notice } from "../shared/ui.tsx";
 
+// The host's code for a conversation it cannot run with no provider set up.
+const NO_PROVIDER = "no_provider";
+
 export default function Toasts({
   error,
+  code,
   notice,
   dismiss,
+  providers,
   update,
   updateBlocked,
 }: {
   error: string;
+  // The refusal's code, when the host sent one.
+  code: string;
   notice: string;
   dismiss: () => void;
+  // Opens Settings where providers are set up.
+  providers: () => void;
   update: ServiceWorker | null;
   updateBlocked: string;
 }) {
@@ -28,14 +37,27 @@ export default function Toasts({
           <Notice
             tone={error ? "error" : "info"}
             action={
-              <Button
-                onClick={() => {
-                  dismiss();
-                  focusComposer();
-                }}
-              >
-                Dismiss
-              </Button>
+              <>
+                {error && code === NO_PROVIDER && (
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      dismiss();
+                      providers();
+                    }}
+                  >
+                    Providers
+                  </Button>
+                )}
+                <Button
+                  onClick={() => {
+                    dismiss();
+                    focusComposer();
+                  }}
+                >
+                  Dismiss
+                </Button>
+              </>
             }
           >
             {message}

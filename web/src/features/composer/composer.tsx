@@ -393,16 +393,11 @@ function Composer({
                     />
                   )
                 }
-                remove={
-                  asset.pending
-                    ? undefined
-                    : () =>
-                        setDraft({
-                          ...draft,
-                          files: draft.files.filter(
-                            (item) => item.id !== asset.id,
-                          ),
-                        })
+                remove={() =>
+                  setDraft({
+                    ...draft,
+                    files: draft.files.filter((item) => item.id !== asset.id),
+                  })
                 }
               >
                 {renaming === asset.id && !asset.pending ? (

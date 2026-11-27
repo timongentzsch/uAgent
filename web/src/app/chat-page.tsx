@@ -26,7 +26,7 @@ import "../shared/model-control.css";
 import { StartField } from "../shared/start-field.tsx";
 import { SheetButton } from "../shared/sheet.tsx";
 import ModelPicker from "../shared/model-picker.tsx";
-import { FreeStart } from "./free-start.tsx";
+import { FreeStart, freeStartId, useProvider } from "./free-start.tsx";
 import type { ModelChoice } from "./use-places.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
@@ -340,6 +340,7 @@ export default function ChatPage({
     [selecting, sideAsked, latest],
   );
   const open = useCallback((id: string) => void choose(id), [choose]);
+  const provider = useProvider(active && !session && !opening);
   if (!active) return null;
 
   const stop = snapshot?.state?.stop;
@@ -489,7 +490,7 @@ export default function ChatPage({
         <Mark className="cursor-mark" />
         <h1>What are we working on?</h1>
       </header>
-      <FreeStart online={online} />
+      <FreeStart online={online} provider={provider} />
       <div class="home-start">
         <StartField
           id={startFieldId}
@@ -499,7 +500,16 @@ export default function ChatPage({
           // A phone would open its keyboard over the lists.
           autoFocus={!openList}
           attach
-          start={(text, files) => start(text, model, files)}
+          // With no provider nothing could answer: the text stays here and
+          // the way to one is offered instead.
+          start={(text, files) => {
+            if (provider.value?.configured !== false)
+              return start(text, model, files);
+            document
+              .querySelector<HTMLElement>(`#${freeStartId} button`)
+              ?.focus();
+            return false;
+          }}
         >
           {(text) => (
             <>

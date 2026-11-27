@@ -31,7 +31,7 @@ jobs:
       - name: Build fuzzer
         run: >-
           cmake --build --preset fuzz
-          --target uagent_fuzz_${{ matrix.fuzzer }} --parallel 4
+          --target uagent_fuzz_${{ matrix.fuzzer }} --parallel "$BUILD_JOBS"
       - name: Fuzz
         run: |
           cp -r tests/fuzz/corpus/${{ matrix.fuzzer }} /tmp/corpus

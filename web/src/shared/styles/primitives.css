@@ -494,6 +494,51 @@
     background: var(--raised);
     box-shadow: inset var(--stripe) 0 var(--accent);
   }
+  /* A row's left edge as its state: solid for one that waits on someone,
+     red when it failed, and while at work a dotted track with a run of its
+     cells that steps along it and back (data-moving) or stands still. Only
+     transform changes, in steps. */
+  [data-line] {
+    position: relative;
+  }
+  [data-line]::before,
+  [data-line="work"]::after {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--stripe);
+    pointer-events: none;
+  }
+  [data-line="needs"]::before {
+    background: var(--accent);
+  }
+  [data-line="failed"]::before {
+    background: var(--removed);
+  }
+  [data-line="work"]::before {
+    background: repeating-linear-gradient(
+      to bottom,
+      var(--line-track) 0 var(--line-dot),
+      transparent var(--line-dot) calc(2 * var(--line-dot))
+    );
+  }
+  [data-line="work"]::after {
+    bottom: auto;
+    height: var(--line-run);
+    background: var(--accent);
+    translate: 0 calc(var(--line-steps) * var(--line-dot) / 2);
+  }
+  [data-line="work"][data-moving]::after {
+    animation: line-run var(--motion-work) var(--ease-line) infinite alternate;
+  }
+  @keyframes line-run {
+    from {
+      translate: 0 0;
+    }
+    to {
+      translate: 0 calc(var(--line-steps) * var(--line-dot));
+    }
+  }
   .plain {
     white-space: pre-wrap;
     overflow-wrap: anywhere;

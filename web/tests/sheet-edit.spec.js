@@ -1938,11 +1938,21 @@ test("a row's number and a column's letter open what can be done to them: move, 
   await cell("Tasks", "D4").click({ button: "right" });
   await expect(stage.locator(".sheet-menu")).toHaveCount(1);
   // The menu is left when the app is used elsewhere, and the focus stays
-  // with what was pressed, not taken by the sheet's field on the way.
+  // on the app's side, not taken by the sheet's field on the way: on the
+  // pressed button, or, in Safari, which focuses no button on a click, on
+  // the pane that holds it.
   const bold = looks.getByRole("button", { name: "Bold", exact: true });
   await bold.click();
   await expect(stage.locator(".sheet-menu")).toHaveCount(0);
-  await expect(bold).toBeFocused();
+  await expect
+    .poll(() =>
+      files.evaluate(
+        (pane) =>
+          pane.contains(document.activeElement) &&
+          !document.activeElement.matches("iframe"),
+      ),
+    )
+    .toBe(true);
   expect(
     await stage
       .locator("html")

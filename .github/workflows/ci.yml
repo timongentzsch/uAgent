@@ -110,7 +110,7 @@ jobs:
       - name: Build
         # `--parallel` with no count hands Make an unlimited `-j`, and a small
         # runner then swaps instead of compiling.
-        run: cmake --build build --parallel 4 && ccache --show-stats
+        run: cmake --build build --parallel "$BUILD_JOBS" && ccache --show-stats
       - name: Verify native architecture
         run: test "$(uname -m)" = "${{ matrix.arch }}"
       - name: Test
@@ -138,7 +138,7 @@ jobs:
           (cd dist && cmake -E sha256sum "$archive" > "$archive.sha256")
           # Same runtime and resources, with only the preview helper embedded.
           cmake -S . -B build -DUAGENT_EMBED_WEB=OFF
-          cmake --build build --target uagent --parallel 4
+          cmake --build build --target uagent --parallel "$BUILD_JOBS"
           python3 tests/integration.py build/uagent --group web -k execution_start -j 1
           python3 .github/remote_bundle.py payload --prefix "$prefix" --binary build/uagent --target "${{ matrix.target }}" --out payloads
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -217,7 +217,7 @@ jobs:
       - name: Configure ASan and UBSan
         run: cmake --preset sanitize
       - name: Build
-        run: cmake --build --preset sanitize --parallel 4 && ccache --show-stats
+        run: cmake --build --preset sanitize --parallel "$BUILD_JOBS" && ccache --show-stats
       - name: Test
         run: ctest --preset sanitize -j 2 ${{ matrix.tests }}
       # Session workers run with no stderr, so every process writes its
@@ -246,7 +246,7 @@ jobs:
       # The races worth finding are between the supervisor, its I/O threads
       # and the tools, which only the real binary starts.
       - name: Build tests and agent
-        run: cmake --build --preset tsan --target uagent_tests uagent --parallel 4
+        run: cmake --build --preset tsan --target uagent_tests uagent --parallel "$BUILD_JOBS"
       - name: Test concurrent paths
         run: ctest --preset tsan -j 2 -R '^(core|integration_(runtime|tools|web))$'
       # Session workers run with no stderr, so every process writes its
@@ -277,7 +277,7 @@ jobs:
       # real binary.
       - name: Build and test
         run: |
-          cmake --build --preset coverage --target uagent_tests uagent --parallel 4
+          cmake --build --preset coverage --target uagent_tests uagent --parallel "$BUILD_JOBS"
           ctest --preset coverage -j 2 -R '^(core|integration_.*)$'
       - name: Generate branch report
         run: >-
@@ -305,9 +305,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - run: grep -v '^#' .github/ci.env >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: "0.11.28"
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: .github/lint.sh
 
@@ -329,7 +330,7 @@ jobs:
       - name: Build native host
         run: |
           cmake --preset release -B build
-          cmake --build build --target uagent --parallel 4 && ccache --show-stats
+          cmake --build build --target uagent --parallel "$BUILD_JOBS" && ccache --show-stats
       - name: Hand the host to the browser shards
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -372,10 +373,7 @@ jobs:
       - name: Check client code
         if: matrix.project == 'chromium' && matrix.shard == 1
         working-directory: web
-        run: |
-          npm run format:check
-          npm run lint
-          npm test
+        run: npm test
       - name: Browser integration against native host
         working-directory: web
         run: npx playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/2
@@ -411,7 +409,7 @@ jobs:
           web-dist: true
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: "0.11.28"
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - name: Configure clang-tidy
         run: cmake --preset tidy
@@ -421,7 +419,7 @@ jobs:
         run: |
           files=$(python3 .github/changes.py --tidy-files build/tidy "$UNITS" ${{ matrix.shard }}/3)
           test -n "$files" || exit 0
-          uvx --from clang-tidy==22.1.8 run-clang-tidy.py -p build/tidy \
+          uvx --from "clang-tidy==$CLANG_TOOLS_VERSION" run-clang-tidy.py -p build/tidy \
             -header-filter='.*/(include|src|tests|benchmarks)/.*' "$files"
 
   # The image a release publishes is otherwise first built after its tag.

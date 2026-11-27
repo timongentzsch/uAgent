@@ -22,13 +22,14 @@ docker run --rm \
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
       g++ cmake make curl python3 libcurl4-openssl-dev zlib1g-dev libssl-dev >/dev/null
     cd /work/uagent
+    . .github/ci.env
     cmake --preset release -B /work/build/release >/dev/null
     cmake --build /work/build/release --parallel "$(nproc)" -- -k
     if [ -n "$UNITS" ]; then
-      curl -LsSf https://astral.sh/uv/0.11.28/install.sh | sh >/dev/null 2>&1
+      curl -LsSf https://astral.sh/uv/$UV_VERSION/install.sh | sh >/dev/null 2>&1
       cmake --preset tidy -B /work/build/tidy >/dev/null
       files=$(python3 .github/changes.py --tidy-files /work/build/tidy "$UNITS")
-      [ -z "$files" ] || "$HOME/.local/bin/uvx" --from clang-tidy==22.1.8 \
+      [ -z "$files" ] || "$HOME/.local/bin/uvx" --from "clang-tidy==$CLANG_TOOLS_VERSION" \
         run-clang-tidy.py -quiet -p /work/build/tidy \
         -header-filter=".*/(include|src|tests|benchmarks)/.*" "$files"
     fi'

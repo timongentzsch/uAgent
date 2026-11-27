@@ -3,7 +3,7 @@ import { uneven } from "./insets.js";
 import { unanswered } from "./press.js";
 
 // What is cramped on the page now, each named so a failure says where.
-const cramped = (page) =>
+export const cramped = (page) =>
   page.evaluate(() => {
     const found = [];
     const shown = (node) => {
@@ -105,6 +105,33 @@ const cramped = (page) =>
           found.push(`a press stops short of: ${named(beside)}`);
       }
     }
+    // Whether a scroller holding the box can still move it off that side:
+    // a divider scrolling past the edge is no frame line.
+    const passing = (box, side) => {
+      for (let at = box.parentElement; at; at = at.parentElement) {
+        const scroll = {
+          Top: at.scrollTop,
+          Left: at.scrollLeft,
+          Right: at.scrollWidth - at.clientWidth - at.scrollLeft,
+          Bottom: at.scrollHeight - at.clientHeight - at.scrollTop,
+        }[side];
+        if (scroll > 1 && !/sticky|fixed/.test(getComputedStyle(box).position))
+          return true;
+      }
+      return false;
+    };
+    // A colour with no alpha left: "transparent", or a last "/ a" or
+    // fourth "rgba(…, a)" argument of 0.
+    const clear = (color) => {
+      if (color === "transparent") return true;
+      const parts = color.slice(color.indexOf("(") + 1, -1).split(/[\s,/]+/);
+      const alpha = color.includes("/")
+        ? parts.at(-1)
+        : color.startsWith("rgba")
+          ? parts[3]
+          : "1";
+      return Number.parseFloat(alpha) === 0;
+    };
     // A line along the screen's edge, which a phone's round corners cut.
     for (const box of document.querySelectorAll("#app *, dialog[open]")) {
       if (!shown(box) || !box.checkVisibility({ opacityProperty: true }))
@@ -119,9 +146,10 @@ const cramped = (page) =>
       ])
         if (
           Math.abs(edge) < 1 &&
+          !passing(box, side) &&
           Number.parseFloat(style[`border${side}Width`]) > 0 &&
           style[`border${side}Style`] !== "none" &&
-          !/, 0\)$|^transparent$/.test(style[`border${side}Color`])
+          !clear(style[`border${side}Color`])
         )
           found.push(
             `a line along the screen's ${side.toLowerCase()} edge: ${named(box)}`,

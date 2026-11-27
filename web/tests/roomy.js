@@ -105,6 +105,21 @@ const cramped = (page) =>
           found.push(`a press stops short of: ${named(beside)}`);
       }
     }
+    // Whether a scroller holding the box can still move it off that side:
+    // a divider scrolling past the edge is no frame line.
+    const passing = (box, side) => {
+      for (let at = box.parentElement; at; at = at.parentElement) {
+        const scroll = {
+          Top: at.scrollTop,
+          Left: at.scrollLeft,
+          Right: at.scrollWidth - at.clientWidth - at.scrollLeft,
+          Bottom: at.scrollHeight - at.clientHeight - at.scrollTop,
+        }[side];
+        if (scroll > 1 && !/sticky|fixed/.test(getComputedStyle(box).position))
+          return true;
+      }
+      return false;
+    };
     // A line along the screen's edge, which a phone's round corners cut.
     for (const box of document.querySelectorAll("#app *, dialog[open]")) {
       if (!shown(box) || !box.checkVisibility({ opacityProperty: true }))
@@ -119,6 +134,7 @@ const cramped = (page) =>
       ])
         if (
           Math.abs(edge) < 1 &&
+          !passing(box, side) &&
           Number.parseFloat(style[`border${side}Width`]) > 0 &&
           style[`border${side}Style`] !== "none" &&
           !/, 0\)$|^transparent$/.test(style[`border${side}Color`])

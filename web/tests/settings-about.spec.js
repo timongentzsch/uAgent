@@ -12,7 +12,6 @@ test("About checks for a release, shows its notes and how to update", async ({
     const body = route.request().postDataJSON();
     if (!refuse || body.kind !== "update" || body.action !== "show")
       return route.continue();
-    refuse = false;
     return route.fulfill({ status: 503, body: "Unavailable" });
   });
   await page.goto(`/#session=${session.id}`);
@@ -25,6 +24,8 @@ test("About checks for a release, shows its notes and how to update", async ({
   const pane = page.locator(".settings-pane");
   await expect(pane.getByText("Update status unavailable")).toBeVisible();
   await expect(pane.getByText("Not checked yet")).toHaveCount(0);
+  // The host answers again.
+  refuse = false;
   await pane.getByRole("button", { name: "Retry" }).click();
   await expect(pane.locator(".row", { hasText: "Version" })).toContainText(
     /\d+\.\d+\.\d+/,

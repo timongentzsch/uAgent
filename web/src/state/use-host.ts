@@ -151,6 +151,8 @@ export function useHost(
   const [drafts] = useState(draftStore);
   useEffect(() => drafts.listen(), [drafts]);
   const [error, setError] = useState("");
+  // The code of the refusal shown, for what it offers next.
+  const [errorCode, setErrorCode] = useState("");
   const [unread, setUnread] = useStored(kept.unread);
   const [outgoing, setOutgoing] = useStored(kept.outgoing);
   const [following, setFollowing] = useState(true);
@@ -191,7 +193,10 @@ export function useHost(
     const issue = failure(error);
     if (issue.network && stream.current?.readyState !== EventSource.OPEN)
       setOnline(false);
-    else if (scope !== "inline") setError(issue.message);
+    else if (scope !== "inline") {
+      setError(issue.message);
+      setErrorCode(issue.code ?? "");
+    }
   }, []);
   const patchSession = (id: string, change: (item: Session) => Session) =>
     setCatalogue((prior) => patchCatalogue(prior, id, change));
@@ -828,6 +833,7 @@ export function useHost(
     setSelected: select,
     drafts,
     error,
+    errorCode,
     setError,
     unread,
     outgoing,

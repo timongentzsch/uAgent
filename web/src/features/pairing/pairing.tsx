@@ -57,12 +57,19 @@ export default function Pairing({
       });
       await paired();
     });
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tries the link's code once, on mount
+  // A link opened here, or pasted into this tab later: only its hash
+  // changes then.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: listens once; the first render's pair is enough
   useEffect(() => {
-    const linked = linkedCode();
-    if (!linked) return;
-    setCode(linked);
-    void pair(linked);
+    const follow = () => {
+      const linked = linkedCode();
+      if (!linked) return;
+      setCode(linked);
+      void pair(linked);
+    };
+    follow();
+    addEventListener("hashchange", follow);
+    return () => removeEventListener("hashchange", follow);
   }, []);
   return (
     <main class="pairing">

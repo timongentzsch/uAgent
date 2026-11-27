@@ -7,6 +7,7 @@ import type {
   Session,
   Snapshot,
 } from "../shared/types.ts";
+import { refusal } from "../shared/types.ts";
 import type { SnapshotStore } from "./snapshot-store.ts";
 import {
   applySessionEvent,
@@ -205,10 +206,10 @@ export function applyEvent(event: HostEvent, host: EventHost) {
       live.current[id] = applySessionEvent(current, event);
       break;
     case "outcome":
-      if (!event.accepted && !shown) report(new Error(event.error));
+      if (!event.accepted && !shown) report(refusal(event.error, event.code));
       break;
     case "error":
-      report(new Error(event.error));
+      report(refusal(event.error, event.code));
       break;
   }
   flush.current(id);

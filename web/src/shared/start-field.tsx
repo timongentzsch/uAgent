@@ -35,7 +35,8 @@ export function StartField({
   action?: string;
   attach?: boolean;
   onKeyDown?: (event: KeyboardEvent) => void;
-  start: (text: string, files: File[]) => Promise<unknown> | undefined;
+  // False: nothing was started, and the text and files stay.
+  start: (text: string, files: File[]) => Promise<unknown> | undefined | false;
   children?: (text: string) => ComponentChildren;
 }) {
   const { report } = useHostContext();
@@ -44,8 +45,11 @@ export function StartField({
   const { run } = useAction({ report });
   const submit = (event: Event) => {
     event.preventDefault();
-    void run(async () => start(text.trim(), files)).then((done) => {
-      if (!done) return;
+    let kept = false;
+    void run(async () => {
+      kept = (await start(text.trim(), files)) === false;
+    }).then((done) => {
+      if (!done || kept) return;
       setText("");
       setFiles([]);
     });

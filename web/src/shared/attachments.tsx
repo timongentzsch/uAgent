@@ -175,8 +175,10 @@ export function FileChip({
     <div class="chip chip-outline file-chip" aria-busy={busy || undefined}>
       {tile || <Paperclip />}
       <span title={name}>{children}</span>
+      {/* Kept while it uploads, so the chip neither moves nor reflows when
+          it is done. */}
       {remove && (
-        <IconButton label={`Remove ${name}`} onClick={remove}>
+        <IconButton label={`Remove ${name}`} disabled={busy} onClick={remove}>
           <X />
         </IconButton>
       )}

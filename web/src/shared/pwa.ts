@@ -36,8 +36,9 @@ export function watchPwa(
   if ("serviceWorker" in navigator && isSecureContext)
     navigator.serviceWorker
       .register("/sw.js", { updateViaCache: "none" })
-      .then((registration) => {
-        if (disposed) return;
+      // A browser that blocks workers may hand back no registration.
+      .then((registration?: ServiceWorkerRegistration) => {
+        if (disposed || !registration) return;
         if (registration.waiting) update(registration.waiting);
         const found = () => {
           const worker = registration.installing;

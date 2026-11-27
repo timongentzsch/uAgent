@@ -570,12 +570,19 @@
     background: var(--accent);
     color: var(--on-accent);
   }
-  /* Stacked over the app: showing or dismissing one never moves the layout. */
+  /* Stacked over the app: showing or dismissing one never moves the layout.
+     They start under the tallest a conversation's header gets, so none
+     covers its title. */
   .toasts {
     /* #app is a size container, so it is the containing block. */
     position: absolute;
     z-index: var(--z-toast);
-    top: calc(var(--safe-top) + var(--gap));
+    top: calc(
+      var(--safe-top) +
+      max(var(--bar-min), var(--head-narrow)) +
+      var(--line-width) +
+      var(--gap)
+    );
     left: calc(var(--safe-left) + var(--gap));
     width: min(var(--sheet), calc(var(--content-width) - 2 * var(--gap)));
     display: grid;

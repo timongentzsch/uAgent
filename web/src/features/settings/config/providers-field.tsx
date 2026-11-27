@@ -1,7 +1,9 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { formatJSON } from "../../../shared/format.ts";
-import type { JSONValue } from "../../../shared/types.ts";
+import type { JSONValue, UpdateState } from "../../../shared/types.ts";
+import { useResource } from "../../../shared/use-resource.ts";
+import { useApi } from "../../../state/api.ts";
 import {
   Actions,
   Button,
@@ -36,6 +38,12 @@ const WIRES: [string, string, string][] = [
   ["anthropic_messages", "Anthropic", "Messages (Anthropic)"],
 ];
 
+// A model server on this machine, its port the person's to change. Inside
+// the container localhost is the container's own; the machine is reached
+// by this name.
+const LOCAL_SERVER = "http://localhost:11434/v1";
+const LOCAL_SERVER_FROM_CONTAINER = "http://host.docker.internal:11434/v1";
+
 type Preset = { label: string; name: string; base_url: string; wire: string };
 const PRESETS: Preset[] = [
   {
@@ -57,12 +65,28 @@ const PRESETS: Preset[] = [
     wire: "anthropic_messages",
   },
   {
-    label: "Ollama",
-    name: "ollama",
-    base_url: "http://localhost:11434/v1",
+    label: "Local server",
+    name: "local",
+    base_url: LOCAL_SERVER,
     wire: "chat_completions",
   },
 ];
+
+// The presets as this install reaches them.
+function usePresets() {
+  const { manage } = useApi();
+  const install = useResource<UpdateState>(
+    () => manage("update", { action: "show" }),
+    [manage],
+  ).value?.install;
+  return install === "container"
+    ? PRESETS.map((preset) =>
+        preset.base_url === LOCAL_SERVER
+          ? { ...preset, base_url: LOCAL_SERVER_FROM_CONTAINER }
+          : preset,
+      )
+    : PRESETS;
+}
 
 const keyOf = (entry: Provider) => {
   const key = text(entry.api_key);
@@ -100,6 +124,7 @@ export function ProvidersField({
   reload?: () => void;
   online?: boolean;
 }) {
+  const presets = usePresets();
   const held: Providers = value && isObject(value) ? (value as Providers) : {};
   // The provider whose sheet is open, by name; "" while adding one.
   const [open, setOpen] = useState<{ name: string; preset?: Preset }>();
@@ -126,7 +151,7 @@ export function ProvidersField({
               its key.
             </p>
             <Actions>
-              {PRESETS.map((preset) => (
+              {presets.map((preset) => (
                 <Button
                   key={preset.name}
                   disabled={disabled}
@@ -207,6 +232,7 @@ function ProviderForm({
   disabled: boolean;
   save: (next: Providers) => Promise<boolean>;
 }) {
+  const presets = usePresets();
   const close = useDialogClose();
   const entry = held[before] || {};
   const stored = text(entry.api_key);
@@ -232,10 +258,12 @@ function ProviderForm({
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState(false);
   const wanted = name.trim();
+  // A name in use is another provider's: never written over.
+  const taken = wanted !== before && wanted in held;
   const valid =
     /^[A-Za-z0-9_-]+$/.test(wanted) &&
     wanted !== "all" &&
-    (wanted === before || !(wanted in held)) &&
+    !taken &&
     /^https?:\/\/\S+$/.test(address.trim());
   const other = Object.keys(entry).filter((field) => !EDITED.includes(field));
   const edit = (index: number) =>
@@ -327,7 +355,7 @@ function ProviderForm({
           footer="Fills the fields below; each stays editable."
         >
           <div class="segmented" role="group" aria-label="Start from">
-            {PRESETS.map((from) => (
+            {presets.map((from) => (
               <Button
                 key={from.name}
                 aria-pressed={address === from.base_url && wire === from.wire}
@@ -341,7 +369,11 @@ function ProviderForm({
       )}
       <Field
         label="Name"
-        help={`Letters, digits, - and _. Its models are chosen as ${wanted || "name"}/model.`}
+        help={
+          taken
+            ? `A provider named ${wanted} exists; choose another name.`
+            : `Letters, digits, - and _. Its models are chosen as ${wanted || "name"}/model.`
+        }
       >
         <Input
           value={name}

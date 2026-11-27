@@ -86,6 +86,11 @@ export function usePlaces({
         if (created.pending) return "";
         upsertSession(created.session);
         collapsed.set(placeKey(targetHost, folderOf(created.session)), false);
+        // The first message waits in the draft until it is sent: a failure on
+        // the way (activating, an upload, the send) leaves it there.
+        const id = created.session.id;
+        if (text || files.length)
+          drafts.set((all) => ({ ...all, [id]: { ...emptyDraft(), text } }));
         // Live before it is shown, so opening never flashes the saved state;
         // shown even if activating fails, with the failure reported.
         try {
@@ -98,23 +103,21 @@ export function usePlaces({
               model: model.model,
               effort: model.effort,
             });
-          if (files.length) {
-            // The message waits in its draft until it is sent: a failure
-            // leaves it there to send again.
-            const id = created.session.id;
-            drafts.set((all) => ({ ...all, [id]: { ...emptyDraft(), text } }));
-            if (await uploading.current(files, id)) {
-              const sent = drafts.get()[id];
-              await command("submit", created.session, {
-                text: sent.text,
-                attachment_ids: sent.files.map(({ id, name }) => ({
-                  id,
-                  name,
-                })),
-              });
-              drafts.set((all) => ({ ...all, [id]: emptyDraft() }));
-            }
-          } else if (text) await command("submit", created.session, { text });
+          if (
+            (text || files.length) &&
+            (!files.length || (await uploading.current(files, id)))
+          ) {
+            const sent = drafts.get()[id];
+            await command("submit", created.session, {
+              text: sent.text,
+              attachment_ids: sent.files.map(({ id, name }) => ({ id, name })),
+            });
+            drafts.set((all) => ({ ...all, [id]: emptyDraft() }));
+          }
+        } catch (failure) {
+          // It exists: whatever asked for it is done, and the person lands in
+          // it with the refusal said and the message in its draft.
+          report(failure);
         } finally {
           await choose(created.session.id, targetHost);
         }
@@ -124,7 +127,7 @@ export function usePlaces({
         starting.current = false;
       }
     },
-    [upsertSession, choose, load, command, host, drafts, uploading],
+    [upsertSession, choose, load, command, host, drafts, uploading, report],
   );
   const newPlace = useCallback(
     (place: "conversation" | "workspace" | "folder", text = "") => {

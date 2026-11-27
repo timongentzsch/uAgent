@@ -224,8 +224,8 @@ void TerminalViewer::Wake() {
   shell_->changed.notify_all();
 }
 
-Terminals::Terminals(size_t limit, std::chrono::milliseconds idle, size_t kept,
-                     std::function<void()> changed)
+Terminals::Terminals(size_t limit, std::chrono::milliseconds idle,
+                     std::function<void()> changed, size_t kept)
     : limit_(limit), idle_(idle), kept_(kept), changed_(std::move(changed)) {
   int wake[2] = {-1, -1};
   if (OpenNonblockingPipe(wake)) {

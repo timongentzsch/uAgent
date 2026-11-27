@@ -373,11 +373,12 @@ bool Master::Initialize(std::string& error) {
     // Every device lists the folders' shells as they come and go.
     terminals_ = std::make_unique<Terminals>(
         kWebTerminals, std::chrono::minutes(options_.terminal_idle_minutes),
-        KiB(static_cast<size_t>(options_.terminal_scrollback_kb)), [this] {
+        [this] {
           host_.Publish(
               "", "",
               {{"kind", "terminals.changed"}, {"terminals", TerminalList()}});
-        });
+        },
+        KiB(static_cast<size_t>(options_.terminal_scrollback_kb)));
   }
   remotes_ = std::make_unique<RemoteHosts>(executable_, options_.remote_bundle);
   RegisterRemoteRoutes();

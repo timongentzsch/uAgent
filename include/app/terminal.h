@@ -80,8 +80,8 @@ class Terminals {
   // output. A folder's shell no device has attached that printed nothing for
   // `idle` ends. `changed` hears that the list did.
   Terminals(size_t limit, std::chrono::milliseconds idle,
-            size_t kept = kWebTerminalScrollbackBytes,
-            std::function<void()> changed = {});
+            std::function<void()> changed = {},
+            size_t kept = kWebTerminalScrollbackBytes);
   ~Terminals();
   Terminals(const Terminals&) = delete;
   Terminals& operator=(const Terminals&) = delete;

@@ -129,7 +129,7 @@ KeyCheck CheckKey(const Known& known, const std::string& key) {
   // OpenRouter lists its models to anyone; its key endpoint is what refuses
   // a wrong key.
   if (std::string_view(known.name) == "openrouter" || known.free_only) {
-    JsonResponse response = api.Get("/key", false, 10);
+    JsonResponse response = api.Get("/key");
     if (response.http_status == 401 || response.http_status == 403) {
       check.accepted = false;
       check.reason = "rejected (" + std::to_string(response.http_status) + ")";

@@ -1,3 +1,4 @@
+// @webkit
 import {
   connected,
   headerAction,

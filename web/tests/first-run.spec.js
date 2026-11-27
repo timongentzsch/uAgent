@@ -1,3 +1,4 @@
+// @webkit
 // What a person meets first: pairing from a printed link, and a first
 // message the host refuses.
 import {

@@ -41,6 +41,9 @@ chromium webkit` in `web/`. An installed Chrome is not a stand-in: sheet
 clicks into its sandboxed frames are dropped now and then, and the canvas
 specs fail in it.
 
+Every spec runs in Chromium. A spec runs in WebKit as well when its file has
+the line `// @webkit`.
+
 Style checks (clang-format, cpplint, clang-tidy, Ruff, Biome) are
 in [CONTRIBUTING.md](../CONTRIBUTING.md); [CI](#ci) lists what a pull request
 runs beyond them.

@@ -1,3 +1,4 @@
+// @webkit
 // Several conversations picked at once in the sidebar, as a desktop file
 // list picks them, and acted on together: the multi-select canvas.
 import { test, expect, savedConversation } from "./fixtures.js";

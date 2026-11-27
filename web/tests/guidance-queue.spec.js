@@ -1,3 +1,4 @@
+// @webkit
 import { test, expect, online, selectProbeModel } from "./fixtures.js";
 
 test.beforeEach(({ command, session }) => selectProbeModel(command, session));

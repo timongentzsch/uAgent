@@ -1,3 +1,4 @@
+// @webkit
 // An answer given while the turn's agent works is held as a step of the work
 // until the agent reports: the person sees one answer per question, the
 // status line names whom the turn waits for, and nothing above jumps.

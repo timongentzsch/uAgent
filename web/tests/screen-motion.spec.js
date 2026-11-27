@@ -1,3 +1,4 @@
+// @webkit
 // Screens that move: sliding conversations, pull-to-close sheets and the edge
 // drawer. Touches are dispatched through Chromium's input protocol.
 import {

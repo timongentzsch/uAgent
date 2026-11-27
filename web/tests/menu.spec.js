@@ -1,3 +1,4 @@
+// @webkit
 // The conversation menu is the app's one nested menu: how focus and the
 // open state behave around it, by pointer, touch and keyboard.
 import { test, expect, online, openMore } from "./fixtures.js";

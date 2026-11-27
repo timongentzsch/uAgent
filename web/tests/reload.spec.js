@@ -1,3 +1,4 @@
+// @webkit
 // A reload looks like the app, not a page loading: its frame paints before
 // any script runs, the conversation fills it in place, and nothing jumps.
 import { test, expect, online, draftOf } from "./fixtures.js";

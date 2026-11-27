@@ -1,3 +1,4 @@
+// @webkit
 // The ask decision, answered in the conversation: the snapshot is served
 // with the question in it and the reply recorded, so no model is needed.
 import { test, expect, servePending, SAMPLE_ASK } from "./fixtures.js";

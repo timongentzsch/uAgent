@@ -1,3 +1,4 @@
+// @webkit
 import {
   devServerTest as test,
   expect,

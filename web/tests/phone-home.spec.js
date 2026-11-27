@@ -1,3 +1,4 @@
+// @webkit
 // The home screen on a phone: the question centred over the last three
 // conversations as plain lines, the box docked below; while the keyboard is
 // up for the box, or the box holds text, only the question and the box.

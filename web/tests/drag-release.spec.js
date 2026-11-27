@@ -1,3 +1,4 @@
+// @webkit
 // A pointer pressed on a page and let go over the app round it: the page
 // does not hear that release where it runs in a process of its own, as
 // Chrome runs a sandboxed page, nor where a release goes to what is under

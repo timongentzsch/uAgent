@@ -1,3 +1,4 @@
+// @webkit
 // An Excel or CSV file opens in the sheet viewer, read-only; it is saved as
 // a sheet to change it, and any sheet goes out as a workbook or as CSV.
 import { readFile } from "node:fs/promises";

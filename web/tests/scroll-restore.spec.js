@@ -1,3 +1,4 @@
+// @webkit
 // Returning to a session restores the saved position unfollowed. Seeded
 // histories keep this deterministic: no streaming or backend timing.
 import {

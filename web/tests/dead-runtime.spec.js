@@ -1,3 +1,4 @@
+// @webkit
 import { execFileSync } from "node:child_process";
 import { test, expect, online, selectProbeModel } from "./fixtures.js";
 

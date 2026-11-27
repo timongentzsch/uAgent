@@ -1,3 +1,4 @@
+// @webkit
 // The image viewer: any image fits whole, and the zoom controls, keys and
 // ⌘/Ctrl+wheel zoom it like a document viewer.
 import { test, expect, online } from "./fixtures.js";

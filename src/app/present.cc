@@ -181,7 +181,7 @@ void CopyAttachments(std::vector<Tool>& tools,
         CanonicalAccessPath(session_path + kSessionAssetsSuffix);
     std::string error;
     return PathWithin(from, store) &&
-           ReadRegularFile(from.string(), session::kUploadBytes, out, error);
+           ReadRegularFile(from.string(), session::kTransferBytes, out, error);
   };
   write->run = [run = std::move(write->run), bytes](
                    const json& args, const ToolContext& context) {

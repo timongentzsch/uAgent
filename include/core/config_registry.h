@@ -784,7 +784,9 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Advanced(registry::Named(
         registry::Int("attachments.maxMb", "UAGENT_ATTACHMENT_MB", {}, 10, 1,
                       kConfigMaxMegabytes, ReloadPolicy::kNextUserTurn,
-                      "attachments", "largest attachment in mebibytes"),
+                      "attachments",
+                      "largest attachment or web upload in mebibytes; the web "
+                      "host takes a new value when it restarts"),
         "Attachment size limit")),
     registry::Advanced(registry::Named(
         registry::Int("attachments.maxCount", "UAGENT_ATTACHMENT_COUNT", {}, 8,

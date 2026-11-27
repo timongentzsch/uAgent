@@ -208,6 +208,9 @@ int WebMain(const Options& options, char** argv) {
   const ConfigDescriptor& scrollback = Cfg("UAGENT_WEB_TERMINAL_SCROLLBACK_KB");
   int64_t scrollback_kb = std::get<int64_t>(scrollback.default_value);
   ParseInt64(setting(scrollback.EnvName()).c_str(), scrollback_kb);
+  const ConfigDescriptor& upload = Cfg("UAGENT_ATTACHMENT_MB");
+  int64_t upload_mb = std::get<int64_t>(upload.default_value);
+  ParseInt64(setting(upload.EnvName()).c_str(), upload_mb);
   bool update_check = false;
   ParseBool(setting(Cfg("UAGENT_WEB_UPDATE_CHECK").EnvName()), update_check);
   return web::MasterMain(
@@ -216,6 +219,7 @@ int WebMain(const Options& options, char** argv) {
        bind, setting(Cfg("UAGENT_BROWSER_DATA").EnvName()), terminal_on,
        std::clamp(idle_minutes, idle.minimum, idle.maximum),
        std::clamp(scrollback_kb, scrollback.minimum, scrollback.maximum),
+       std::clamp(upload_mb, upload.minimum, upload.maximum),
        setting(Cfg("UAGENT_REMOTE_BUNDLE").EnvName()), update_check},
       argv);
 }

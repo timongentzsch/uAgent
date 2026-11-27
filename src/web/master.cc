@@ -283,7 +283,9 @@ bool Master::Initialize(std::string& error) {
   server_.set_write_timeout(kWriteTimeoutSeconds);
   server_.set_keep_alive_max_count(kKeepAliveRequests);
   server_.set_keep_alive_timeout(kKeepAliveTimeoutSeconds);
-  server_.set_payload_max_length(kUploadBytes);
+  // An upload is the largest body; other requests stay within a transfer.
+  server_.set_payload_max_length(
+      std::max(kTransferBytes, MiB(static_cast<size_t>(options_.upload_mb))));
   server_.set_default_headers(
       {{"X-Content-Type-Options", "nosniff"},
        {"Referrer-Policy", "no-referrer"},
@@ -765,7 +767,7 @@ bool Master::RegisterAssetRoutes(std::string& error) {
   const char* dist = getenv(kWebDistEnv);
   std::string ignored;
   if (dist) {
-    ReadRegularFile(std::string(dist) + "/design-helper.js", kUploadBytes,
+    ReadRegularFile(std::string(dist) + "/design-helper.js", kTransferBytes,
                     design_helper_, ignored);
   }
   for (const Asset& asset : Assets()) {

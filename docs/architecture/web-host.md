@@ -179,8 +179,9 @@ prefix is writable and `web.terminal` is on.
   is never evicted.
 - The host replays events; it never replays commands. Recovery from an
   evicted cursor is a fresh read.
-- Uploads are capped at 8 MiB by the listener (`kUploadBytes`); JSON
-  replies over 1 KiB are gzipped for clients that accept it.
+- An upload is capped at `attachments.maxMb` (10 MiB by default), read when
+  the host starts; other files pass whole up to 8 MiB (`kTransferBytes`).
+  JSON replies over 1 KiB are gzipped for clients that accept it.
 - Embedded assets under `/assets/` are immutable for a year; others
   revalidate by ETag. Every response carries `Cache-Control: no-store`
   unless a route sets its own.

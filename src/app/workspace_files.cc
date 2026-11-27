@@ -862,8 +862,8 @@ json Request(const fs::path& root, const json& request) {
   std::string bytes, error;
   const bool read = mode == "read";
   if (!ReadRegularFile(target->string(),
-                       read ? kFileViewBytes + 1 : session::kUploadBytes, bytes,
-                       error, read)) {
+                       read ? kFileViewBytes + 1 : session::kTransferBytes,
+                       bytes, error, read)) {
     return {{"error", "not found"}, {"status", 404}};
   }
   if (read) {

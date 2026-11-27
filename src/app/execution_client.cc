@@ -373,7 +373,7 @@ std::vector<Tool> Client::Tools(const std::string& session_path,
           std::string bytes;
           if (session_path.empty() ||
               !HexDecode(JsonValue(item, "data", ""), bytes,
-                         session::kUploadBytes)) {
+                         session::kTransferBytes)) {
             result.output +=
                 "\nCannot retain remote attachment for this conversation.";
             continue;

@@ -10,6 +10,7 @@ from integration_support import (
     budget,
     event,
     session_files,
+    settings_path,
     tool_call,
     tool_calls,
     tool_results,
@@ -612,3 +613,42 @@ def test_web_long_diff_is_stored_whole_and_served_by_detail(root, home, *, binar
             assert_true(diff.startswith(change), diff[:200])
             assert_true(diff.endswith("+line 1999 of a long file\n+LAST_DIFF_LINE\n"), diff[-200:])
             assert_true(diff.count("\n") == 2001, diff.count("\n"))
+
+
+def refused(client, endpoint, data, headers):
+    """Whether the host turns the upload away: a 413, or, when it answers
+    before the whole body is sent, the connection it closes."""
+    try:
+        return client.request(endpoint, raw=data, headers=headers)[0] == 413
+    except (BrokenPipeError, ConnectionResetError):
+        return True
+
+
+def test_a_web_upload_is_bounded_by_the_saved_attachment_limit(root, home, *, binary):
+    """One upload may be as large as attachments.maxMb, 10 MiB by default,
+    taken from the saved settings when the host starts."""
+    project = root / "uploads"
+    project.mkdir()
+    mib = 1024 * 1024
+    nine = b"u" * (9 * mib)
+    for limit, accepted in ((None, True), (4, False)):
+        if limit:
+            saved = settings_path(home)
+            saved.parent.mkdir(parents=True, exist_ok=True)
+            saved.write_text(
+                json.dumps({"format": 3, "all": {"attachments.maxMb": limit}, "projects": {}})
+            )
+        with Server([event({"content": "unused"})]) as provider:
+            with web_host(binary, root, home, provider.url) as (client, code, _, _):
+                client.pair(code)
+                session = client.create(project)
+                endpoint = f"/api/sessions/{session['id']}/attachments?name=nine.txt"
+                headers = {"Content-Type": "text/plain"}
+                if not accepted:
+                    assert_true(refused(client, endpoint, nine, headers), limit)
+                    continue
+                status, stored, _ = client.json(endpoint, raw=nine, headers=headers)
+                assert_true(status == 200, (status, stored))
+                asset = f"/api/sessions/{session['id']}/assets/{stored['id']}"
+                assert_true(client.request(asset)[1] == nine, "the upload came back changed")
+                assert_true(refused(client, endpoint, b"u" * (11 * mib), headers), "11 MiB")

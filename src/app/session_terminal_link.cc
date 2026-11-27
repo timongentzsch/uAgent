@@ -33,7 +33,7 @@ void Terminal::Send(json command) {
   std::lock_guard lock(send_mutex_);
   if (JsonValue(command, "kind", "") == "reply") interaction_ = false;
   StampFrame(command, SessionIdFor(path_), connection_.generation);
-  command["request_id"] = requests_ + RandomToken(16);
+  command["request_id"] = requests_ + RandomToken(kIdBytes);
   command["client_request_id"] = command["request_id"];
   {
     std::lock_guard state_lock(mutex_);

@@ -317,7 +317,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     unlink((profile + "/" + name).c_str());
   }
   std::string authority = base + "/Xauthority";
-  std::string cookie = RandomToken(16);
+  std::string cookie = RandomToken(kIdBytes);
   if (cookie.empty()) {
     error = "cannot generate X authorization";
     return false;

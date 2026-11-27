@@ -158,7 +158,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
   const auto deadline = std::chrono::steady_clock::now() + kRuntimeStartTimeout;
   for (;;) {
     const std::string launch =
-        folder.string() + "/" + RandomToken(16) + ".json";
+        folder.string() + "/" + RandomToken(kIdBytes) + ".json";
     if (!WritePrivateFile(launch, JsonDump(config), error)) {
       return {};
     }
@@ -169,10 +169,12 @@ Connection Open(const std::string& executable, const std::string& cwd,
     // A service restart kills its cgroup even after setsid(): a user scope
     // ties the runtime's lifetime to the session, not to the web service.
     if (getenv("INVOCATION_ID")) {
+      // Keeps two scopes of one conversation started together apart.
+      constexpr size_t kUnitSuffixBytes = 4;
       args.insert(args.begin(), {"systemd-run", "--user", "--scope", "--quiet",
                                  "--collect", "--expand-environment=no",
                                  "--unit=uagent-session-" + SessionIdFor(path) +
-                                     "-" + RandomToken(4),
+                                     "-" + RandomToken(kUnitSuffixBytes),
                                  "--"});
     }
 #endif

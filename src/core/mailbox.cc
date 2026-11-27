@@ -133,7 +133,7 @@ std::string SendMail(Mail mail, bool rate_limited) {
   // A sender that names its mail sends that mail again under the same name.
   // Only unnamed mail is told from a repeat by what it says.
   const bool named = !mail.id.empty();
-  if (!named) mail.id = RandomToken(8);
+  if (!named) mail.id = RandomToken(kNameBytes);
   if (mail.id.empty()) return "cannot name the message";
   if (!mail.created_ms) mail.created_ms = NowMillis();
   if (!mail.expires_ms) mail.expires_ms = mail.created_ms + kMailLifetimeMs;

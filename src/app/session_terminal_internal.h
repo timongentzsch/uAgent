@@ -150,7 +150,7 @@ class Terminal {
   std::set<std::string> own_requests_;
   // What every request this terminal sends starts with, so a message it
   // echoed as it was typed is known when it comes back.
-  const std::string requests_ = RandomToken(8);
+  const std::string requests_ = RandomToken(kNameBytes);
   // The transcript's tree as history and events build it, so a live node is
   // drawn from the same tree a resumed one is.
   json transcript_ = json::object();

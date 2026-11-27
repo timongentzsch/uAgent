@@ -188,8 +188,15 @@ std::string UniqueSeed();
 std::string MakeSessionId();
 // A conversation's id: its file's name hashed, so a move keeps it.
 std::string SessionIdFor(const std::string& path);
+// Widths of a RandomToken, by what it must withstand. The bytes are read from
+// the OS; the token's text is longer.
+inline constexpr size_t kSecretBytes = 32;  // a credential someone may guess at
+inline constexpr size_t kTokenBytes = 24;   // a grant or session secret
+inline constexpr size_t kIdBytes = 16;      // an id no two things share
+inline constexpr size_t kNonceBytes = 12;   // a mark that tells one call apart
+inline constexpr size_t kNameBytes = 8;     // unique within one folder or run
 // OS randomness for credentials and opaque identities. Empty on failure.
-std::string RandomToken(size_t bytes = 24);
+std::string RandomToken(size_t bytes = kTokenBytes);
 
 std::string WorkspaceId(const std::string& root, const std::string& host = {});
 

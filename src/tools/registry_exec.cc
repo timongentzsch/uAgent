@@ -81,7 +81,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ActivitySupervisor& supervisor,
                                        "the person declined to enter the "
                                        "sudo password");
                   }
-                  spec.nonce = RandomToken(16);
+                  spec.nonce = RandomToken(kIdBytes);
                 }
                 spec.activity_label = spec.command;
                 spec.command =

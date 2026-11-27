@@ -26,6 +26,9 @@ constexpr size_t kDeviceStoreBytes = KiB(64);
 constexpr size_t kDeviceNameChars = 80;
 constexpr int kAuthenticationAttempts = 12;
 constexpr auto kPairingLifetime = std::chrono::minutes(5);
+// The single-use pairing code; with the attempts and the lifetime above, it
+// bounds how far guessing gets.
+constexpr size_t kPairingCodeBytes = 12;
 constexpr auto kAuthenticationWindow = std::chrono::minutes(1);
 constexpr auto kDeviceLifetime = std::chrono::hours(24 * 30);
 }  // namespace
@@ -42,7 +45,7 @@ bool EqualSecret(std::string_view a, std::string_view b) {
 }
 
 std::string Master::Pair() {
-  pair_ = RandomToken(12);
+  pair_ = RandomToken(kPairingCodeBytes);
   pair_deadline_ = Clock::now() + kPairingLifetime;
   return pair_;
 }
@@ -137,7 +140,7 @@ void Master::Authenticate(const Request& request, Response& response) {
     return;
   }
   Device device{
-      RandomToken(16), RandomToken(32),
+      RandomToken(kIdBytes), RandomToken(kSecretBytes),
       Utf8Prefix(JsonValue(input, "name", "Browser"), kDeviceNameChars),
       NowMillis() +
           std::chrono::duration_cast<std::chrono::milliseconds>(kDeviceLifetime)

@@ -129,7 +129,7 @@ bool Master::RemoteTerminalCommand(CommandCall& call) {
         return true;
       }
     }
-    record = {{"id", RandomToken(16)},
+    record = {{"id", RandomToken(kIdBytes)},
               {"host", host},
               {"cwd", JsonValue(call.command, "cwd", "")},
               {"folder", folder},
@@ -210,7 +210,7 @@ bool Master::RemoteTerminalSocket(const std::string& id,
     socket.close();
     return true;
   }
-  const std::string viewer = RandomToken(16);
+  const std::string viewer = RandomToken(kIdBytes);
   auto command = [&](const std::string& action, json fields = json::object()) {
     fields["op"] = "terminal";
     fields["action"] = action;

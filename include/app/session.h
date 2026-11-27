@@ -61,7 +61,7 @@ inline json LightState(const json& state) {
   return light;
 }
 
-inline std::string NewRequestId() { return RandomToken(16); }
+inline std::string NewRequestId() { return RandomToken(kIdBytes); }
 inline json ControlFrame(const char* kind) {
   return {{"kind", kind}, {"request_id", NewRequestId()}};
 }

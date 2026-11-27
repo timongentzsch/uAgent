@@ -45,7 +45,7 @@ struct Broker::State {
       status = runtime->Execute({{"op", "snapshot"}});
       owner = JsonValue(status, "session_id", "");
       if (!owner.empty()) {
-        token = runtime_token = RandomToken(16);
+        token = runtime_token = RandomToken(kIdBytes);
         live = Live(owner);
       }
     }
@@ -248,7 +248,7 @@ json Broker::Execute(const json& command) {
               JsonValue(slot.status, "mode", "") == "human") {
             continue;
           }
-          slot.token = RandomToken(16);
+          slot.token = RandomToken(kIdBytes);
           if (slot.token.empty()) {
             return {{"error", "cannot create browser lease"}};
           }

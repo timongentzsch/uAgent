@@ -237,7 +237,7 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
       bytes.size() > kGlobalAssetBytes - std::min(bytes_, kGlobalAssetBytes)) {
     return {{}, "attachment storage limit reached", 413};
   }
-  std::string id = RandomToken(16), stem = folder + "/" + id, error;
+  std::string id = RandomToken(kIdBytes), stem = folder + "/" + id, error;
   if (id.empty() || !WritePrivateFile(stem + ".data", bytes, error)) {
     return {{}, "cannot persist upload", 500};
   }

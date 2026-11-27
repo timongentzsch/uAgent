@@ -199,7 +199,9 @@ std::string Start(const std::string& own, const Launch& launch,
                        {"budget", launch.budget},
                        {"name", name},
                        {"call", launch.call}}}};
-  if (!launch.model.empty()) options.overrides["UAGENT_MODEL"] = launch.model;
+  if (!launch.model.empty()) {
+    options.overrides[Cfg("UAGENT_MODEL").EnvName()] = launch.model;
+  }
   std::string error;
   session::Connection connection =
       session::Open(ExecutablePath(), cwd, child.path, name, options, error);

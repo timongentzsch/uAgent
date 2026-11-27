@@ -22,6 +22,7 @@
 #include "include/app/openrouter_signin.h"
 #include "include/app/update.h"
 #include "include/core/capture.h"
+#include "include/core/config_registry.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
@@ -30,8 +31,8 @@
 namespace uagent {
 namespace {
 
-constexpr char kProviders[] = "UAGENT_PROVIDERS";
-constexpr char kModel[] = "UAGENT_MODEL";
+constexpr const char* kProviders = Cfg("UAGENT_PROVIDERS").EnvName();
+constexpr const char* kModel = Cfg("UAGENT_MODEL").EnvName();
 
 // The endpoints setup knows, in the order a default model is chosen from.
 // OpenRouter's key is a setting of its own; the others are variables.

@@ -11,6 +11,7 @@
 #include "include/app/config_proposal.h"
 #include "include/app/import.h"
 #include "include/core/config.h"
+#include "include/core/config_registry.h"
 #include "include/core/defaults.h"
 #include "include/core/effective_config.h"
 #include "include/core/file_watch.h"
@@ -115,7 +116,7 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
     // lost in between.
     const std::string failed = ChangeSettings("", [&](SettingValues& all) {
       std::vector<std::string> names =
-          SplitPathList(all["UAGENT_SKILL_EXCLUDE"], ',');
+          SplitPathList(all[Cfg("UAGENT_SKILL_EXCLUDE").EnvName()], ',');
       std::erase_if(names, [&](const std::string& name) {
         return Trim(name) == found->name || Trim(name).empty();
       });
@@ -125,8 +126,8 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
         if (!value.empty()) value += ',';
         value += Trim(name);
       }
-      all.erase("UAGENT_SKILL_EXCLUDE");
-      if (!value.empty()) all["UAGENT_SKILL_EXCLUDE"] = value;
+      all.erase(Cfg("UAGENT_SKILL_EXCLUDE").EnvName());
+      if (!value.empty()) all[Cfg("UAGENT_SKILL_EXCLUDE").EnvName()] = value;
       return std::string();
     });
     json result = failed.empty() ? json::object() : json{{"error", failed}};

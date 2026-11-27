@@ -200,9 +200,10 @@ bool SupportsReasoningEffort(const Api& api, std::string_view effort) {
 void ActivateRoute(Api& api) {
   ResetRouteCapabilities(api);
   // What a setting read finds for the route in use, where no setting names it.
-  PublishRoute({{"UAGENT_MODEL", api.model},
-                {"UAGENT_REASONING_EFFORT", api.reasoning_effort},
-                {"UAGENT_CONTEXT", std::to_string(api.ctx_window)}});
+  PublishRoute(
+      {{Cfg("UAGENT_MODEL").EnvName(), api.model},
+       {Cfg("UAGENT_REASONING_EFFORT").EnvName(), api.reasoning_effort},
+       {Cfg("UAGENT_CONTEXT").EnvName(), std::to_string(api.ctx_window)}});
 }
 
 ProviderSetup ConfigureProvider(Api& api) {
@@ -239,7 +240,7 @@ ProviderSetup ConfigureProvider(Api& api) {
     setup.warning +=
         "ignoring invalid reasoning effort: " + api.reasoning_effort;
     api.reasoning_effort.clear();
-    OverrideSetting("UAGENT_REASONING_EFFORT", "");
+    OverrideSetting(Cfg("UAGENT_REASONING_EFFORT").EnvName(), "");
   }
   return setup;
 }

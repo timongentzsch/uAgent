@@ -332,7 +332,9 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     return Failure(std::move(error), exit_code);
   }
 
-  if (options.debug) options.overrides["UAGENT_LOG_LEVEL"] = "debug";
+  if (options.debug) {
+    options.overrides[Cfg("UAGENT_LOG_LEVEL").EnvName()] = "debug";
+  }
   ConfigManager config_manager = ConfigManager::Capture(options.overrides);
   RuntimeConfig config = config_manager.Initialize();
   // Made once the settings are in effect, so the gateway's sandbox preset is
@@ -447,7 +449,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     }
   }
   if (context->options.yolo) {
-    context->config_manager.ChooseForConversation("UAGENT_APPROVAL", "yolo");
+    context->config_manager.ChooseForConversation(
+        Cfg("UAGENT_APPROVAL").EnvName(), "yolo");
   }
   // The mode in effect, resolved where it always is: scopes, then the role.
   // Before the tools, whose servers are started with it.

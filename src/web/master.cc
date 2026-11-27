@@ -761,7 +761,7 @@ void Master::RegisterBrowserRoutes() {
 bool Master::RegisterAssetRoutes(std::string& error) {
   // Browser tests serve the bundle they just built: that folder alone answers,
   // never a mix of it and the embedded bundle. Never set outside a test run.
-  const char* dist = getenv("UAGENT_INTERNAL_WEB_DIST");
+  const char* dist = getenv(kWebDistEnv);
   std::string ignored;
   if (dist) {
     ReadRegularFile(std::string(dist) + "/design-helper.js", kUploadBytes,

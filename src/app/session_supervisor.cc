@@ -14,6 +14,7 @@
 #include "include/app/session.h"
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
+#include "include/core/config_registry.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/signals.h"
@@ -151,8 +152,10 @@ Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
   Options options;
   if (!session.launch.empty()) {
     const std::string model = JsonValue(session.launch, "model", "");
-    if (!model.empty()) options.overrides["UAGENT_MODEL"] = model;
-    options.overrides["UAGENT_APPROVAL"] =
+    if (!model.empty()) {
+      options.overrides[Cfg("UAGENT_MODEL").EnvName()] = model;
+    }
+    options.overrides[Cfg("UAGENT_APPROVAL").EnvName()] =
         JsonValue(session.launch, "permissions", "ask");
   }
   options.host = session.host;

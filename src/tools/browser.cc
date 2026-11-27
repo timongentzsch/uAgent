@@ -571,7 +571,7 @@ std::string Settle(const BrowserAccess& access, const ToolContext& context) {
 // conversation's folder; empty for any other.
 std::string Served(const std::string& path,
                    std::filesystem::path* relative = nullptr) {
-  const std::string served = EnvStr("UAGENT_INTERNAL_PREVIEW");
+  const std::string served = EnvStr(kPreviewEnv);
   const size_t split = served.find('\n');
   const std::filesystem::path folder =
       CanonicalAccessPath(served.substr(0, split));

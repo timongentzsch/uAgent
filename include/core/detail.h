@@ -11,9 +11,11 @@
 
 namespace uagent {
 
-inline constexpr std::string_view kDetailSetting = "UAGENT_DETAIL";
+inline constexpr std::string_view kDetailSetting =
+    Cfg("UAGENT_DETAIL").environment;
 // Whether the model's thinking is drawn at all, at any level.
-inline constexpr std::string_view kThinkingSetting = "UAGENT_THINKING";
+inline constexpr std::string_view kThinkingSetting =
+    Cfg("UAGENT_THINKING").environment;
 inline constexpr int kDepthAll = std::numeric_limits<int>::max();
 
 // A level is only a depth: 0 shows each turn's work as one line, 1 opens the

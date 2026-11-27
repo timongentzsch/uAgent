@@ -13,6 +13,7 @@
 #include "include/agent/conversation.h"
 #include "include/agent/session_store.h"
 #include "include/app/workspace_files.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/skills.h"
@@ -49,7 +50,7 @@ std::string PreviewPolicy(const std::string& origin, const std::string& base) {
 constexpr std::string_view kSheetPrefix = "~sheet/";
 
 std::filesystem::path SheetDir() {
-  if (const char* dist = getenv("UAGENT_INTERNAL_WEB_DIST")) {
+  if (const char* dist = getenv(kWebDistEnv)) {
     return std::filesystem::path(dist) / "share/sheet";
   }
   return InstalledShare("sheet");

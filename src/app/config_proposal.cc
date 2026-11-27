@@ -87,22 +87,24 @@ bool ValidateProviderNode(const json& node, const std::string& path,
   return true;
 }
 
+const std::string kProvidersName(Cfg("UAGENT_PROVIDERS").environment);
+
 bool ValidateProviderProposal(const std::string& value, std::string& error,
                               bool direct_user = false) {
   json providers = json::parse(value, nullptr, false);
   if (!providers.is_object()) {
-    error = "UAGENT_PROVIDERS expects a JSON object";
+    error = kProvidersName + " expects a JSON object";
     return false;
   }
   for (const auto& [name, provider] : providers.items()) {
     if (!provider.is_object()) {
-      error = "UAGENT_PROVIDERS." + name + " must be an object";
+      error = kProvidersName + "." + name + " must be an object";
       return false;
     }
     auto base = provider.find("base_url");
     if (base != provider.end()) {
       if (!base->is_string()) {
-        error = "UAGENT_PROVIDERS." + name + ".base_url must be a string";
+        error = kProvidersName + "." + name + ".base_url must be a string";
         return false;
       }
       const std::string url = base->get<std::string>();
@@ -119,7 +121,7 @@ bool ValidateProviderProposal(const std::string& value, std::string& error,
           authority.find('@') != std::string::npos ||
           url.find('?') != std::string::npos ||
           url.find('#') != std::string::npos) {
-        error = "UAGENT_PROVIDERS." + name +
+        error = kProvidersName + "." + name +
                 ".base_url must be an http(s) URL without credentials, a "
                 "query, or a fragment";
         return false;
@@ -127,7 +129,7 @@ bool ValidateProviderProposal(const std::string& value, std::string& error,
     }
   }
   return direct_user ||
-         ValidateProviderNode(providers, "UAGENT_PROVIDERS", false, error);
+         ValidateProviderNode(providers, kProvidersName, false, error);
 }
 
 }  // namespace
@@ -188,7 +190,8 @@ static std::string MergeProviders(const std::string& value,
   json merged =
       held.empty() ? json::object() : json::parse(held, nullptr, false);
   if (!merged.is_object()) {
-    error = "UAGENT_PROVIDERS is set from a variable here; change the variable";
+    error =
+        kProvidersName + " is set from a variable here; change the variable";
     return "";
   }
   const json changes = json::parse(value);

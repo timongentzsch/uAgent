@@ -31,7 +31,7 @@ void ActivateCurrentRoute(AppSession& session) {
 void ChooseCurrentRoute(AppSession& session) {
   ActivateCurrentRoute(session);
   session.context.config_manager.ChooseForConversation(
-      "UAGENT_MODEL",
+      Cfg("UAGENT_MODEL").EnvName(),
       RouteSelection(session.ApiClient(), session.context.provider.providers));
 }
 
@@ -52,8 +52,8 @@ std::string SaveSelectedModel(AppSession& session, const std::string& selected,
     const json saved = ConfigurationControl(
         {{"operation", "apply"},
          {"scope", "user"},
-         {"changes",
-          json::array({{{"key", "UAGENT_MODEL"}, {"value", route}}})}},
+         {"changes", json::array({{{"key", Cfg("UAGENT_MODEL").EnvName()},
+                                   {"value", route}}})}},
         session.context.config_manager);
     const std::string error = JsonValue(saved, "error", "");
     reply.Note(error.empty() ? Tone::kNeutral : Tone::kWarn,
@@ -86,7 +86,8 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api,
           candidate.route.route_name;  // already a selection the user can type
       if (candidate.info.context > 0) {
         api.ctx_window = candidate.info.context;
-        OverrideSetting("UAGENT_CONTEXT", std::to_string(api.ctx_window));
+        OverrideSetting(Cfg("UAGENT_CONTEXT").EnvName(),
+                        std::to_string(api.ctx_window));
       }
     }
     listing += "[" + std::to_string(i + 1) + "] " + (active ? '*' : ' ') + " " +

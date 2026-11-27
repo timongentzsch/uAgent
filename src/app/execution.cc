@@ -532,12 +532,12 @@ int Main(int argc, char** argv) {
   std::vector<std::string> remove;
   for (char** entry = ProcessEnvironment(); entry && *entry; ++entry) {
     std::string_view value(*entry);
-    if (value.starts_with("UAGENT_")) {
+    if (value.starts_with(kEnvPrefix)) {
       remove.emplace_back(value.substr(0, value.find('=')));
     }
   }
   for (const auto& key : remove) unsetenv(key.c_str());
-  PublishSettings(json{{"UAGENT_SANDBOX", preset}});
+  PublishSettings(json{{Cfg("UAGENT_SANDBOX").EnvName(), preset}});
   const auto folder = CanonicalDirectory(ExpandHome(argv[4]));
   if (!folder) {
     printf("%s\n",

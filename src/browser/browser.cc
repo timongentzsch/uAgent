@@ -25,6 +25,7 @@
 
 #include "include/browser/broker.h"
 #include "include/core/config_registry.h"
+#include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -213,8 +214,9 @@ bool StartService(const std::string& executable, ServiceProcess& process,
           "/chrome/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:"
           "/sbin:/bin",
       "HOME=" + DataDirectory(),
-      "UAGENT_BROWSER_DATA=" + DataDirectory(),
-      "UAGENT_INTERNAL_RUNTIME_DIR=" + RuntimeDir(),
+      std::string(Cfg("UAGENT_BROWSER_DATA").environment) + "=" +
+          DataDirectory(),
+      kRuntimeDirEnv + std::string("=") + RuntimeDir(),
       "LANG=C.UTF-8",
       "TMPDIR=/tmp"};
   // Pages read the user's clock and language, not the container's UTC and

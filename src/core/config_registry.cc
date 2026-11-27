@@ -161,7 +161,7 @@ bool ValidSettingValue(const ConfigDescriptor& descriptor, std::string& value,
           error += " " + std::string(choice);
         }
         // Whoever names the removed level is told its replacement.
-        if (descriptor.environment == "UAGENT_SANDBOX") {
+        if (descriptor.environment == Cfg("UAGENT_SANDBOX").environment) {
           error += " (to deny the network use sandbox.network=false)";
         }
         return false;

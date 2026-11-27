@@ -95,7 +95,7 @@ void Agent::PublishSideContext() {
   json& chosen = context->state.display["facts"]["session-settings"]["chosen"];
   const auto providers = LoadProviderCatalog().providers;
   if (!providers.empty()) {
-    chosen["UAGENT_MODEL"] = ChosenSelection(api_, providers);
+    chosen[Cfg("UAGENT_MODEL").EnvName()] = ChosenSelection(api_, providers);
   }
   std::lock_guard lock(side_mutex_);
   side_context_ = std::move(checkpoint);
@@ -114,8 +114,8 @@ json Agent::SideConversation(const std::string& source,
   snapshot.state.archive = *context->archive;
   // Permissions can change while the parent turn is running. Capture the
   // current mode rather than reviving the checkpoint's older setting.
-  snapshot.state
-      .display["facts"]["session-settings"]["chosen"]["UAGENT_APPROVAL"] =
+  snapshot.state.display["facts"]["session-settings"]["chosen"]
+                        [Cfg("UAGENT_APPROVAL").EnvName()] =
       ApprovalModeName(CurrentApprovalMode());
   snapshot.state.display["facts"]["side-origin"] = {
       {"parent", SessionIdFor(source)},

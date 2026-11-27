@@ -272,8 +272,8 @@ void Agent::PushAssistantMessage(ChatResult& response,
 // Plain prose and no call: the turn is done unless steering reopened it.
 Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
   // Mail that arrived during the final model call reopens the turn too; a
-  // reply written as a step then stays one.
-  DeliverMail(true);
+  // reply written as a step then stays one. A note does not: it waits.
+  DeliverMail();
   if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
   if (!SteeringState().Requested()) {
     if (StepFlow held = HoldAnswer(state, loop); held != StepFlow::kProceed) {
@@ -327,7 +327,7 @@ Agent::StepFlow Agent::HoldAnswer(TurnExecution& state, StepState& loop) {
       agent_wait_(state.agent_calls, {}, true);
   if (owed.empty()) {
     // One that ended since the mail was taken mailed its report first.
-    DeliverMail(true);
+    DeliverMail();
     return ApplyQueuedSteering(loop) ? StepFlow::kNextStep : StepFlow::kProceed;
   }
   const std::string names = NameList(owed);

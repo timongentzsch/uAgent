@@ -19,7 +19,7 @@ import {
   unfiled,
   writeFiles,
 } from "./fixtures.js";
-import { roomy } from "./roomy.js";
+import { cramped, roomy } from "./roomy.js";
 
 test.use({
   isMobile: true,
@@ -472,6 +472,32 @@ test.describe("a conversation", () => {
       .click();
     await roomy(page);
   });
+});
+
+// The probe itself: an opaque line on the edge is seen whatever its colour,
+// a clear one is not.
+test("the probe sees a black and a red line on the screen's edge", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.locator("#app").evaluate((app) => {
+    for (const [name, line] of [
+      ["probe black", "border-bottom: 1px solid rgb(0, 0, 0); bottom: 0"],
+      ["probe red", "border-top: 1px solid rgb(255, 0, 0); top: 0"],
+      ["probe clear", "border-left: 1px solid rgba(0, 0, 0, 0); top: 0"],
+    ]) {
+      const box = document.createElement("div");
+      box.setAttribute("aria-label", name);
+      box.style.cssText = `position: fixed; inset-inline: 0; height: 8px; ${line}`;
+      app.append(box);
+    }
+  });
+  expect(
+    (await cramped(page)).filter((found) => found.includes("probe")),
+  ).toEqual([
+    "a line along the screen's bottom edge: probe black",
+    "a line along the screen's top edge: probe red",
+  ]);
 });
 
 test.describe("a conversation in Scratch", () => {

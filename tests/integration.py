@@ -261,7 +261,7 @@ def run_case(root, name, binary):
 
 
 def run_case_body(root, name, binary):
-    from session_support import SETTLE_SECONDS, runtime_directory, stop_sessions
+    from session_support import SETTLE_SECONDS, late_wakers, runtime_directory, stop_sessions
 
     print(f"running {name}", flush=True)
     case_root = root / name
@@ -288,11 +288,12 @@ def run_case_body(root, name, binary):
         return "failed"
     finally:
         signal.alarm(0)
-        # A runtime the case started can wake another as it ends: closed
-        # until none has appeared for a while.
+        # Where an agent can still wake its parent, closed until none has
+        # appeared for a while; a web host's own teardown has done that and
+        # removed the runtime folder.
         for fixture_home in {home} | fixture_homes(home) | fixture_homes(case_root):
-            ran = runtime_directory(fixture_home).exists()
-            stop_sessions(fixture_home, settle=budget(SETTLE_SECONDS) if ran else 0)
+            waits = runtime_directory(fixture_home).exists() and late_wakers(fixture_home)
+            stop_sessions(fixture_home, settle=SETTLE_SECONDS if waits else 0)
 
 
 if __name__ == "__main__":

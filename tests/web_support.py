@@ -10,7 +10,13 @@ import subprocess
 import time
 
 from integration_support import assert_true, base_env, budget, live_process_states, wait_until
-from session_support import SETTLE_SECONDS, close_sessions, remove_runtime, stop_sessions
+from session_support import (
+    SETTLE_SECONDS,
+    close_sessions,
+    late_wakers,
+    remove_runtime,
+    stop_sessions,
+)
 
 
 def idle(value):
@@ -197,5 +203,6 @@ def web_host(binary, root, home, provider, port=None, extra_env=None):
             stop_workers(workers, home)
             # A runtime started as the host stopped (a report waking its
             # parent) has its socket there: ended before the folder goes.
-            stop_sessions(home, settle=budget(SETTLE_SECONDS))
+            if late_wakers(home):
+                stop_sessions(home, settle=SETTLE_SECONDS)
             remove_runtime(home)

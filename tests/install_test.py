@@ -1,0 +1,231 @@
+"""install.sh against a fake Docker and a fake download: what a new user is
+told, and what is written, for each state Docker and the port can be in. The
+script runs as a release install from a copy, so nothing is built."""
+
+import shutil
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+VERSION = "9.9.9"
+PORT = "8080"
+
+# Logs each call; FAKE_DOCKER is ok, denied or down, FAKE_UP fails the first
+# start, FAKE_RUNNING says the container runs.
+DOCKER = r"""#!/bin/sh
+echo "docker $*" >>"$FAKE_LOG"
+if [ "$1" = info ]; then
+  case ${FAKE_DOCKER:-ok} in
+    denied) echo "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock" >&2; exit 1 ;;
+    down) echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?" >&2; exit 1 ;;
+  esac
+  exit 0
+fi
+case " $* " in
+  *" up "*) [ -z "${FAKE_UP:-}" ] || { echo "address already in use" >&2; exit 1; } ;;
+  *" ps "*) [ -z "${FAKE_RUNNING:-}" ] || echo 0123abcd ;;
+  *" --control "*) echo '{"configured":false}' ;;
+  *" --web "*) echo "Or open: http://127.0.0.1:$UAGENT_WEB_PORT/#pair=CODE" ;;
+esac
+exit 0
+"""
+
+# Serves the release's files from the checkout; FAKE_PORT=taken answers on the
+# loopback port, else nothing listens there (curl's 7).
+CURL = r"""#!/bin/sh
+out= url=
+while [ $# -gt 0 ]; do
+  case $1 in -o) out=$2; shift ;; http*) url=$1 ;; esac
+  shift
+done
+case $url in
+  http://127.0.0.1:*) [ "${FAKE_PORT:-}" = taken ] && exit 0; exit 7 ;;
+  */compose.yaml) cp "$FAKE_DEPLOY/compose.yaml" "$out" ;;
+  */seccomp-chrome.json) cp "$FAKE_DEPLOY/seccomp-chrome.json" "$out" ;;
+  *) exit 22 ;;
+esac
+"""
+
+# The platform the installer sees, whatever runs the test: FAKE_OS is Linux
+# or Darwin, each with a version the prebuilt archives support.
+PLATFORM = r"""#!/bin/sh
+case $(basename "$0")-$1 in
+  uname-) echo "$FAKE_OS" ;;
+  uname--s) echo "$FAKE_OS" ;;
+  uname--m) [ "$FAKE_OS" = Darwin ] && echo arm64 || echo x86_64 ;;
+  getconf-GNU_LIBC_VERSION) [ "$FAKE_OS" = Linux ] && echo "glibc 2.39" || exit 1 ;;
+  sw_vers-*) [ "$FAKE_OS" = Darwin ] && echo 15.0 || exit 1 ;;
+  *) exit 1 ;;
+esac
+"""
+FAKED = ("docker", "curl", "timedatectl", "uname", "getconf", "sw_vers")
+
+
+class InstallerTest(unittest.TestCase):
+    def setUp(self):
+        self.directory = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.directory)
+        self.home = self.directory / "home"
+        self.home.mkdir()
+        self.log = self.directory / "docker.log"
+        self.log.touch()
+        # The system's tools, but no Docker or curl but the fakes.
+        self.bin = self.directory / "bin"
+        self.bin.mkdir()
+        for folder in ("/usr/bin", "/bin", "/usr/sbin", "/sbin"):
+            for tool in Path(folder).iterdir() if Path(folder).is_dir() else ():
+                link = self.bin / tool.name
+                if tool.name not in FAKED and not link.exists():
+                    link.symlink_to(tool)
+        self.fake("curl", CURL)
+        for tool in ("uname", "getconf", "sw_vers"):
+            self.fake(tool, PLATFORM)
+        self.script = self.directory / "release" / "install.sh"
+        self.script.parent.mkdir()
+        shutil.copy(ROOT / "install.sh", self.script)
+
+    def fake(self, name, body):
+        path = self.bin / name
+        path.write_text(body)
+        path.chmod(0o755)
+
+    def install(self, docker="ok", platform="Linux", **env):
+        # Each run starts from its own state: Docker as asked, an empty log.
+        if docker:
+            self.fake("docker", DOCKER)
+        else:
+            (self.bin / "docker").unlink(missing_ok=True)
+        self.log.write_text("")
+        environment = {
+            "PATH": str(self.bin),
+            "HOME": str(self.home),
+            "USER": "newuser",
+            "UAGENT_VERSION": VERSION,
+            "UAGENT_NONINTERACTIVE": "1",
+            "UAGENT_WEB_PORT": PORT,
+            "FAKE_LOG": str(self.log),
+            "FAKE_DOCKER": docker or "",
+            "FAKE_DEPLOY": str(ROOT / "deploy"),
+            "FAKE_OS": platform,
+            **env,
+        }
+        return subprocess.run(
+            ["sh", str(self.script)],
+            env=environment,
+            cwd=self.home,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def calls(self):
+        return self.log.read_text()
+
+    # Each platform's states: the words that name one, and its fix.
+    DOCKER_STATES = {
+        "Linux": (
+            (None, "Docker is not installed", "install Docker Engine 28 or newer"),
+            ("denied", "Docker is installed, but", "sudo usermod -aG docker"),
+            ("down", "Docker is installed, but not running", "sudo systemctl start docker"),
+        ),
+        "Darwin": (
+            (None, "Docker is not installed", "install Docker Desktop"),
+            ("denied", "Docker is installed, but", "start Docker Desktop as"),
+            ("down", "Docker is installed, but not running", "start Docker Desktop"),
+        ),
+    }
+
+    def states(self):
+        return [
+            (platform, *state)
+            for platform, states in self.DOCKER_STATES.items()
+            for state in states
+        ]
+
+    def test_each_docker_state_is_one_line_with_its_fix(self):
+        for platform, state, said, fix in self.states():
+            with self.subTest(platform=platform, state=state):
+                out = self.install(docker=state, platform=platform).stdout
+                lines = [line for line in out.splitlines() if said in line]
+                self.assertEqual(len(lines), 1, out)
+                self.assertIn(f"For the container: {fix}", lines[0])
+                if platform == "Darwin":
+                    # Docker Desktop has no docker group; Docker's own words say why.
+                    self.assertNotIn("usermod", lines[0])
+                    if state == "denied":
+                        self.assertIn("Docker said: permission denied", lines[0])
+
+    def test_a_container_asked_for_stops_on_that_one_line(self):
+        for platform, state, said, fix in self.states():
+            with self.subTest(platform=platform, state=state):
+                result = self.install(docker=state, platform=platform, UAGENT_INSTALL="container")
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertNotIn(said, result.stdout)
+                lines = [line for line in result.stderr.splitlines() if said in line]
+                self.assertEqual(len(lines), 1, result.stderr)
+                self.assertIn(fix, lines[0])
+                self.assertNotIn("compose", self.calls())
+
+    def test_a_taken_port_stops_before_anything_starts(self):
+        result = self.install(UAGENT_INSTALL="container", FAKE_PORT="taken")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"Port {PORT} on 127.0.0.1 is in use", result.stderr)
+        self.assertIn("UAGENT_WEB_PORT", result.stderr)
+        self.assertNotIn(" up ", self.calls())
+
+    def test_the_port_is_ours_when_the_container_already_runs(self):
+        result = self.install(UAGENT_INSTALL="container", FAKE_PORT="taken", FAKE_RUNNING="1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(" up ", self.calls())
+
+    def test_a_failed_start_is_stopped_and_says_what_to_do(self):
+        result = self.install(UAGENT_INSTALL="container", FAKE_UP="1")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("µAgent's container did not start", result.stderr)
+        self.assertIn(" stop", self.calls())
+
+    def test_a_container_install_keeps_its_port(self):
+        result = self.install(UAGENT_INSTALL="container", UAGENT_WEB_PORT="8181")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        env = (self.home / ".local/share/uagent/container/deploy/.env").read_text()
+        self.assertIn("UAGENT_WEB_PORT=8181\n", env)
+
+    def test_the_ending_says_each_thing_once_with_the_link_first(self):
+        compose = f"docker compose -f {self.home}/.local/share/uagent/container/deploy/compose.yaml"
+        command = f"{compose} exec uagent uagent"
+        for ssh in ("", "203.0.113.7 50000 198.51.100.2 22"):
+            with self.subTest(ssh=bool(ssh)):
+                result = self.install(UAGENT_INSTALL="container", SSH_CONNECTION=ssh)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                out = result.stdout
+                self.assertEqual(out.count(command), 1, out)
+                link = out.index(f"  http://127.0.0.1:{PORT}/#pair=CODE\n")
+                self.assertLess(out.index("works once, within 5 minutes"), link)
+                self.assertLess(link, out.index(f"  {command} --web\n"))
+                self.assertIn(
+                    "No model provider is set yet: open Settings in the web interface, "
+                    "or run the same command with setup.",
+                    out,
+                )
+                self.assertIn("docs/operations/container.md", out)
+                self.assertFalse((self.home / ".local/bin/uagent").exists())
+                if ssh:
+                    self.assertIn(f"\n  ssh -L {PORT}:127.0.0.1:{PORT} ", out)
+                    self.assertIn("@198.51.100.2\n", out)
+                    self.assertLess(link, out.index("From another device first:"))
+                else:
+                    self.assertNotIn("ssh -L", out)
+
+    def test_the_container_gets_this_machines_time_zone(self):
+        self.fake("timedatectl", "#!/bin/sh\necho Europe/Berlin\n")
+        result = self.install(UAGENT_INSTALL="container")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        env = (self.home / ".local/share/uagent/container/deploy/.env").read_text()
+        self.assertIn("UAGENT_TZ=Europe/Berlin\n", env)
+
+
+if __name__ == "__main__":
+    unittest.main()

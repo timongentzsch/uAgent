@@ -140,7 +140,7 @@ data: {"epoch":"6f0c…","generation":"","kind":"settings.changed","level":"defa
 | --- | --- | --- |
 | `event` | runtime | `type`, `data`, `time`: a runtime event the host does not fold into rows |
 | `node` | host | `node` (a whole transcript row), or `id` with `set`/`append` |
-| `state`, `turn_status`, `outcome`, `gap`, `error` | runtime | as on the session protocol ([Overview](../architecture/overview.md#protocol)); the host sends a `state` too when a runtime ends mid-turn, with the turn stopped |
+| `state`, `turn_status`, `outcome`, `gap`, `error` | runtime | as on the session protocol ([Overview](../architecture/overview.md#protocol)); the host sends a `state` too when a runtime ends mid-turn, with the turn stopped. An `error` from a runtime that could not start carries `code` beside its text when the reason is one a client acts on: `no_provider` when no model provider is set (a command refused for that reason carries the same `code` beside its `error`) |
 | `metadata`, `activated`, `deactivated` | host | `metadata` |
 | `deleted`, `moved` | host | none |
 | `settings.changed` | host | `level`, `thinking` |

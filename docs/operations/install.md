@@ -12,6 +12,18 @@ curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install
 
 Prebuilt archives are available from [GitHub Releases](https://github.com/timongentzsch/uAgent/releases/latest).
 
+A container install puts no `uagent` on this machine; its commands go
+through `docker compose`:
+
+```sh
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent --web    # a new pairing link
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent setup    # keys and model, in a terminal
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent -p "…"   # a one-off prompt
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml logs -f uagent              # logs
+curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | UAGENT_INSTALL=container sh   # update
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml down                       # stop; the data volume stays
+```
+
 Piped to `sh` it installs a release; `./install.sh` in a checkout builds
 that checkout. It asks on `/dev/tty`: *container* or *here* (where `docker
 info` answers), Chrome and TigerVNC via `apt-get`, the Chrome policy, a
@@ -34,7 +46,7 @@ file reference that says why.
 | `UAGENT_PREFIX` | `~/.local` | install prefix |
 | `UAGENT_NONINTERACTIVE` | unset | `1`: ask nothing; no keys, `PATH`, policy or service |
 | `UAGENT_BUILD_DIR`, `UAGENT_BUILD_JOBS` | `build/release`, 4 | source build tree and jobs |
-| `UAGENT_WEB_PORT` | 8080 | port written into the service |
+| `UAGENT_WEB_PORT` | 8080 | port written into the service, or into the container's `.env`; checked free before the container starts |
 
 ## Platforms and the loader check
 

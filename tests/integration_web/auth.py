@@ -97,8 +97,12 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
                 "host bypass",
             )
             reused = run(project, env, "--web", "--web-port", "12345", binary=binary)
+            # The same pairing text a new host prints, and nothing that names
+            # where this command ran: a container's folder means nothing outside.
             assert_true(
-                reused.returncode == 0 and client.origin in reused.stdout,
+                reused.returncode == 0
+                and client.origin in reused.stdout
+                and str(project.resolve()) not in reused.stdout,
                 reused.stdout + reused.stderr,
             )
             assert_true(process.poll() is None, "master replaced")
@@ -206,3 +210,44 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
             )
             client.command("logout")
             assert_true(client.json("/api/sessions")[0] == 401, "revoked cookie remained valid")
+
+
+def test_a_browser_at_another_address_is_told_where_uagent_is(root, home, *, binary):
+    """A page opened at an address the host does not serve (a tunnel on
+    another port) names the one it does; API calls keep their JSON error, and
+    neither is served anything else."""
+    with Server([event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, _code, _process, _env):
+            elsewhere = {"Host": "127.0.0.1:1", "Origin": ""}
+            status, body, headers = client.request(
+                "/", headers={**elsewhere, "Accept": "text/html,application/xhtml+xml"}
+            )
+            page = body.decode()
+            assert_true(status == 403, status)
+            assert_true(headers["Content-Type"].startswith("text/html"), headers)
+            assert_true(client.origin in page and "UAGENT_WEB_ORIGIN" in page, page)
+            assert_true("<script" not in page, page)
+            for path, accept in (("/", "*/*"), ("/api/sessions", "text/html")):
+                status, body, _ = client.request(path, headers={**elsewhere, "Accept": accept})
+                assert_true(status == 403, (path, status))
+                assert_true(json.loads(body) == {"error": "invalid Host or Origin"}, body)
+
+
+def test_a_start_without_a_provider_carries_its_code(root, home, *, binary):
+    """The runtime's refusal reaches the browser with a code beside its text,
+    so the page can offer the providers settings without reading the text."""
+    project = root / "project"
+    project.mkdir()
+    unset = {"UAGENT_PROVIDERS": None, "UAGENT_MODEL": None}
+    with web_host(binary, root, home, "", extra_env=unset) as (client, code, _process, _env):
+        client.pair(code)
+        session = client.command("create", cwd=str(project))["session"]
+        _connection, response = client.events()
+        # The refusal is the command's answer when the runtime ends before the
+        # host reaches it, else the runtime's error on the stream.
+        status, refused = client.send("activate", session)
+        if status == 200:
+            frames = (json.loads(line[6:]) for line in response if line.startswith(b"data: "))
+            refused = next(frame for frame in frames if frame.get("kind") == "error")
+        assert_true(refused["code"] == "no_provider", refused)
+        assert_true(refused["error"].startswith("no provider: "), refused)

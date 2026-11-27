@@ -20,6 +20,7 @@
 #include "include/api/client.h"
 #include "include/app/control.h"
 #include "include/app/openrouter_signin.h"
+#include "include/app/update.h"
 #include "include/core/capture.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -365,7 +366,17 @@ int OpenRouterSetup(bool browser);
 
 int RunSetup() {
   if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) {
-    fprintf(stderr, "uagent setup needs a terminal\n");
+    // In the container this runs through docker compose exec, whose -T takes
+    // the terminal away; the appliance's path is the host's to know.
+    const char* again =
+        InstallKind() == "container"
+            ? "docker compose -f <the appliance's compose.yaml> "
+              "exec uagent uagent setup, without -T,"
+            : "uagent setup in one,";
+    fprintf(stderr,
+            "uagent setup asks its questions in a terminal: run %s or set "
+            "the provider in Settings in the web interface\n",
+            again);
     return 2;
   }
   SavedSettings saved = ReadSettings("");

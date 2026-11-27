@@ -417,7 +417,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   if (!context->options.show_system_prompt && api.base_url.empty() &&
       context->provider.providers.empty()) {
     DebugLog("startup_error", {{"error", "no provider"}});
-    return Failure("no provider: " + ModelHint(context->provider.providers));
+    return Failure(std::string(kNoProviderError) +
+                   ModelHint(context->provider.providers));
   }
   // A conversation without a model starts at the model picker.
   if (!context->options.show_system_prompt && api.model.empty() &&

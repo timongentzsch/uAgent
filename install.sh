@@ -89,8 +89,34 @@ build_from_source() {
   UAGENT_INSTALL=here exec sh "$data/src/install.sh"
 }
 
+# Whether this user can run containers; if not, why, and what fixes it.
 docker=no
-if has docker && docker info >/dev/null 2>&1; then docker=yes; fi
+docker_why=
+docker_fix=
+if ! has docker; then
+  docker_why="not installed"
+  docker_fix="install Docker Engine 28 or newer: https://docs.docker.com/engine/install/"
+  [ "$os" = Darwin ] && docker_fix="install Docker Desktop: https://docs.docker.com/desktop/"
+elif problem=$(docker info 2>&1 >/dev/null); then
+  docker=yes
+else
+  case $problem in
+    *"permission denied"*)
+      docker_why="installed, but $(id -un) may not use it"
+      docker_fix="sudo usermod -aG docker $(id -un), then log in again"
+      # Docker Desktop has no docker group: it serves the user who runs it.
+      [ "$os" = Darwin ] &&
+        docker_fix="start Docker Desktop as $(id -un) (Docker said: $(echo "$problem" | head -n 1))" ;;
+    *)
+      docker_why="installed, but not running"
+      docker_fix="sudo systemctl start docker"
+      [ "$os" = Darwin ] && docker_fix="start Docker Desktop" ;;
+  esac
+fi
+docker_found=$(yes_no "$docker")
+[ "$docker" = yes ] || [ "$docker_why" = "not installed" ] || docker_found="not usable"
+# Said once: as the reason an asked-for container stops, else as a note.
+docker_line="Docker is $docker_why. For the container: $docker_fix"
 browser=no
 if [ "$os" = Linux ] && has google-chrome-stable && has Xtigervnc && has xauth; then
   browser=yes
@@ -98,15 +124,16 @@ fi
 if [ "$mode" = source ]; then
   node=no
   if has npm; then node=yes; fi
-  found="Docker: $(yes_no "$docker"), Node.js: $(yes_no "$node")"
+  found="Docker: $docker_found, Node.js: $(yes_no "$node")"
 else
-  found="Docker: $(yes_no "$docker")"
+  found="Docker: $docker_found"
 fi
 if [ "$os" = Linux ]; then
   echo "$found, Chrome and TigerVNC: $(yes_no "$browser")"
 else
   echo "$found; the agent's browser runs in the container or on Linux"
 fi
+[ "$docker" = yes ] || [ "${UAGENT_INSTALL:-}" = container ] || echo "$docker_line"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
@@ -126,6 +153,10 @@ release_version() {
 # The container keeps an agent that runs commands and browses away from this
 # machine's files and logins, so it comes first where Docker runs.
 choice=${UAGENT_INSTALL:-here}
+if [ "$choice" = container ] && [ "$docker" = no ]; then
+  echo "$docker_line" >&2
+  exit 1
+fi
 if [ -z "${UAGENT_INSTALL:-}" ] && [ "$docker" = yes ] && [ "$interactive" = yes ]; then
   here=
   [ "$mode" = release ] && [ -n "$unsupported" ] && here=", built from source ($unsupported)"
@@ -134,6 +165,32 @@ if [ -z "${UAGENT_INSTALL:-}" ] && [ "$docker" = yes ] && [ "$interactive" = yes
   reply 'Install [1]:' || true
   [ "$answer" = 2 ] || choice=container
 fi
+
+# The link uagent --web prints (read from its text on stdin), then how
+# another device or a new link gets in: each fact once, what to copy on a
+# line of its own. $1 runs uagent here.
+pairing_minutes=5
+docs=https://github.com/$repo/blob/master/docs/operations
+pair_block() {
+  text=$(cat)
+  link=$(echo "$text" | sed -n 's/^Or open: //p')
+  echo "Open this link to pair this browser (works once, within $pairing_minutes minutes):"
+  echo "  ${link:-$text}"
+  if [ -n "${SSH_CONNECTION:-}" ]; then
+    echo "From another device first:"
+    echo "  ssh -L $port:127.0.0.1:$port $(id -un)@$(echo "$SSH_CONNECTION" | cut -d' ' -f3)"
+  fi
+  echo "A new link, or another device:"
+  echo "  $1 --web"
+}
+
+# This machine's time zone name, for the container's browser; empty when it
+# cannot be read.
+host_zone() {
+  { timedatectl show -p Timezone --value 2>/dev/null ||
+      cat /etc/timezone 2>/dev/null ||
+      readlink /etc/localtime 2>/dev/null | sed -n 's|.*/zoneinfo/||p'; } | head -n 1
+}
 
 # The container's agent is UID 10001; you keep access to what it makes.
 workspace_folder() {
@@ -165,28 +222,53 @@ if [ "$choice" = container ]; then
       workspaces=$HOME/uagent-workspaces
       if [ -f "$deploy/.env" ]; then
         workspaces=$(sed -n 's/^UAGENT_WORKSPACES=//p' "$deploy/.env")
+        kept_port=$(sed -n 's/^UAGENT_WEB_PORT=//p' "$deploy/.env")
+        kept_zone=$(sed -n 's/^UAGENT_TZ=//p' "$deploy/.env")
+        port=${UAGENT_WEB_PORT:-${kept_port:-$port}}
       elif reply "Folder the agent works in, all it sees of this machine [$workspaces]:" &&
            [ -n "$answer" ]; then
         workspaces=$answer
       fi
       workspace_folder "$workspaces"
-      printf 'UAGENT_VERSION=%s\nUAGENT_WORKSPACES=%s\n' "$version" "$workspaces" >"$deploy/.env"
+      printf 'UAGENT_VERSION=%s\nUAGENT_WORKSPACES=%s\nUAGENT_WEB_PORT=%s\n' \
+        "$version" "$workspaces" "$port" >"$deploy/.env"
+      zone=${kept_zone:-$(host_zone)}
+      [ -z "$zone" ] || echo "UAGENT_TZ=$zone" >>"$deploy/.env"
     fi
   fi
 fi
+# Whether something already answers on the loopback port: curl's 7 is
+# "nothing listens".
+port_taken() {
+  curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$port/" 2>/dev/null && return 0
+  [ $? -ne 7 ]
+}
 if [ "$choice" = container ]; then
   compose() { docker compose -f "$deploy/compose.yaml" "$@"; }
-  if [ "$mode" = source ]; then
-    compose up --build -d
-  else
-    compose up -d --no-build --pull always
+  # How every later step reaches the container's uagent.
+  compose_line="docker compose -f $deploy/compose.yaml"
+  container_command="$compose_line exec uagent uagent"
+  # A running µAgent holds the port itself; anything else there would stop
+  # the network container from starting.
+  if [ -z "$(compose ps -q --status running network 2>/dev/null)" ] && port_taken; then
+    echo "Port $port on 127.0.0.1 is in use. Free it, or install on another: UAGENT_WEB_PORT=<port>" >&2
+    exit 1
+  fi
+  if [ "$mode" = source ]; then up="up --build -d"; else up="up -d --no-build --pull always"; fi
+  # shellcheck disable=SC2086 # the options are words
+  if ! compose $up; then
+    # Nothing is left restarting in a loop.
+    compose stop >/dev/null 2>&1 || true
+    echo "µAgent's container did not start (Docker's message is above). If a port was in use," \
+      "free it or set UAGENT_WEB_PORT; then run the installer again." >&2
+    exit 1
   fi
   printf 'Waiting for the container'
   tries=0
   until compose exec -T uagent curl -fs -o /dev/null "http://127.0.0.1:$port/" 2>/dev/null; do
     tries=$((tries + 1))
     if [ "$tries" -ge 60 ]; then
-      echo; echo "It did not answer within a minute; see: docker compose -f $deploy/compose.yaml logs uagent" >&2
+      echo; echo "It did not answer within a minute; see: $compose_line logs uagent" >&2
       exit 1
     fi
     printf .
@@ -211,9 +293,14 @@ if [ "$choice" = container ]; then
   elif [ "$os" = Darwin ]; then
     echo "To keep µAgent available, let Docker Desktop start when you log in (Settings, General)."
   fi
-  echo "Open the link below to pair this browser; to pair another device later:"
-  echo "  docker compose -f $deploy/compose.yaml exec uagent uagent --web"
-  compose exec -T uagent uagent --web
+  compose exec -T uagent uagent --web | pair_block "$container_command"
+  # Without questions, nothing asked for a provider.
+  if [ "$interactive" = no ] &&
+     ! compose exec -T uagent uagent --control '{"kind":"provider"}' 2>/dev/null |
+       grep -q '"configured":true'; then
+    echo "No model provider is set yet: open Settings in the web interface, or run the same command with setup."
+  fi
+  echo "All commands, and reaching µAgent from other devices: $docs/container.md"
   exit 0
 fi
 
@@ -466,9 +553,9 @@ if [ "$web_service" = yes ]; then
     sleep 0.5
   done
   if [ "$tries" -lt 20 ]; then
-    echo "Installed $bin. The web interface is running; open the link below to pair this browser."
-    echo "Start the terminal with: uagent  (uagent --web pairs another device)"
-    "$bin" --web || true
+    echo "Installed $bin. The web interface is running; start the terminal with: uagent"
+    "$bin" --web | pair_block uagent || true
+    [ -z "${SSH_CONNECTION:-}" ] || echo "Reaching µAgent from other devices: $docs/remote-access.md"
   else
     echo "Installed $bin, but the web interface did not answer on port $port." >&2
     if [ "$service" = systemd ]; then

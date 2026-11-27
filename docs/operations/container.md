@@ -6,6 +6,25 @@ owns the network. What the container does and does not bound is policy and
 is stated in [Security](../../SECURITY.md#the-container); how the browser
 works is in [Browser](../architecture/browser.md).
 
+## Commands of a container install
+
+Wherever µAgent or its docs say `uagent …`, a container install runs it as
+`docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec
+uagent uagent …`: there is no `uagent` on this machine. The file is under
+`$XDG_DATA_HOME` when that is set. The commands it needs:
+
+```sh
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent --web    # a new pairing link
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent setup    # keys and model, in a terminal
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml exec uagent uagent -p "…"   # a one-off prompt
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml logs -f uagent              # logs
+curl -fsSL https://raw.githubusercontent.com/timongentzsch/uAgent/master/install.sh | UAGENT_INSTALL=container sh   # update
+docker compose -f ~/.local/share/uagent/container/deploy/compose.yaml down                       # stop; the data volume stays
+```
+
+The web interface answers on this machine's `127.0.0.1` only; to use it
+from another device, see [Remote access](remote-access.md).
+
 ## Start it
 
 ```sh
@@ -20,7 +39,8 @@ release's `compose.yaml` and `seccomp-chrome.json` into
 `~/.local/share/uagent/container/deploy`, writes `UAGENT_VERSION` and
 `UAGENT_WORKSPACES` to `.env` there, runs `up -d --no-build --pull always`
 on `ghcr.io/timongentzsch/uagent:<version>` (amd64, arm64), waits up to 60 s,
-then runs `uagent setup` and `uagent --web`. The Compose project is named
+then runs `uagent setup` and `uagent --web` in it, naming the commands
+above as it ends. The Compose project is named
 `uagent` either way, so both copies share one volume. Use Docker Engine 28
 or newer: [older engines can expose a loopback-published port to nearby hosts](https://docs.docker.com/engine/network/port-publishing/).
 
@@ -49,10 +69,13 @@ installer command and no **Update** button. The data volume is kept.
 Compose reads `.env` beside `compose.yaml` for substitution. A file
 `.env.appliance` one directory up (the checkout root, or
 `~/.local/share/uagent/container/`) is passed whole into the `uagent`
-container's environment: settings such as `UAGENT_WEB_ORIGIN`, provider
-keys, and `TZ` and `LANGUAGE` (`Europe/Berlin`, `de`), which the browser
-service passes to Chrome so pages see that clock and language rather than
-UTC and English. Keep the file private.
+container's environment: settings such as `UAGENT_WEB_ORIGIN` and provider
+keys. Keep the file private. The clock and language pages see are
+`UAGENT_TZ` and `UAGENT_LANGUAGE` below, set as `TZ` and `LANGUAGE` in the
+container, which the browser service passes to Chrome; they replace `TZ`
+and `LANGUAGE` in `.env.appliance`. The installer writes `UAGENT_TZ` from
+this machine's zone (`timedatectl`, `/etc/timezone` or the `/etc/localtime`
+link) when it can read one.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
@@ -62,6 +85,8 @@ UTC and English. Keep the file private.
 | `UAGENT_NETWORK` | `private` | `open` loads no rules |
 | `UAGENT_NETWORK_ALLOW` | empty | private destinations the agent may reach |
 | `UAGENT_CHROME` | `auto` | `off` starts no Chrome updater |
+| `UAGENT_TZ` | empty (UTC) | time zone of the agent's browser, such as `Europe/Berlin` |
+| `UAGENT_LANGUAGE` | empty (English) | languages of the agent's browser, such as `de` or `de:en` |
 | `UAGENT_PIDS_LIMIT` | `4096` | processes and threads of `uagent` |
 | `UAGENT_MEM_LIMIT` | `0` (none) | memory limit, such as `4g`; size it with `deploy/footprint.sh` |
 | `UAGENT_CPUS` | `0` (none) | CPU limit, such as `4` |
@@ -103,6 +128,44 @@ pass. This covers the agent's commands, terminal and Chrome alike.
 Names resolve once when `network` starts; an unresolvable one stops it, and
 `uagent` with it. A container named there must share a Docker network with
 `network`. DNS goes to Docker's upstream resolver, which may be on your LAN.
+
+### A model server on this machine
+
+Inside the container, `127.0.0.1` is the container's own. The `network`
+service maps `host.docker.internal` to this machine (`extra_hosts` with
+`host-gateway`; Docker Desktop has the name already), and the agent's
+container shares that hosts file. To use a model server running here:
+
+1. Make it listen on the Docker bridge or on all interfaces, not only on
+   loopback. Ollama: `OLLAMA_HOST=0.0.0.0:11434`.
+2. Allow it: `UAGENT_NETWORK_ALLOW=host.docker.internal:11434` in `.env`
+   beside `compose.yaml`, then `docker compose -f … up -d`.
+3. Use `http://host.docker.internal:11434/v1` as the provider's address.
+
+### A model server in another Compose project
+
+Containers of two projects share no network. Join them: an override file
+beside `compose.yaml` (`compose.override.yaml`, read by `docker compose`
+when no `-f` names files, else add it with a second `-f`) attaches the
+`network` service to the other project's network, declared `external`, and
+`UAGENT_NETWORK_ALLOW` names the server's service and port:
+
+```yaml
+services:
+  network:
+    networks: [default, models]
+networks:
+  models:
+    external: true
+    name: otherproject_default
+```
+
+```sh
+UAGENT_NETWORK_ALLOW=llm:8000      # the other project's service name and port
+```
+
+The installer starts the appliance with `compose.yaml` alone: after it
+runs, start it again with both files.
 
 ```sh
 deploy/check-network.sh                         # or: deploy/check-network.sh -f FILE

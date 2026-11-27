@@ -80,10 +80,6 @@ std::string Prefix() {
              : "";
 }
 
-std::string Install() {
-  return Trim(ReadFile(InstalledShare("install").string(), 64).value_or(""));
-}
-
 std::string Command(const std::string& install) {
   if (install == "checkout") return "git pull && ./install.sh";
   return std::string("curl -fsSL https://raw.githubusercontent.com/") +
@@ -93,10 +89,14 @@ std::string Command(const std::string& install) {
 
 }  // namespace
 
+std::string InstallKind() {
+  return Trim(ReadFile(InstalledShare("install").string(), 64).value_or(""));
+}
+
 json UpdateState(bool terminal) {
   json state = ReadJsonFile(CachePath(), kReleaseBytes);
   if (!state.is_object()) state = json::object();
-  const std::string install = Install();
+  const std::string install = InstallKind();
   const bool available = Newer(JsonValue(state, "latest", ""), kVersion);
   // Only an installer's own install is replaced by an installer.
   const bool here = install == "release" || install == "source";

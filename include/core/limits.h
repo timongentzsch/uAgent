@@ -117,6 +117,10 @@ inline constexpr size_t kCompactionRouteFloorBytes = KiB(4);
 // bounds a blocking wait so an abort or a spinner is noticed.
 inline constexpr int kPollTickMs = 20;
 inline constexpr int kWaitTickMs = 100;
+// What a stopped helper gets to exit before it is killed.
+inline constexpr int kStopGraceMs = 500;
+// A cancellation notice to an MCP server: the request's budget is spent.
+inline constexpr int kMcpNoticeMs = 50;
 
 // A proposal waits this long for the user's decision; an unclaimed upload or
 // import is an orphan after a day; a host with no wake due sleeps a day.

@@ -149,7 +149,7 @@ void CancelTask(McpServer& server, const std::string& id) {
   const bool stopping = AbortRequested();
   if (stopping) ClearAbort();
   McpSend(server, server.next_id++, "tasks/cancel", {{"taskId", id}},
-          Clock::now() + std::chrono::milliseconds(50));
+          Clock::now() + std::chrono::milliseconds(kMcpNoticeMs));
   if (stopping) RequestAbort();
 }
 

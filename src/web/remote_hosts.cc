@@ -29,6 +29,8 @@ namespace uagent::web {
 namespace {
 // Hosts one serving host connects to at most.
 constexpr size_t kMaxRemoteHosts = 16;
+// Ticks of kWaitTickMs an ssh control connection gets to come up.
+constexpr int kControlWaitTicks = 300;
 using Clock = std::chrono::steady_clock;
 struct Host {
   std::string id, address, control, log, client, executable, auth;
@@ -78,7 +80,9 @@ std::optional<double> RoundTrip(const Host& host) {
       .count();
 }
 void Close(Host& host) {
-  if (host.pid > 0) StopProcess(host.pid, true, std::chrono::milliseconds(500));
+  if (host.pid > 0) {
+    StopProcess(host.pid, true, std::chrono::milliseconds(kStopGraceMs));
+  }
   host.pid = -1;
   unlink(host.control.c_str());
 }
@@ -175,7 +179,8 @@ bool Connect(Host& host, const std::string& bundle, std::string& error,
     return false;
   }
   bool ready = false;
-  for (int attempt = 0; attempt < 300 && !stop.stop_requested(); ++attempt) {
+  for (int attempt = 0; attempt < kControlWaitTicks && !stop.stop_requested();
+       ++attempt) {
     int status = 0;
     if (WaitPid(host.pid, &status, WNOHANG) == host.pid) {
       host.pid = -1;
@@ -185,7 +190,7 @@ bool Connect(Host& host, const std::string& bundle, std::string& error,
       ready = true;
       break;
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(kWaitTickMs));
   }
   if (!ready) {
     const std::string detail = ReadFile(host.log, KiB(64)).value_or("");

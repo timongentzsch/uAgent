@@ -24,6 +24,10 @@
 
 namespace uagent::browser {
 namespace {
+// Between the key events of one press, so a page sees them apart.
+constexpr int kKeyGapMs = 50;
+// How long a click that should open a file chooser gets to open one.
+constexpr int kChooserWaitMs = 2000;
 // Where an element is once it is still over two frames, or why it cannot be
 // acted on: gone, still moving, covered. `held` does not bring it into view.
 constexpr const char* kElementScript = R"js((async (e, held) => {
@@ -246,7 +250,7 @@ bool PressOnDisplay(const std::string& socket,
                             static_cast<char>(key >> 8),
                             static_cast<char>(key)};
       if (!send(std::string_view(event, sizeof event))) return false;
-      poll(nullptr, 0, 50);
+      poll(nullptr, 0, kKeyGapMs);
     }
     poll(nullptr, 0, wait);
   }
@@ -728,8 +732,9 @@ json Runtime::Act(const std::string& op, const json& command) {
       if (json clicked = Act("click", command); clicked.contains("error")) {
         return clicked;
       }
-      for (int waited = 0; !chooser_ && waited < 2000; waited += 100) {
-        poll(nullptr, 0, 100);
+      for (int waited = 0; !chooser_ && waited < kChooserWaitMs;
+           waited += kWaitTickMs) {
+        poll(nullptr, 0, kWaitTickMs);
         Evaluate({{"expression", "0"}});
       }
       if (!chooser_) {

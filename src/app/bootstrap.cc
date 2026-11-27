@@ -56,6 +56,10 @@
 
 namespace uagent {
 namespace {
+// A remote runtime's state is looked at every kStateCheckTicks ticks of
+// kStateCheckTickMs, so a stop is seen within a tick.
+constexpr int kStateCheckTicks = 60;
+constexpr int kStateCheckTickMs = 50;
 
 BootstrapResult Failure(std::string error, int exit_code = 1) {
   return {nullptr, std::move(error), exit_code};
@@ -374,8 +378,10 @@ BootstrapResult Bootstrap(Options options, const char* executable,
               generation = next;
               supervisor->Wake();
             }
-            for (int i = 0; i < 60 && !stop.stop_requested(); ++i) {
-              std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            for (int i = 0; i < kStateCheckTicks && !stop.stop_requested();
+                 ++i) {
+              std::this_thread::sleep_for(
+                  std::chrono::milliseconds(kStateCheckTickMs));
             }
           }
         });

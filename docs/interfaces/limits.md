@@ -71,6 +71,8 @@ Limits fixed in the binary. A limit a person can change is a [setting](settings.
 | `kCompactionRouteFloorBytes` | `4 KiB` |  |
 | `kPollTickMs` | `20` | A poll tick re-checks something that has no event to wake on; a wait tick bounds a blocking wait so an abort or a spinner is noticed. |
 | `kWaitTickMs` | `100` |  |
+| `kStopGraceMs` | `500` | What a stopped helper gets to exit before it is killed. |
+| `kMcpNoticeMs` | `50` | A cancellation notice to an MCP server: the request's budget is spent. |
 | `kProposalLifetimeMinutes` | `5` | A proposal waits this long for the user's decision; an unclaimed upload or import is an orphan after a day; a host with no wake due sleeps a day. |
 | `kOrphanAgeHours` | `24` |  |
 | `kIdleSleepHours` | `24` |  |

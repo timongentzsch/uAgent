@@ -18,9 +18,6 @@
 
 namespace uagent {
 
-// Background output is observational, so it gets less than a foreground read.
-inline constexpr int64_t kActivityResultChars = 6000;
-
 struct CollectedLog {
   std::string output;
   std::optional<ToolArtifact> artifact;

@@ -129,7 +129,6 @@ void RegisterActivityTool(std::vector<Tool>& tools,
   activity.routine = [](const json& a) {
     return JsonValue(a, "operation", "") == "list";
   };
-  activity.result_chars = kActivityResultChars;
   activity.blocking_wait_default_ms = 0;
   // An empty write is intentional, so chars, given or not, is never missing.
   activity.action_requires = {"operation",

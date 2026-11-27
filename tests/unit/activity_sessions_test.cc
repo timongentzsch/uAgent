@@ -1013,7 +1013,8 @@ TEST_CASE(TestActivityWaitAndDelivery) {
 
   {
     ActivitySupervisor bounded_completion;
-    ScopedEnv scoped_result_cap("UAGENT_TOOL_RESULT_CHARS", "8000");
+    // A finished command's output is cut at the tool result size.
+    ScopedEnv scoped_result_cap("UAGENT_TOOL_RESULT_CHARS", "3000");
     Gate gate;
     CHECK(RunShellCommand(bounded_completion, context,
                           {.command = gate.Hold("printf '%7000s' x"),
@@ -1029,7 +1030,7 @@ TEST_CASE(TestActivityWaitAndDelivery) {
     std::vector<std::string> bounded_notes =
         CompletionNotes(bounded_completion);
     CHECK(bounded_notes.size() == 1);
-    CHECK(!bounded_notes.empty() && bounded_notes[0].size() < 6500);
+    CHECK(!bounded_notes.empty() && bounded_notes[0].size() < 3500);
     CHECK(!bounded_notes.empty() &&
           bounded_notes[0].find("bytes omitted") != std::string::npos);
     if (!bounded_jobs.empty()) {

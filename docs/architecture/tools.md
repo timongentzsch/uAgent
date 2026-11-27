@@ -260,8 +260,9 @@ unless its entry sets `"trust": true` and the tool declares
 - Prose that looks like a tool call is never executed; only native calls
   that pass the schema run.
 - Results: `UAGENT_TOOL_RESULT_CHARS` per call (head and tail kept), a
-  larger window for `read_path`, 6,000 characters for `activity`
-  (`kActivityResultChars`); `run` and `activity` take `max_output_chars`
+  larger window for `read_path`; a background command's output, delivered
+  or read with `activity`, is cut the same way; `run` and `activity` take
+  `max_output_chars`
   between 256 and 65,536.
 - Concurrency: `UAGENT_TOOL_CONCURRENCY` calls of a batch at once;
   `UAGENT_MAX_ACTIVITIES` live activities.

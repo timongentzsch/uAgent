@@ -283,9 +283,7 @@ bool Master::Initialize(std::string& error) {
   server_.set_write_timeout(kWriteTimeoutSeconds);
   server_.set_keep_alive_max_count(kKeepAliveRequests);
   server_.set_keep_alive_timeout(kKeepAliveTimeoutSeconds);
-  // An upload is the largest body; other requests stay within a transfer.
-  server_.set_payload_max_length(
-      std::max(kTransferBytes, MiB(static_cast<size_t>(options_.upload_mb))));
+  server_.set_payload_max_length(LargestBody());
   server_.set_default_headers(
       {{"X-Content-Type-Options", "nosniff"},
        {"Referrer-Policy", "no-referrer"},

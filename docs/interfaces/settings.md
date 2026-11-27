@@ -156,7 +156,7 @@ A setting is saved under its key for all conversations or for one folder (`/conf
 
 | Key | Variable | Default | Range | Scopes | Applies | What |
 | --- | --- | --- | --- | --- | --- | --- |
-| `attachments.maxMb` (advanced) | `UAGENT_ATTACHMENT_MB` | `10` | 1–17592186044415 | user, project | next message | largest attachment in mebibytes |
+| `attachments.maxMb` (advanced) | `UAGENT_ATTACHMENT_MB` | `10` | 1–17592186044415 | user, project | next message | largest attachment or web upload in mebibytes; the web host takes a new value when it restarts |
 | `attachments.maxCount` (advanced) | `UAGENT_ATTACHMENT_COUNT` | `8` | 1–64 | user, project | next message | attachments queued for one model request |
 | `attachments.storeMb` (advanced) | `UAGENT_ATTACHMENT_STORE_MB` | `512` | 64–65536 | user | next message | mebibytes kept for files uploaded in the web app, across conversations; a full store refuses new ones |
 | `attachments.maxImagePx` (advanced) | `UAGENT_IMAGE_MAX_PX` | `2048` | 256–8192 | user, project | next message | longest image side in pixels; larger images are scaled down |

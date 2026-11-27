@@ -9,6 +9,7 @@
 
 #include <httplib.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -114,6 +115,12 @@ class Master {
   void Events(const Request&, Response&);
   void Upload(const Request&, Response&, const httplib::ContentReader&);
   void AssetRead(const Request&, Response&);
+  // An upload, or a stored one read back, is the largest body; every other
+  // request stays within a transfer.
+  size_t LargestBody() const {
+    return std::max(kTransferBytes,
+                    MiB(static_cast<size_t>(options_.upload_mb)));
+  }
   // A files operation on a conversation's folder, on the host it is on.
   json WorkspaceFiles(const WorkspaceIdentity& workspace,
                       const std::string& session, json operation);

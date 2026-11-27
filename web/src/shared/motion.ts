@@ -2,16 +2,16 @@ import { type RefObject } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { compactNow } from "./layout.ts";
 
-// Motion in script uses the same tokens as CSS (styles/tokens.css), so the
-// one reduced-motion switch there covers animations started here too.
+// Motion in script uses the same tokens as CSS (styles/tokens.css), scaled
+// by --motion-scale, so the one reduced-motion switch covers it too.
 type Motion = "fast" | "base" | "slow" | "glide" | "arrive" | "send" | "work";
 
 export function motionMs(name: Motion) {
-  const value = getComputedStyle(document.documentElement)
-    .getPropertyValue(`--motion-${name}`)
-    .trim();
+  const style = getComputedStyle(document.documentElement);
+  const value = style.getPropertyValue(`--motion-${name}`).trim();
+  const scale = parseFloat(style.getPropertyValue("--motion-scale"));
   // The build may write a token in seconds.
-  return parseFloat(value) * (value.endsWith("ms") ? 1 : 1000) || 0;
+  return parseFloat(value) * (value.endsWith("ms") ? 1 : 1000) * scale || 0;
 }
 
 export const motionEase = (

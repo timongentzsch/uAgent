@@ -13,6 +13,10 @@ export interface Point {
 }
 
 export const MAXIMUM_ZOOM = 5;
+// One press of − or +, or of ⌘/Ctrl with − or +, on every zoomed surface.
+export const ZOOM_STEP = 1.25;
+// How much one pixel of ⌘/Ctrl wheel travel zooms, as an exponent.
+const WHEEL_ZOOM_RATE = 0.01;
 // Past this a press is a drag rather than a tap.
 export const TAP_SLOP_PX = 8;
 
@@ -127,7 +131,7 @@ export function bindZoomWheel(
     if (event.ctrlKey || event.metaKey) {
       event.preventDefault();
       const rect = element.getBoundingClientRect();
-      zoom(Math.exp(-event.deltaY * 0.01), {
+      zoom(Math.exp(-event.deltaY * WHEEL_ZOOM_RATE), {
         x: event.clientX - rect.left,
         y: event.clientY - rect.top,
       });

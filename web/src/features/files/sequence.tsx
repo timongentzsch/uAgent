@@ -79,7 +79,7 @@ import { InsertBar, PickBar } from "../../shared/float-bars.tsx";
 import Tweaks, { type Tweak } from "./tweaks.tsx";
 import { dirOf } from "./flow.ts";
 import { readTokens } from "./tokens.ts";
-import { bindZoomWheel } from "../../shared/zoom.ts";
+import { bindZoomWheel, ZOOM_STEP } from "../../shared/zoom.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 import { coarsePointer, useRoom } from "../../shared/layout.ts";
 import { ZoomControls } from "../../shared/zoom-surface.tsx";
@@ -128,10 +128,9 @@ const TAB_AFTER: Record<string, (index: number, tabs: number) => number> = {
 
 // How soon a change of the file held for the person is offered again.
 const RENEW_MS = 500;
-// The zoom of an opened page, as a scale of its real size, and one step.
+// The zoom of an opened page, as a scale of its real size.
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 4;
-const ZOOM_STEP = 1.25;
 
 // A page opened across the pane with what it is part of beside it: a deck's
 // slides, a document's pages, a design's boards. A sheet is its grid, which

@@ -15,14 +15,13 @@ import {
   type Point,
   type ZoomView,
   TAP_SLOP_PX,
+  ZOOM_STEP,
 } from "./zoom.ts";
 import "./zoom-surface.css";
 import { useLatest } from "./use-latest.ts";
 
 const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_ZOOM = 2.5;
-// One press of − or +, or of ⌘/Ctrl with − or +.
-const ZOOM_STEP = 1.25;
 const FITTED: ZoomView = { scale: 1, x: 0, y: 0 };
 
 // `draw` hands single pointers to the content: two fingers still pinch, but

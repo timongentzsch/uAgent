@@ -16,6 +16,7 @@ import {
   type Pinch,
   type Point,
   type ZoomView,
+  ZOOM_STEP,
 } from "../../shared/zoom.ts";
 import { useLatest } from "../../shared/use-latest.ts";
 
@@ -321,10 +322,10 @@ export default function BrowserTouch({
         role="group"
         aria-label="View"
       >
-        <IconButton label="Zoom out" onClick={() => zoomBy(1 / 1.25)}>
+        <IconButton label="Zoom out" onClick={() => zoomBy(1 / ZOOM_STEP)}>
           <Minus />
         </IconButton>
-        <IconButton label="Zoom in" onClick={() => zoomBy(1.25)}>
+        <IconButton label="Zoom in" onClick={() => zoomBy(ZOOM_STEP)}>
           <Plus />
         </IconButton>
         {pointer && (

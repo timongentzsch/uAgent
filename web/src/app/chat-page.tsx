@@ -133,7 +133,6 @@ export default function ChatPage({
   loadError,
   newPlace,
   start,
-  settings,
   openList,
   redirect,
   updateView,
@@ -164,7 +163,6 @@ export default function ChatPage({
     model?: ModelChoice,
     files?: File[],
   ) => Promise<unknown>;
-  settings: () => void;
   // On a narrow screen: opens the list of every conversation.
   openList?: () => void;
   redirect: Redirect;
@@ -265,10 +263,6 @@ export default function ChatPage({
     jumpToLatest();
     load(selected).catch(report);
   }, [jumpToLatest, load, selected, report]);
-  const showStatistics = useCallback(
-    () => setModal({ type: "statistics", session_id: selected }),
-    [setModal, selected],
-  );
   const openBrowser = useCallback(
     () => setModal({ type: "browser", handoff: true }),
     [setModal],
@@ -392,7 +386,6 @@ export default function ChatPage({
       unseen={unseen}
       jump={jump}
       openInspector={setInspector}
-      showStatistics={showStatistics}
       openBrowser={openBrowser}
       stopped={stopped}
       resume={actions.resume}
@@ -496,7 +489,7 @@ export default function ChatPage({
         <Mark className="cursor-mark" />
         <h1>What are we working on?</h1>
       </header>
-      <FreeStart online={online} settings={settings} />
+      <FreeStart online={online} />
       <div class="home-start">
         <StartField
           id={startFieldId}

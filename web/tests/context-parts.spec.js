@@ -112,9 +112,9 @@ async function open(page, live = PARTS.tokens, parts = PARTS) {
   await page.addInitScript(fakeStream, { epoch: "context", cursor: 1 });
   await page.goto(new URL(`/#session=${ID}`, DEV_SERVER_URL).href);
   await page
-    .getByRole("button", { name: "Conversation statistics", exact: true })
+    .getByRole("button", { name: "Context and usage", exact: true })
     .click();
-  const sheet = page.getByRole("dialog", { name: "Conversation statistics" });
+  const sheet = page.getByRole("dialog", { name: "Settings" });
   await expect(sheet.getByText("estimated", { exact: true })).toBeVisible();
   return { sheet, sent, release };
 }
@@ -125,7 +125,9 @@ test("the parts are drawn with the sheet, and a fold reads its list", async ({
   const { sheet, sent, release } = await open(page);
   await expect(sheet.getByText("Tool results")).toBeVisible();
   await expect(sheet.locator("[aria-busy]")).toHaveCount(0);
-  expect(sent).toEqual([]);
+  // Settings reads its own settings; the parts ask the runtime nothing.
+  const asked = () => sent.filter((body) => body.kind !== "config");
+  expect(asked()).toEqual([]);
   const tools = sheet.getByRole("button", { name: /^Tools 4/ });
   await tools.click();
   await expect(sheet.locator(".context-tools")).toHaveText("Loading the list…");
@@ -136,7 +138,7 @@ test("the parts are drawn with the sheet, and a fold reads its list", async ({
     /^read_path\s*804$/,
     /^skill\s*544$/,
   ]);
-  expect(sent.map((body) => [body.kind, body.operation])).toEqual([
+  expect(asked().map((body) => [body.kind, body.operation])).toEqual([
     ["tools", "catalog"],
   ]);
 });
@@ -194,7 +196,7 @@ test("rows, bar and folds show what fills the window", async ({ page }) => {
     top,
   );
 
-  await sheet.getByRole("button", { name: "Compact now" }).click();
+  await sheet.getByRole("button", { name: "Compact" }).click();
   await expect
     .poll(() => sent.find((body) => body.kind === "submit"))
     .toMatchObject({

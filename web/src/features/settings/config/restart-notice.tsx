@@ -22,7 +22,7 @@ export function RestartNotice({
     action.run(async () => {
       if (host) {
         await manage("restart_host");
-        return setDone("Restarting the web host…");
+        return setDone("Restarting this host…");
       }
       const { restarting, deferred } = await manage(
         "restart_conversations",
@@ -53,7 +53,7 @@ export function RestartNotice({
         <Row
           label={
             host
-              ? "Restart web host"
+              ? "Restart host"
               : `Restart ${plural(running, "running conversation")}`
           }
           detail={applies}

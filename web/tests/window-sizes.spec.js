@@ -192,9 +192,9 @@ test("an open sheet survives a resize", async ({ page, host }) => {
   await openLong(page, host);
   await resize(page, 466, 678);
   await page
-    .getByRole("button", { name: "Conversation statistics", exact: true })
+    .getByRole("button", { name: "Context and usage", exact: true })
     .click();
-  const sheet = page.getByRole("dialog", { name: "Conversation statistics" });
+  const sheet = page.getByRole("dialog", { name: "Settings" });
   await expect(sheet).toBeVisible();
   for (const [width, height] of [
     [890, 626],

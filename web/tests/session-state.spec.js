@@ -150,7 +150,7 @@ test("late snapshots and retired streams cannot replace current session state", 
   );
   await send(0, sessions[1], 9000, 12);
   const context = page.getByRole("button", {
-    name: "Conversation statistics",
+    name: "Context and usage",
     exact: true,
   });
   await expect(context).toHaveAttribute("title", /Estimated context: 9,000 /);
@@ -545,9 +545,9 @@ test("opening a statistics fold leaves the conversation's status alone", async (
 }) => {
   await page.goto(`/#session=${session.id}`);
   await page
-    .getByRole("button", { name: "Conversation statistics", exact: true })
+    .getByRole("button", { name: "Context and usage", exact: true })
     .click();
-  const sheet = page.getByRole("dialog", { name: "Conversation statistics" });
+  const sheet = page.getByRole("dialog", { name: "Settings" });
   await expect(sheet.getByRole("img", { name: /compacts at/ })).toBeVisible();
   await page.evaluate(() => {
     globalThis.statusChanges = [];

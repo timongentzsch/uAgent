@@ -15,6 +15,7 @@
 #include "include/app/setup.h"
 #include "include/core/capture.h"
 #include "include/core/config.h"
+#include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
 #include "include/core/fs.h"
 #include "include/core/project.h"
@@ -38,10 +39,13 @@ json ManagementControl(const json& request) {
   }
   // What docs/interfaces is generated from (tests/reference_docs.py).
   if (kind == "reference") {
-    return {{"settings", ConfigSchemaJson()},
-            {"flags", CliSchemaJson()},
-            {"commands", CommandSchemaJson()},
-            {"tools", ToolSurfaceJson()}};
+    json topics = json::array();
+    for (const ConfigTopic& topic : kConfigTopics) {
+      topics.push_back({{"id", topic.id}, {"label", topic.label}});
+    }
+    return {{"settings", ConfigSchemaJson()},  {"topics", std::move(topics)},
+            {"groups", ConfigGroupsJson()},    {"flags", CliSchemaJson()},
+            {"commands", CommandSchemaJson()}, {"tools", ToolSurfaceJson()}};
   }
   if (kind == "openrouter") return OpenRouterControl(request);
   if (kind == "schedule") return ScheduleControl(request);

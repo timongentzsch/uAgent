@@ -7,8 +7,7 @@ import type {
 import { useApi } from "../../../state/api.ts";
 import type { SavedScope } from "./facts.ts";
 
-// Reads again whenever anyone saves (`version`). One instance serves one
-// folder: its owner remounts it for another.
+// Reads again whenever anyone saves (`version`) or the folder changes.
 export function useConfiguration(
   scope: SavedScope,
   folder: string | undefined,
@@ -28,7 +27,7 @@ export function useConfiguration(
   };
   const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: one instance serves one folder; it reads again on a save or a retry
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reads again on a save, a retry or another folder
   useEffect(() => {
     const request = ++asked.current;
     setError(null);
@@ -36,7 +35,7 @@ export function useConfiguration(
       (answer) => show(request, answer),
       (failure) => request >= shown.current && setError(failure),
     );
-  }, [version, attempt]);
+  }, [version, attempt, folder]);
   const [busy, setBusy] = useState(0);
   const [failed, setFailed] = useState<{ key: string; error: unknown }>();
   // Collected while settings are open, so several saves offer one restart.
@@ -68,14 +67,16 @@ export function useConfiguration(
       setBusy((count) => count - 1);
     }
   };
+  const settings = (value?.settings || []).filter((setting) =>
+    setting.scopes.includes(scope),
+  );
   return {
-    settings: (value?.settings || []).filter((setting) =>
-      setting.scopes.includes(scope),
-    ),
+    settings,
+    find: (name: string) => settings.find((setting) => setting.name === name),
     file: value?.file || "",
     document: value?.document,
     problem: value?.problem || "",
-    categories: value?.categories || [],
+    groups: value?.groups || [],
     loaded: !!value,
     error,
     retry: () => setAttempt((prior) => prior + 1),
@@ -87,3 +88,4 @@ export function useConfiguration(
     reset: () => run("", { operation: "reset" }),
   };
 }
+export type Config = ReturnType<typeof useConfiguration>;

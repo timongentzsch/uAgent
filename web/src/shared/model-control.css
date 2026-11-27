@@ -12,3 +12,12 @@
     display: none;
   }
 }
+/* Where a conversation's model or approval comes from, and the way to its
+   default. */
+.default-source {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  margin: 0;
+}

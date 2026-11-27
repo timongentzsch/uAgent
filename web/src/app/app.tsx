@@ -90,6 +90,7 @@ import { folderOf } from "../shared/display.ts";
 import {
   focusComposer,
   fileFromURL,
+  settingsFromURL,
   artifactURL,
   withoutFileAddress,
 } from "../shared/navigation.ts";
@@ -625,6 +626,14 @@ function App({ host, bindResult, reading }: HostAppProps) {
     },
     [open, report, refresh, command],
   );
+  // This conversation in Settings is the open one: another is opened first.
+  const conversationSettings = useCallback(
+    (item: Session, address: string) =>
+      void (
+        item.id === selectedRef.current ? Promise.resolve() : choose(item.id)
+      ).then(() => open({ type: "settings", address }), report),
+    [choose, open, report],
+  );
   const conversationMenu = useCallback(
     (
       item: Session,
@@ -641,6 +650,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
         }
         notify={setNotice}
         open={open}
+        settings={(address) => conversationSettings(item, address)}
         detail={withDetail ? detailControl : undefined}
         more={extra?.more}
         select={
@@ -650,7 +660,7 @@ function App({ host, bindResult, reading }: HostAppProps) {
         {extra?.top}
       </ConversationMenu>
     ),
-    [online, fork, load, report, open, detailControl],
+    [online, fork, load, report, open, detailControl, conversationSettings],
   );
   const step = (key: "ArrowUp" | "ArrowDown") => {
     const order = sessionOrder(
@@ -800,11 +810,25 @@ function App({ host, bindResult, reading }: HostAppProps) {
         ? () => setFind({ session: session.id, words: "", at: Date.now() })
         : undefined,
     shortcuts: () => setOverlay("shortcuts"),
+    settings: () => open({ type: "settings" }),
     previous: () => step("ArrowUp"),
     next: () => step("ArrowDown"),
     terminal: terminalAvailable ? toggleTerminal : undefined,
   };
   useShortcuts(authenticated ? shortcutActions : {});
+  // #settings=…: opens Settings there, on load and when such a link is
+  // entered; entries the app wrote itself (state set) never reopen it.
+  useEffect(() => {
+    if (!authenticated) return;
+    const follow = () => {
+      const address = settingsFromURL();
+      if (address !== undefined && !history.state)
+        setModal({ type: "settings", address, linked: true });
+    };
+    follow();
+    addEventListener("hashchange", follow);
+    return () => removeEventListener("hashchange", follow);
+  }, [authenticated]);
   const navigate = useCallback((value: typeof page) => {
     setPage(value);
     setDrawer(false);
@@ -1084,7 +1108,6 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       loadError={loadErrors[selected]}
                       newPlace={newPlace}
                       start={startUnfiled}
-                      settings={settings}
                       openList={compact ? openDrawer : undefined}
                       redirect={redirect}
                       updateView={updateView}
@@ -1159,9 +1182,10 @@ function App({ host, bindResult, reading }: HostAppProps) {
                       void startConversation(cwd).catch(report)
                     }
                     run={runCommand}
-                    settings={(section: string) =>
-                      open({ type: "settings", section })
+                    settings={(address: string) =>
+                      open({ type: "settings", address })
                     }
+                    conversation={!!session}
                     actions={{ ...shortcutActions, search: undefined }}
                   />
                 ) : (
@@ -1179,6 +1203,12 @@ function App({ host, bindResult, reading }: HostAppProps) {
                 setNotificationMode,
                 notifications,
                 logout,
+                detail: detailControl,
+                library: (kind: LibraryKind) => {
+                  setModal(null);
+                  setLibraryKind(kind);
+                  setPage("library");
+                },
               }}
             >
               <Modals

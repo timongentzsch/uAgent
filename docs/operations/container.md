@@ -41,7 +41,7 @@ exists) and restarts with it. Inside, the host binds `0.0.0.0`
 
 Rerun the installer with `UAGENT_INSTALL=container`; it keeps the
 workspaces folder from `.env`, writes the new version and pulls. From a
-checkout: `git pull` then `up --build -d`. Settings → About shows the
+checkout: `git pull` then `up --build -d`. Settings → About and diagnostics shows the
 installer command and no **Update** button. The data volume is kept.
 
 ## Variables

@@ -55,9 +55,9 @@ const screens = {
   "a bottom sheet": [
     (page) =>
       page
-        .getByRole("button", { name: "Conversation statistics", exact: true })
+        .getByRole("button", { name: "Model and effort", exact: true })
         .click(),
-    (page) => dialog(page, "Conversation statistics"),
+    (page) => dialog(page, "Model and effort"),
   ],
   Settings: [
     (page) => headerAction(page, "Settings"),
@@ -148,9 +148,9 @@ test("the Terminal keeps its screen's touches, and its tab row's", async ({
 test("a slider, a scrolling line and what takes its own touches keep them", async ({
   page,
 }) => {
-  const sheet = dialog(page, "Conversation statistics");
+  const sheet = dialog(page, "Model and effort");
   await page
-    .getByRole("button", { name: "Conversation statistics", exact: true })
+    .getByRole("button", { name: "Model and effort", exact: true })
     .click();
   await expect(sheet).toBeVisible();
   await sheet.evaluate((node) => {

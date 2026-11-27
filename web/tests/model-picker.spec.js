@@ -54,7 +54,7 @@ for (const width of [390, 1280]) {
         picker.getByRole("button", { name: "Apply", exact: true }),
       ).toBeDisabled();
       await expect(picker.locator(".placeholder .text-control")).toHaveCount(2);
-      await expect(picker.locator(".placeholder [role=switch]")).toHaveCount(1);
+      await expect(picker.locator(".default-source")).toHaveCount(1);
       await expect(picker.getByText("Variant", { exact: true })).toHaveCount(0);
       await picker.screenshot({
         path: testInfo.outputPath(`model-loading-${width}.png`),
@@ -119,6 +119,20 @@ for (const width of [390, 1280]) {
       await expect(
         page.getByRole("button", { name: "Model and effort", exact: true }),
       ).toHaveText("mock/model-b:high");
+
+      // The sheet changes this conversation only; its default is a row in
+      // Settings, one link away.
+      await page
+        .getByRole("button", { name: "Model and effort", exact: true })
+        .click();
+      await expect(picker.getByRole("switch")).toHaveCount(0);
+      await expect(picker.locator(".default-source")).toContainText(
+        "Chosen for this conversation",
+      );
+      await picker.getByRole("button", { name: "Change the default" }).click();
+      const settings = page.getByRole("dialog", { name: "Settings" });
+      await expect(settings.locator('[data-row="model"]')).toBeInViewport();
+      await expect(page).toHaveURL(/settings=models\/model$/);
     });
   });
 }

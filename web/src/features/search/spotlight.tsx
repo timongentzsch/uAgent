@@ -20,7 +20,8 @@ import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { SuggestionList } from "../../shared/suggestion-list.tsx";
 import { fuzzy, matches } from "../../shared/fuzzy.ts";
 import { occurrences } from "../../../sheet/text.js";
-import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
+import { topicsFor } from "../../shared/settings-topics.ts";
+import { findSettings, settingsEntries } from "../../shared/settings-index.ts";
 import { SHORTCUTS, keysOf, type ShortcutId } from "../../shared/shortcuts.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import { useApi } from "../../state/api.ts";
@@ -103,6 +104,7 @@ export default function Spotlight({
   run,
   settings,
   actions,
+  conversation: inConversation,
 }: {
   sessions: Session[];
   commands: SlashCommand[];
@@ -111,10 +113,12 @@ export default function Spotlight({
   find: (id: string, words: string, sequence: number) => void;
   start: (cwd: string) => void;
   run: (command: SlashCommand) => void;
-  settings: (scope: Scope) => void;
+  settings: (address: string) => void;
   actions: Partial<Record<ShortcutId, () => void>>;
+  // Whether This conversation is a topic of Settings now.
+  conversation: boolean;
 }) {
-  const { api, routes } = useApi();
+  const { api, routes, manage } = useApi();
   const close = useDialogClose();
   const wide = !useCompact();
   const [query, setQuery] = useState("");
@@ -138,6 +142,11 @@ export default function Spotlight({
   );
   const items =
     searching && hits.value?.words === words ? hits.value.items : undefined;
+  // Settings' own index, read once something is typed.
+  const config = useResource(
+    () => (words ? manage("config", { operation: "get" }) : undefined),
+    [!!words, manage],
+  );
   const byId = new Map(sessions.map((item) => [item.id, item]));
   const recent = [...sessions].sort(
     (a, b) => (b.updated || 0) - (a.updated || 0),
@@ -182,12 +191,20 @@ export default function Spotlight({
       about: entry.description,
       run: () => run(entry),
     }));
-  const scopes: Row[] = SCOPES.map(([id, label]) => ({
-    key: `settings:${id}`,
+  const found: Row[] = findSettings(
+    settingsEntries(
+      config.value?.settings ?? [],
+      config.value?.groups ?? [],
+      topicsFor(inConversation),
+    ),
+    words,
+  ).map((entry) => ({
+    key: `settings:${entry.address}`,
     group: "Settings",
     kind: "action",
-    label: `Settings: ${label}`,
-    run: () => settings(id),
+    label: entry.label,
+    detail: entry.topic,
+    run: () => settings(entry.address),
   }));
   const label = (row: Row) => ("label" in row ? row.label : "");
   // A name matches by its letters in order; what a command does only by
@@ -254,7 +271,7 @@ export default function Spotlight({
   }
 
   const shown: Row[] = commandsOnly
-    ? [...named([...shortcuts, ...slashes], words), ...named(scopes, words)]
+    ? [...named([...shortcuts, ...slashes], words), ...found]
     : !words
       ? [
           ...recent
@@ -272,7 +289,7 @@ export default function Spotlight({
           ).slice(0, NAMED),
           ...messages,
           ...named([...shortcuts, ...slashes], words),
-          ...named(scopes, words),
+          ...found,
         ];
   const active = shown[Math.min(index, shown.length - 1)];
   useLayoutEffect(() => {

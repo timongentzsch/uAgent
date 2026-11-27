@@ -267,10 +267,10 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(
     settings.getByRole("heading", { name: "Settings", exact: true }),
   ).toBeFocused();
-  await expect(settings.getByText("Detail", { exact: true })).toBeVisible();
+  await expect(settings.locator('[data-row="context"]')).toBeVisible();
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "This browser", exact: true })
+    .getByRole("button", { name: "This device", exact: true })
     .click();
   await expect(settings.getByLabel("Timestamps")).toBeVisible();
   const appearance = await settings.getByLabel("Appearance").boundingBox();
@@ -313,7 +313,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   ).toBeVisible();
   await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Conversation statistics", exact: true }),
+    page.getByRole("button", { name: "Context and usage", exact: true }),
   ).toContainText("99% left");
   await page.setViewportSize({ width: 390, height: 844 });
   await measure("mobile-compact");
@@ -329,7 +329,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await headerAction(page, "Settings");
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "This browser", exact: true })
+    .getByRole("button", { name: "This device", exact: true })
     .click();
   await settings.getByLabel("Zoom", { exact: true }).selectOption("200");
   await expect
@@ -374,7 +374,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await headerAction(page, "Settings");
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "This browser", exact: true })
+    .getByRole("button", { name: "This device", exact: true })
     .click();
   await settings.getByLabel("Zoom", { exact: true }).selectOption("100");
   await settings.getByRole("button", { name: "Close settings" }).click();

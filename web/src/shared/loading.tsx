@@ -1,22 +1,16 @@
 import { SearchSelect } from "./search-select.tsx";
-import {
-  Actions,
-  Button,
-  Field,
-  Placeholder,
-  Select,
-  Row,
-  Switch,
-} from "./ui.tsx";
+import type { ComponentChildren } from "preact";
+import { Actions, Button, Field, Placeholder, Select } from "./ui.tsx";
 
 // Loading states that must exist before their feature's code loads.
 
 export function ModelLoading({
   close,
-  defaults = true,
+  source,
 }: {
   close: () => void;
-  defaults?: boolean;
+  // Where a conversation's model comes from, known before the models are.
+  source?: ComponentChildren;
 }) {
   return (
     <div class="model-form">
@@ -33,36 +27,10 @@ export function ModelLoading({
             <Select aria-label="Effort" />
           </Field>
         </div>
-        {defaults && (
-          <ModelDefaults checked={false} disabled change={() => {}} />
-        )}
       </Placeholder>
+      {source}
       <ModelActions close={close} />
     </div>
-  );
-}
-
-export function ModelDefaults({
-  checked,
-  disabled,
-  change,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  change: (checked: boolean) => void;
-}) {
-  return (
-    <Row
-      label="Also use for new conversations"
-      detail="Otherwise only this conversation changes."
-    >
-      <Switch
-        label="Also use for new conversations"
-        checked={checked}
-        disabled={disabled}
-        onChange={change}
-      />
-    </Row>
   );
 }
 

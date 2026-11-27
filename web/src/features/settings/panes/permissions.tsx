@@ -5,6 +5,7 @@ import type {
   RuleEffect,
 } from "../../../shared/types.ts";
 import {
+  Actions,
   Button,
   ConfirmModal,
   Field,
@@ -136,22 +137,22 @@ export function PermissionsPane() {
               />
             </Field>
           </InputRow>
-          <InputRow>
-            <div class="segmented" role="group" aria-label="Effect">
-              {[...EFFECTS].reverse().map(([kind, name]) => (
-                <Button
-                  key={kind}
-                  aria-pressed={effect === kind}
-                  onClick={() => setEffect(kind)}
-                >
-                  {name}
-                </Button>
-              ))}
-            </div>
+          <div class="segmented" role="group" aria-label="Effect">
+            {[...EFFECTS].reverse().map(([kind, name]) => (
+              <Button
+                key={kind}
+                aria-pressed={effect === kind}
+                onClick={() => setEffect(kind)}
+              >
+                {name}
+              </Button>
+            ))}
+          </div>
+          <Actions>
             <Button type="submit" variant="primary" disabled={idle}>
               Add rule
             </Button>
-          </InputRow>
+          </Actions>
         </form>
       </Group>
       {confirm && (

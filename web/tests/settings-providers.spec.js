@@ -18,10 +18,9 @@ test("a provider is added, edited, renamed and removed in its sheet", async ({
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .locator(".settings-nav")
-    .getByRole("button", { name: "All conversations", exact: true })
+    .getByRole("button", { name: "Models and providers", exact: true })
     .click();
-  const form = page.locator(".configuration");
-  await page.getByLabel("Find a setting").fill("Providers");
+  const form = page.locator(".settings-pane");
 
   await form.getByRole("button", { name: "Add a provider" }).click();
   const adding = page.getByRole("dialog", { name: "Add a provider" });
@@ -69,12 +68,16 @@ test("a provider is added, edited, renamed and removed in its sheet", async ({
       hosted_tools: ["web_search", tool],
     });
 
-  await page.getByRole("button", { name: "Show the file" }).click();
+  // The file is shown under About and diagnostics, secrets hidden.
+  const topic = (name) =>
+    page.locator(".settings-nav").getByRole("button", { name, exact: true });
+  await topic("About and diagnostics").click();
+  await page.getByRole("button", { name: /^Show the file/ }).click();
   const file = form.locator(".configuration-file");
   await expect(file).toContainText('"base_url": "https://lab.example/v1"');
   await expect(file).toContainText('"api_key": "<redacted>"');
   await expect(file).not.toContainText("sk-lab-secret");
-  await page.getByRole("button", { name: "Show the form" }).click();
+  await topic("Models and providers").click();
 
   await form.getByRole("button", { name: "Edit lab", exact: true }).click();
   await sheet.getByLabel(/^Name/).fill("lab2");

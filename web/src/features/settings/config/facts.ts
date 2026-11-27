@@ -13,6 +13,12 @@ export const REDACTED = "••••••••";
 export const secret = (setting: ConfigSetting) =>
   setting.sensitivity !== "public";
 
+// The web host's own settings: their restart is the host's, not a
+// conversation's. The host is per OS user, so the registry never lets a
+// folder hold them.
+export const hostRestarts = (setting?: ConfigSetting) =>
+  !!setting && !setting.scopes.includes("project");
+
 // A setting whose value is a list of items (the named providers).
 export const itemized = (setting: ConfigSetting) =>
   setting.sensitivity === "composite-secret" && !setting.locked;

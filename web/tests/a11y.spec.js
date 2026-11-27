@@ -124,15 +124,15 @@ test("the conversation menu opens, moves and closes by keyboard", async ({
   await expect(menu).toHaveCount(0);
 });
 
-test("the context section of the statistics has no violations", async ({
+test("the context section of This conversation has no violations", async ({
   page,
   session,
 }) => {
   await page.goto(`/#session=${session.id}`);
   await page
-    .getByRole("button", { name: "Conversation statistics", exact: true })
+    .getByRole("button", { name: "Context and usage", exact: true })
     .click();
-  const sheet = page.getByRole("dialog", { name: "Conversation statistics" });
+  const sheet = page.getByRole("dialog", { name: "Settings" });
   const tools = sheet.getByRole("button", { name: /^Tools \d+/ });
   await tools.click();
   await expect(tools).toHaveAttribute("aria-expanded", "true");
@@ -238,15 +238,17 @@ for (const width of [390, 1280])
     const settings = page.getByRole("dialog", { name: "Settings" });
     const nav = settings.locator(".settings-nav");
     await nav
-      .getByRole("button", { name: "All conversations", exact: true })
+      .getByRole("button", { name: "Instructions and memory", exact: true })
       .click();
     await expect(
       settings.locator('[data-setting="UAGENT_MEMORY_MODEL"]'),
-    ).toContainText("follows Conversation model");
+    ).toContainText("follows Model");
     expect(await violations(page)).toEqual([]);
     const back = settings.getByRole("button", { name: "Back", exact: true });
     if (await back.isVisible()) await back.click();
-    await nav.getByRole("button", { name: "Host", exact: true }).click();
+    await nav
+      .getByRole("button", { name: "Host and devices", exact: true })
+      .click();
     await settings.getByRole("button", { name: "Log out this device" }).click();
     const confirm = page.getByRole("dialog", { name: "Log out" });
     await expect(confirm).toContainText("unpaired");

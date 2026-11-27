@@ -107,7 +107,7 @@ test("a keyboard user can reopen a menu during its exit", async ({
   await expect(menu).toBeVisible();
 });
 
-test("the conversation menu is short and More holds the rest", async ({
+test("the conversation menu is short, opens Context and usage at its top, and More holds the rest", async ({
   page,
   session,
 }) => {
@@ -123,6 +123,8 @@ test("the conversation menu is short and More holds the rest", async ({
     "Pin",
     "Rename",
     "Move to…",
+    "Context and usage",
+    "Tools",
     /^View/,
     "More",
   ]);
@@ -130,19 +132,28 @@ test("the conversation menu is short and More holds the rest", async ({
   await expect(menu.getByRole("menuitem")).toHaveText([
     "More",
     "Fork conversation",
-    "Statistics",
-    "Tools",
-    "Export transcript",
-    "Compact",
-    "Restart",
+    "Export",
+    "Restart conversation",
     "Close conversation",
     "Delete",
   ]);
-  await menu.getByRole("menuitem", { name: "Statistics" }).click();
-  await expect(
-    page.getByRole("dialog", { name: "Conversation statistics" }),
-  ).toBeVisible();
   await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await page
+    .locator(".conversation-head")
+    .getByRole("button", { name: "Conversation menu" })
+    .click();
+  await menu.getByRole("menuitem", { name: "Context and usage" }).click();
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await expect(
+    settings.getByRole("button", { name: /^This conversation/ }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(settings.locator('[data-row="context"]')).toContainText(
+    "Context",
+  );
+  await expect(page).toHaveURL(/settings=conversation\/context/);
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
   await page
     .locator(".conversation-head")
     .getByRole("button", { name: "Conversation menu" })
@@ -168,5 +179,13 @@ test("a conversation's row menu has the same top level", async ({
   await row.getByRole("button", { name: "Conversation menu" }).click();
   await expect(
     page.getByRole("menu", { name: "Conversation menu" }).getByRole("menuitem"),
-  ).toHaveText(["Pin", "Rename", "Move to…", "Select", "More"]);
+  ).toHaveText([
+    "Pin",
+    "Rename",
+    "Move to…",
+    "Select",
+    "Context and usage",
+    "Tools",
+    "More",
+  ]);
 });

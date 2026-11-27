@@ -21,12 +21,13 @@ export const permissionNotes: Record<string, string> = {
   yolo: "Eligible calls run without approval. Folder rules and the execution sandbox still apply.",
   plan: "Reads only, and writes the plan.",
 };
-export const approvalSources: Record<string, string> = {
+// Where a conversation's model or approval comes from.
+export const valueSources: Record<string, string> = {
   parent: "Inherited from the parent at launch",
   default: "Built-in default",
-  user: "All conversations setting",
-  project: "Folder setting",
-  environment: "Environment setting",
+  user: "Default from All conversations",
+  project: "Default from This folder",
+  environment: "Set by the environment",
   cli: "Launch option",
   conversation: "Chosen for this conversation",
 };

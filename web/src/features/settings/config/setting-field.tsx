@@ -1,4 +1,4 @@
-import { Undo2 } from "lucide-preact";
+import { ChevronDown, Undo2 } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { permissionLabel, permissionLabels } from "../../../shared/display.ts";
 import type { ConfigChange, ConfigSetting } from "../../../shared/types.ts";
@@ -56,8 +56,13 @@ export function SettingField({
   // What is saved changed under the field (a save, a reset, another
   // browser): show it, unless something typed here is still unsaved.
   const [edited, setEdited] = useState(false);
+  // Only a change: a field drawn just now may be typed in before its first
+  // effect runs, and that must not take the typing back.
+  const shownHeld = useRef(held);
   // biome-ignore lint/correctness/useExhaustiveDependencies: follows the saved value only; finishing an edit must not overwrite the draft
   useEffect(() => {
+    if (held === shownHeld.current) return;
+    shownHeld.current = held;
     if (!edited) setDraft(held);
   }, [held]);
   const below = inherited(setting, scope, find);
@@ -145,12 +150,15 @@ export function SettingField({
       title="Model, variant and effort"
       disabled={disabled}
       trigger={
-        <span
-          class="setting-summary truncate"
-          data-default={held ? undefined : ""}
-        >
-          {held || below}
-        </span>
+        <>
+          <span
+            class="setting-summary truncate"
+            data-default={held ? undefined : ""}
+          >
+            {held || below}
+          </span>
+          <ChevronDown />
+        </>
       }
     >
       {(close) => (
@@ -192,26 +200,25 @@ export function SettingField({
   );
   if (itemized(setting))
     return (
-      <ProvidersField
-        label={setting.label}
-        footer={detail}
-        value={own}
-        error={error}
-        disabled={disabled}
-        save={set}
-        reload={reload}
-        online={online}
-      />
+      <div data-row={setting.key}>
+        <ProvidersField
+          label={setting.label}
+          footer={detail}
+          value={own}
+          error={error}
+          disabled={disabled}
+          save={set}
+          reload={reload}
+          online={online}
+        />
+      </div>
     );
   return (
     <div
       class="setting-field"
       data-setting={setting.name}
+      data-row={setting.key}
       title={setting.key}
-      // A value that may be long gets its own line on a phone.
-      data-wide={
-        setting.type === "boolean" || setting.choices?.length ? undefined : ""
-      }
     >
       <Row label={setting.label} detail={detail}>
         {!setting.locked && own !== undefined && (

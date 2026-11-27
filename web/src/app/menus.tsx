@@ -1,3 +1,4 @@
+import { SETTINGS_AT } from "../shared/settings-topics.ts";
 import type { ComponentChildren } from "preact";
 import { Check } from "lucide-preact";
 import type {
@@ -93,7 +94,7 @@ export function TerminalMenu({
 
 // The level a conversation's work is drawn at, whether thinking is, and how
 // this device changes either.
-interface DetailControl {
+export interface DetailControl {
   levels: readonly string[];
   level: string;
   change: (level: string) => void;
@@ -107,6 +108,7 @@ export function ConversationMenu({
   find,
   notify,
   open,
+  settings,
   detail,
   children,
   more,
@@ -117,6 +119,8 @@ export function ConversationMenu({
   find?: () => void;
   notify: (text: string) => void;
   open: (modal: AppModal) => void;
+  // Opens this conversation in Settings at an address.
+  settings: (address: string) => void;
   detail?: DetailControl;
   children?: ComponentChildren;
   more?: ComponentChildren;
@@ -146,6 +150,10 @@ export function ConversationMenu({
         </MenuItem>
       )}
       {select && <MenuItem onClick={select}>Select</MenuItem>}
+      <MenuItem onClick={() => settings(SETTINGS_AT.context)}>
+        Context and usage
+      </MenuItem>
+      <MenuItem onClick={() => settings(SETTINGS_AT.tools)}>Tools</MenuItem>
       {detail && detail.levels.length > 0 && (
         <MenuSub label="View" value={capitalize(detail.level)}>
           {detail.levels.map((level) => (
@@ -189,34 +197,13 @@ export function ConversationMenu({
           Fork conversation
         </MenuItem>
         <MenuItem
-          onClick={() => open({ type: "statistics", session_id: item.id })}
-        >
-          Statistics
-        </MenuItem>
-        <MenuItem
-          disabled={!online}
-          onClick={() => open({ type: "tools", session_id: item.id })}
-        >
-          Tools
-        </MenuItem>
-        <MenuItem
           disabled={!online}
           onClick={() =>
             void shareTranscript(item, command).then(notify, report)
           }
         >
-          Export transcript
+          Export
         </MenuItem>
-        {item.generation && (
-          <MenuItem
-            disabled={!online || item.turn_active}
-            onClick={() =>
-              void command("submit", item, { text: "/compact" }).catch(report)
-            }
-          >
-            Compact
-          </MenuItem>
-        )}
         {item.generation && (
           <MenuItem
             disabled={!online}
@@ -224,7 +211,7 @@ export function ConversationMenu({
               void restartConversation(item, manage).then(notify, report)
             }
           >
-            Restart
+            Restart conversation
           </MenuItem>
         )}
         {item.generation && (

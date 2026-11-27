@@ -41,12 +41,12 @@ Typed into a conversation. A command the web has a control for is offered there 
 | `/agents` | terminal | list this conversation's agents and theirs |
 | `/attach PATH\|clear` | terminal | attach a file to the next turn |
 | `/compact` | terminal, web | summarize conversation to prevent hitting the context limit |
-| `/context` | terminal, web | show current model request |
+| `/context` | terminal, web | show the raw context: the next model request |
 | `/config [KEY\|user\|project\|conversation KEY=VALUE\|unset KEY\|reset]` | terminal, web | show changed settings, one setting by scope, change one, or reset a scope |
 | `/fork [TITLE] [@TURN]` | terminal, web | branch this conversation, optionally at user turn N |
 | `/rewind [N]` | terminal, web | fork before your message N to edit it; bare, list the numbers |
-| `/share` | terminal, web | export transcript as markdown |
-| `/permissions [default\|ask\|auto\|yolo\|plan\|rules\|forget N\|forget all\|allow\|ask\|deny TOOL MATCH]` | terminal, web | show or change the approval mode, or this folder's rules |
+| `/share` | terminal, web | export this conversation as markdown |
+| `/permissions [default\|ask\|auto\|yolo\|plan\|rules\|forget N\|forget all\|allow\|ask\|deny TOOL MATCH]` | terminal, web | show or change the approval, or this folder's rules |
 | `/rename TITLE` | terminal, web | rename this conversation |
 | `/instructions [edit user\|project]` | terminal, web | show or edit instructions |
 | `/http [INDEX [request\|response]]` | terminal, web | inspect captured HTTP attempts (latest by default) |
@@ -67,12 +67,12 @@ Typed into a conversation. A command the web has a control for is offered there 
 | `/clear` | terminal | clear the screen |
 | `/review [TARGET]` | terminal, web | review my current changes and find issues |
 | `/sessions [PREFIX]` | terminal | resume a saved conversation, optionally matching PREFIX |
-| `/status` | terminal, web | show this conversation's configuration and token usage |
+| `/status` | terminal, web | show this conversation's configuration, context and usage |
 | `/tools [on\|off NAME\|profile NAME\|reset]` | terminal, web | inspect or choose tools for this conversation |
 | `/mcp [retry\|on\|off NAME]` | terminal, web | show MCP servers; retry one or switch it on or off |
 | `/restart` | terminal | restart this conversation to apply settings that need it |
 | `/btw QUESTION` | terminal, web | ask a side question without adding it to the conversation |
-| `/detail [minimal\|default\|full]` | terminal, web | set how much of the agent's work is shown, everywhere |
+| `/detail [minimal\|default\|full]` | terminal, web | set the view: how much of the agent's work is shown |
 | `/yolo` | terminal | toggle acting without asking; the sandbox setting still applies |
 | `/plan` | terminal | toggle plan mode: research and write a plan; nothing changes until you approve it |
 | `/overview` | terminal | this folder at a glance: what works, what needs you, spend and changes |

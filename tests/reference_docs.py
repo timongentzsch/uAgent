@@ -46,7 +46,7 @@ def range_of(setting):
     return f"{'' if low is None else low}–{'' if high is None else high}"
 
 
-def settings_page(settings):
+def settings_page(settings, topics, groups):
     parts = [
         "# Settings\n",
         NOTE.format(source="the settings registry (`include/core/config_registry.h`)"),
@@ -54,27 +54,29 @@ def settings_page(settings):
         "(`/config`, the web's Settings), or set for a process by its variable. "
         "Later wins: all conversations, this folder, environment, command line, this "
         "conversation. A change applies from the next message, or after a restart "
-        "(`/restart`) where the last column says so.\n",
+        "(`/restart`) where the last column says so. Topics and groups are those of "
+        "the web's Settings; a setting marked advanced is listed there under Show all.\n",
     ]
-    categories = list(dict.fromkeys(setting["category"] for setting in settings))
-    for category in categories:
-        rows = [
-            [
-                code(s["key"]),
-                code(s["name"]),
-                default_of(s),
-                range_of(s),
-                ", ".join(s["scopes"]),
-                "restart" if s["takes_effect"] == "restart-required" else "next message",
-                cell(s["description"]),
+    for topic in topics:
+        parts.append(f"## {topic['label']}\n")
+        for group in (g for g in groups if g["topic"] == topic["id"]):
+            rows = [
+                [
+                    code(s["key"]) + (" (advanced)" if s.get("advanced") else ""),
+                    code(s["name"]),
+                    default_of(s),
+                    range_of(s),
+                    ", ".join(s["scopes"]),
+                    "restart" if s["takes_effect"] == "restart-required" else "next message",
+                    cell(s["description"]),
+                ]
+                for s in settings
+                if s["group"] == group["id"]
             ]
-            for s in settings
-            if s["category"] == category
-        ]
-        parts += [
-            f"## {category.capitalize()}\n",
-            table(["Key", "Variable", "Default", "Range", "Scopes", "Applies", "What"], rows),
-        ]
+            parts += [
+                f"### {group['label']}\n",
+                table(["Key", "Variable", "Default", "Range", "Scopes", "Applies", "What"], rows),
+            ]
     return "\n".join(parts)
 
 
@@ -204,7 +206,9 @@ def pages(binary):
             )
         )
     return {
-        "settings.md": settings_page(reference["settings"]),
+        "settings.md": settings_page(
+            reference["settings"], reference["topics"], reference["groups"]
+        ),
         "cli.md": cli_page(reference["flags"], reference["commands"]),
         "tool-schemas.md": tools_page(reference["tools"]),
         "limits.md": limits_page((ROOT / "include/core/limits.h").read_text()),

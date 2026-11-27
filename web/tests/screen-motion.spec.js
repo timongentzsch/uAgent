@@ -319,9 +319,9 @@ test.describe("touch", () => {
       await online(page);
       drag = await finger(page);
       await page
-        .getByRole("button", { name: "Conversation statistics", exact: true })
+        .getByRole("button", { name: "Context and usage", exact: true })
         .click();
-      sheet = page.getByRole("dialog", { name: "Conversation statistics" });
+      sheet = page.getByRole("dialog", { name: "Settings" });
       await expect(sheet).toBeVisible();
     });
 
@@ -331,7 +331,7 @@ test.describe("touch", () => {
       const before = await history(page);
       const grip = await center(
         sheet.getByRole("heading", {
-          name: "Conversation statistics",
+          name: "This conversation",
           exact: true,
         }),
       );
@@ -351,11 +351,9 @@ test.describe("touch", () => {
       const swiped = await history(page);
 
       await page
-        .getByRole("button", { name: "Conversation statistics", exact: true })
+        .getByRole("button", { name: "Context and usage", exact: true })
         .click();
-      await sheet
-        .getByRole("button", { name: "Close conversation statistics" })
-        .click();
+      await sheet.getByRole("button", { name: "Close settings" }).click();
       await expect(sheet).toHaveCount(0);
       await expect.poll(() => history(page)).toEqual(swiped);
     });
@@ -364,7 +362,7 @@ test.describe("touch", () => {
       await page.clock.pauseAt(new Date(Date.now() + 60_000));
       const grip = await center(
         sheet.getByRole("heading", {
-          name: "Conversation statistics",
+          name: "This conversation",
           exact: true,
         }),
       );
@@ -373,7 +371,8 @@ test.describe("touch", () => {
     });
 
     test("a body scrolled down scrolls instead", async ({ page }) => {
-      const body = sheet.locator(".dialog-body");
+      // Settings scrolls its page, not its whole body.
+      const body = sheet.locator(".settings-pane");
       await body.evaluate((node) => {
         const tall = document.createElement("div");
         tall.style.height = "3000px";

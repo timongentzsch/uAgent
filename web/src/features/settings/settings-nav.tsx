@@ -1,36 +1,47 @@
+import type { ComponentChildren } from "preact";
 import { Group, Row } from "../../shared/ui.tsx";
-import { SCOPES, type Scope } from "../../shared/settings-scopes.ts";
+import { TOPICS, type Topic } from "../../shared/settings-topics.ts";
 
-// Settings and its loading state draw the same list, so it never changes
-// while the code arrives.
 export function SettingsNav({
+  topics,
   current,
   select,
-  project,
+  details,
   class: className,
+  search,
+  children,
 }: {
-  current?: Scope;
-  select: (id: Scope) => void;
-  project?: string;
+  topics: Topic[];
+  current?: Topic;
+  select: (id: Topic) => void;
+  details?: Partial<Record<Topic, string>>;
   class?: string;
+  search: ComponentChildren;
+  // Search results, shown in the list's place.
+  children?: ComponentChildren;
 }) {
   return (
-    <nav class={`settings-nav ${className ?? ""}`} aria-label="Settings scopes">
-      <Group>
-        {SCOPES.map(
-          ([id, label, Icon]) =>
-            (id !== "project" || project) && (
+    <nav class={`settings-nav ${className ?? ""}`} aria-label="Settings topics">
+      {search}
+      {children || (
+        <Group>
+          {TOPICS.filter(({ id }) => topics.includes(id)).map(
+            ({ id, label, icon: Icon }) => (
               <Row
                 key={id}
                 icon={<Icon />}
                 label={label}
-                detail={id === "project" ? project : undefined}
+                // The open conversation's name: one line, cut.
+                detail={
+                  details?.[id] && <span class="truncate">{details[id]}</span>
+                }
                 current={id === current}
                 onClick={() => select(id)}
               />
             ),
-        )}
-      </Group>
+          )}
+        </Group>
+      )}
     </nav>
   );
 }

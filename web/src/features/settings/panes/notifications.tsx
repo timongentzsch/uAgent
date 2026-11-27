@@ -58,7 +58,7 @@ export function NotificationsPane() {
               ? "Connected-view notifications enabled. Delivery requires this browser view to remain connected."
               : "Notifications are muted for this device."}{" "}
           A background notification names the conversation and why, which shows
-          on the lock screen; Notification detail in All conversations turns
+          on the lock screen; Notification detail under Host and devices turns
           that off. Focus settings, power management and network conditions can
           delay delivery. On iOS, enable notifications from the installed Home
           Screen app.

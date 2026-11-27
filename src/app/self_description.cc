@@ -56,7 +56,8 @@ json DescriptorJson(const ConfigDescriptor& descriptor) {
                                        descriptor.default_value)},
                 {"takes_effect", ReloadPolicyName(descriptor.reload)},
                 {"sensitivity", SensitivityName(descriptor.sensitivity)},
-                {"category", descriptor.category},
+                {"topic", FindConfigGroup(descriptor.group)->topic},
+                {"group", descriptor.group},
                 {"description", descriptor.description}};
   if (!descriptor.field.empty()) entry["field"] = descriptor.field;
   if (!descriptor.choices.empty()) entry["choices"] = descriptor.choices;
@@ -73,6 +74,7 @@ json DescriptorJson(const ConfigDescriptor& descriptor) {
   }
   if (!descriptor.purpose.empty()) entry["purpose"] = descriptor.purpose;
   if (descriptor.terminal) entry["terminal"] = true;
+  if (descriptor.advanced) entry["advanced"] = true;
   if (descriptor.type == ConfigType::kInt) {
     if (descriptor.minimum != kConfigAnyMin) {
       entry["minimum"] = descriptor.minimum;
@@ -159,6 +161,15 @@ json TypedValue(const ConfigDescriptor& descriptor, const std::string& text) {
       return text.empty() ? json() : json(text);
   }
   return json();
+}
+
+json ConfigGroupsJson() {
+  json groups = json::array();
+  for (const ConfigGroup& group : kConfigGroups) {
+    groups.push_back(
+        {{"id", group.id}, {"label", group.label}, {"topic", group.topic}});
+  }
+  return groups;
 }
 
 json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,

@@ -1,3 +1,4 @@
+import { SETTINGS_AT } from "../shared/settings-topics.ts";
 import "./conversation-header.css";
 import type { ComponentChildren } from "preact";
 import type { Outgoing, Session } from "../shared/types.ts";
@@ -41,7 +42,9 @@ function Totals({
       <SessionSummary
         state={state}
         queued={queued ? 0 : session.guidance}
-        open={() => setModal({ type: "statistics", session_id: session.id })}
+        open={() =>
+          setModal({ type: "settings", address: SETTINGS_AT.context })
+        }
       />
     </span>
   );
@@ -95,7 +98,7 @@ export default function ConversationHeader({
   const multipleHosts = useMultipleHosts();
   const executionHost =
     hosts.sources.find((source) => source.id === (session?.host || ""))?.name ||
-    "Local";
+    "This host";
   const compact = useCompact();
   const narrow = useNarrowColumn();
   const browsing = useSnapshots(
@@ -120,6 +123,7 @@ export default function ConversationHeader({
             {terminal.open ? "Hide terminal" : "Terminal"}
           </MenuItem>
         )}
+        {inMenu && <MenuItem onClick={settings}>Settings</MenuItem>}
       </>
     ),
     more: inMenu && browserAvailable && (
@@ -164,10 +168,7 @@ export default function ConversationHeader({
             )}
           </h1>
           {multipleHosts && page === "chat" && session && (
-            <span
-              class="execution-host small muted truncate"
-              title="Execution host"
-            >
+            <span class="execution-host small muted truncate" title="Host">
               {executionHost}
             </span>
           )}

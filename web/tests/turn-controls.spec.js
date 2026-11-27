@@ -81,11 +81,8 @@ test("always allowing an action remembers it in Settings", async ({
     .toBe(true);
   await expect(page.locator(".composer .activity-button")).toHaveCount(0);
   await send(page, "/permissions");
+  // /permissions lands on the folder's Rules.
   const settings = page.getByRole("dialog", { name: "Settings" });
-  await settings
-    .locator(".settings-nav")
-    .getByRole("button", { name: /^This folder/ })
-    .click();
   const rules = settings.getByLabel(/^Rules/);
   await expect(rules).toContainText("write_file ./");
   await expect(rules).toContainText("Always");

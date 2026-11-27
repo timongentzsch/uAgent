@@ -19,8 +19,10 @@ function SessionSummaryView({
   const { context_tokens: used, context_window: limit } = state ?? {};
   const turns = state?.statistics?.recorded_turns ?? state?.turns;
   const title = `Estimated context: ${used?.toLocaleString() ?? "—"}${limit ? ` / ${limit.toLocaleString()}` : ""} tokens from serialized request bytes; provider billing usage is separate`;
+  const left = contextLeft(used, limit);
+  // The line says what it opens.
   const parts = [
-    contextLeft(used, limit),
+    left.startsWith("Context") ? left : `Context ${left}`,
     turns === undefined ? "" : plural(turns, "turn"),
     state?.usage?.cost_reported ? cost(state.usage.cost) : "",
     queued ? `${queued} queued` : "",
@@ -29,7 +31,7 @@ function SessionSummaryView({
     <Button
       variant="quiet"
       onClick={open}
-      aria-label="Conversation statistics"
+      aria-label="Context and usage"
       title={title}
     >
       <span class="truncate">

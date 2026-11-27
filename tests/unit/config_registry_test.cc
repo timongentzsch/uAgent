@@ -104,10 +104,13 @@ TEST_CASE(TestConfigRegistryContract) {
   for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
     CHECK(!descriptor.environment.empty());
     CHECK(names.insert(descriptor.environment).second);
-    CHECK(std::any_of(std::begin(kConfigCategories),
-                      std::end(kConfigCategories),
-                      [&](const ConfigCategory& category) {
-                        return category.id == descriptor.category;
+    // Listed in Settings under a group of a topic, both from the fixed lists.
+    const ConfigGroup* group = FindConfigGroup(descriptor.group);
+    CHECK(group != nullptr);
+    CHECK(group &&
+          std::any_of(std::begin(kConfigTopics), std::end(kConfigTopics),
+                      [&](const ConfigTopic& topic) {
+                        return topic.id == group->topic;
                       }));
     CHECK(!descriptor.description.empty());
     if (descriptor.type == ConfigType::kInt) {
@@ -223,6 +226,23 @@ TEST_CASE(TestConfigRegistryContract) {
 }
 
 // With a loose parse UAGENT_MEMORY=false switches memory on.
+// Settings and the docs page list topics in order, each topic's groups
+// together, and no group empty.
+TEST_CASE(TestConfigTopicsAndGroups) {
+  size_t topic = 0;
+  for (const ConfigGroup& group : kConfigGroups) {
+    while (topic < std::size(kConfigTopics) &&
+           kConfigTopics[topic].id != group.topic) {
+      ++topic;
+    }
+    CHECK(topic < std::size(kConfigTopics));
+    CHECK(std::any_of(ConfigRegistry().begin(), ConfigRegistry().end(),
+                      [&](const ConfigDescriptor& descriptor) {
+                        return descriptor.group == group.id;
+                      }));
+  }
+}
+
 TEST_CASE(TestStrictBooleanSettings) {
   bool value = false;
   for (const char* spelling : {"1", "true", "TRUE", "Yes", "on"}) {

@@ -4,7 +4,6 @@ import {
   headerAction,
   online,
   selectProbeModel,
-  openMore,
   showList,
 } from "./fixtures.js";
 
@@ -14,7 +13,7 @@ const zoomTo = async (page, zoom) => {
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "This browser", exact: true })
+    .getByRole("button", { name: "This device", exact: true })
     .click();
   await settings.getByLabel("Zoom", { exact: true }).selectOption(String(zoom));
   return settings;
@@ -195,7 +194,7 @@ test.describe("touch interaction", () => {
     });
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "All conversations", exact: true })
+      .getByRole("button", { name: "Models and providers", exact: true })
       .tap();
     await expect(
       settings.locator('[data-setting$="_MODEL"]').first(),
@@ -315,25 +314,22 @@ test.describe("touch interaction", () => {
       // A phone shows one section at a time: back to the list first.
       const back = settings.getByRole("button", { name: "Back", exact: true });
       if (await back.isVisible()) await back.click();
-      await settings
-        .locator(".settings-nav")
-        .getByRole("button", {
-          name: "All conversations",
-          exact: true,
-        })
-        .click();
+      await scaledFields(settings, zoom);
+      const topic = (name) =>
+        settings
+          .locator(".settings-nav")
+          .getByRole("button", { name, exact: true });
+      await topic("Approvals and safety").click();
       await expect(
-        settings.getByRole("combobox", { name: "Approval mode" }),
+        settings.getByRole("combobox", { name: "Approval" }),
       ).toBeVisible();
-      const search = settings.getByRole("searchbox", {
-        name: "Find a setting",
-      });
-      await search.fill("timeout");
+      await settings.getByRole("button", { name: /^Show all/ }).click();
       await expect(
         settings.getByRole("spinbutton", { name: "Tool timeout" }),
       ).toBeVisible();
       await scaledFields(settings, zoom);
-      await search.fill("memory");
+      if (await back.isVisible()) await back.click();
+      await topic("Instructions and memory").click();
       await expect(settings.locator('[role="switch"]').first()).toBeVisible();
       await scaledFields(settings, zoom);
       await settings.getByRole("button", { name: "Close settings" }).click();
@@ -347,9 +343,10 @@ test.describe("touch interaction", () => {
         .getByRole("button", { name: "Conversation menu" })
         .last()
         .click();
-      await openMore(page);
       await page.getByRole("menuitem", { name: "Tools", exact: true }).click();
-      const tools = page.getByRole("dialog", { name: "Tools", exact: true });
+      const tools = page
+        .getByRole("dialog", { name: "Settings", exact: true })
+        .locator('[data-row="tools"]');
       await expect(
         tools.getByRole("combobox", { name: "Tool profile" }),
       ).toBeVisible();
@@ -357,7 +354,7 @@ test.describe("touch interaction", () => {
         .getByRole("searchbox", { name: "Find a tool" })
         .fill("read_path");
       await scaledFields(tools, zoom);
-      await tools.getByRole("button", { name: "Close tools" }).click();
+      await page.getByRole("button", { name: "Close settings" }).click();
       // At 50% the list fits beside the chat; otherwise it is the drawer.
       await showList(page);
       await page
@@ -472,8 +469,9 @@ test("settings dividers leave room around wrapped fields", async ({
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "All conversations", exact: true })
+    .getByRole("button", { name: "Approvals and safety", exact: true })
     .click();
+  await settings.getByRole("button", { name: /^Show all/ }).click();
   await expect(settings.locator(".setting-field").first()).toBeVisible();
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
@@ -485,8 +483,11 @@ test("settings dividers leave room around wrapped fields", async ({
           .map((field) => {
             const box = field.getBoundingClientRect();
             const content = [
-              ...field.querySelectorAll(".row-text, .row-value"),
-            ].map((node) => node.getBoundingClientRect());
+              // A phone's value is laid out as the row's own children.
+              ...field.querySelectorAll(".row-text, .row-value > *"),
+            ]
+              .map((node) => node.getBoundingClientRect())
+              .filter((rect) => rect.height > 0);
             return Math.min(
               ...content.flatMap((rect) => [
                 rect.top - box.top,

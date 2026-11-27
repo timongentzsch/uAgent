@@ -546,6 +546,8 @@ export interface State {
   attachments?: number;
   title?: string;
   route?: string;
+  // Where the model comes from: "conversation", "user", "project", …
+  route_source?: string;
   effort?: string;
   efforts?: string[];
   view?: View;
@@ -765,7 +767,11 @@ export interface ConfigSetting {
   label: string;
   purpose?: string;
   description: string;
-  category: string;
+  // Where Settings lists it: a topic id and a group id of `groups`.
+  topic: string;
+  group: string;
+  // Listed under Show all.
+  advanced?: boolean;
   type: string;
   sensitivity: string;
   default?: JSONValue;
@@ -788,6 +794,11 @@ export interface ConfigSetting {
   follows?: string;
   fallback?: string;
 }
+export interface ConfigGroup {
+  id: string;
+  label: string;
+  topic: string;
+}
 export interface ConfigChange {
   key: string;
   value?: string;
@@ -800,8 +811,8 @@ export interface Configuration {
   problem: string;
   // That file as it stands, every secret hidden.
   document?: JSONValue;
-  // The groups settings are listed under, in order.
-  categories: { id: string; label: string }[];
+  // The groups settings are listed under, in order, each in a topic.
+  groups: ConfigGroup[];
   effects: {
     key: string;
     effect: "next_turn" | "restart" | "shadowed";
@@ -1104,12 +1115,13 @@ export type StatisticsModal =
       node?: never;
       snapshot?: never;
     }
+  // One turn's or message's; a conversation's are in Settings.
   | {
       type: "statistics";
       session_id: string;
-      node_id?: string;
+      node_id: string;
       // What node_id names: a turn (its footer) or one message.
-      unit?: StatisticsUnit;
+      unit: StatisticsUnit;
     };
 export type StatisticsUnit = "Turn" | "Message";
 export interface RawOptions {
@@ -1139,9 +1151,9 @@ export type AppModal =
       linked: boolean;
     }
   | { type: "delete-many"; sessions: Session[]; spaces: Space[] }
-  // section: a settings section to open on, e.g. from /permissions.
-  | { type: "settings"; section?: string }
-  | { type: "tools"; session_id: string };
+  // address: where Settings opens, "approvals/rules"; linked: opened from
+  // the page's own address, which Back leaves.
+  | { type: "settings"; address?: string; linked?: boolean };
 
 export interface LibraryItem {
   provenance?: {

@@ -20,7 +20,7 @@ test("About checks for a release, shows its notes and how to update", async ({
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .locator(".settings-nav")
-    .getByRole("button", { name: "About", exact: true })
+    .getByRole("button", { name: "About and diagnostics", exact: true })
     .click();
   const pane = page.locator(".settings-pane");
   await expect(pane.getByText("Update status unavailable")).toBeVisible();
@@ -75,7 +75,7 @@ test("About says which Chrome a container holds, and looks again when asked", as
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .locator(".settings-nav")
-    .getByRole("button", { name: "About", exact: true })
+    .getByRole("button", { name: "About and diagnostics", exact: true })
     .click();
   const group = page.getByRole("region", { name: "Chrome", exact: true });
   await expect(group).toContainText("Chrome 157.0.1-1");

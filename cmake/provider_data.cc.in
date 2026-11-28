@@ -1,0 +1,9 @@
+// Generated from src/providers/presets.json; edit that file instead.
+#include "include/api/provider_data.h"
+namespace uagent {
+const json& ProviderData() {
+  static const json kData =
+      json::parse(R"json(@UAGENT_PROVIDER_DATA@)json");
+  return kData;
+}
+}  // namespace uagent

@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/api/provider_data.h"
 #include "include/core/config_registry.h"
 #include "include/core/limits.h"
 #include "include/providers/providers.h"
@@ -18,6 +19,20 @@ void ApplySelectionPolicy(Api& api, const ModelSelection& selection) {
 }
 
 namespace {
+
+// A known host whose endpoint serves decision models, for the hint.
+std::string DecisionsHost() {
+  for (const json& known : ProviderData()["endpoints"]) {
+    FeatureSet features;
+    std::string unknown;
+    if (ParseFeatures(known["features"], features, unknown) &&
+        features.Has(Feature::kDecisions)) {
+      return JsonValue(known, "host", "");
+    }
+  }
+  return "";
+}
+
 void ResetRouteCapabilities(Api& api) {
   const json features = api.capabilities.model_features;
   const json modalities = api.capabilities.input_modalities;
@@ -145,7 +160,8 @@ RouteResolution ResolveReviewRoute(const Api& api,
     const auto other = std::ranges::find_if(providers, serves);
     resolved.none =
         other == providers.end()
-            ? "no provider serves decision models; one at openrouter.ai does"
+            ? "no provider serves decision models; one at " + DecisionsHost() +
+                  " does"
             : "this conversation's provider serves no decision model; set "
               "approval.reviewerModel to " +
                   other->name + "/ to review at " + other->name;

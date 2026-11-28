@@ -15,6 +15,7 @@ list(APPEND _runtime_inputs "CMakeLists.txt"
      "cmake/embed_web.cmake"
      "cmake/build_identity.cc.in"
      "cmake/review_questions.cc.in"
+     "cmake/provider_data.cc.in"
      "web/public/design-helper.js"
      "web/public/deck-print.js"
      "docs/architecture/overview.md"
@@ -53,6 +54,9 @@ configure_file(cmake/build_identity.cc.in build_identity.cc @ONLY)
 file(READ src/app/review_questions.json UAGENT_REVIEW_QUESTIONS)
 file(READ src/app/report_questions.json UAGENT_REPORT_QUESTIONS)
 configure_file(cmake/review_questions.cc.in review_questions.cc @ONLY)
+# What uAgent knows of particular providers is data too.
+file(READ src/providers/presets.json UAGENT_PROVIDER_DATA)
+configure_file(cmake/provider_data.cc.in provider_data.cc @ONLY)
 
 if(NOT UNIX)
   message(FATAL_ERROR "uagent currently requires a POSIX platform")
@@ -202,7 +206,8 @@ add_library(
   src/api/client.cc
   src/api/exchange.cc
   src/api/wire_request.cc
-  src/api/wire_stream.cc)
+  src/api/wire_stream.cc
+  "${CMAKE_CURRENT_BINARY_DIR}/provider_data.cc")
 target_link_libraries(uagent_api PUBLIC uagent_core_base)
 
 add_library(

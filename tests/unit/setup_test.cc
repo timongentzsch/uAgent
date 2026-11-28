@@ -5,15 +5,91 @@
 #include <string>
 #include <vector>
 
+#include "include/api/provider_data.h"
 #include "include/app/openrouter_signin.h"
 #include "include/core/json.h"
+#include "include/providers/providers.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
 
+// presets.json holds what was written in code before: the same presets, the
+// same endpoints with the same features and options, and the same names.
+TEST_CASE(TestProviderDataKeepsTheTableItReplaced) {
+  const json& data = ProviderData();
+  struct Old {
+    const char* name;
+    const char* label;
+    const char* variable;
+    const char* base_url;
+    const char* wire_api;
+    bool free_only;
+  };
+  constexpr Old kOld[] = {
+      {"anthropic", "Anthropic", "ANTHROPIC_API_KEY",
+       "https://api.anthropic.com/v1", "anthropic_messages", false},
+      {"openai", "OpenAI", "OPENAI_API_KEY", "https://api.openai.com/v1",
+       "responses", false},
+      {"openrouter", "OpenRouter", "OPENROUTER_API_KEY",
+       "https://openrouter.ai/api/v1", "chat_completions", false},
+      {"openrouter-free", "OpenRouter Free", "OPENROUTER_FREE_API_KEY",
+       "https://openrouter.ai/api/v1", "chat_completions", true},
+  };
+  CHECK(data["presets"].size() == std::size(kOld));
+  for (size_t i = 0; i < std::size(kOld) && i < data["presets"].size(); ++i) {
+    const json& preset = data["presets"][i];
+    CHECK(preset["name"] == kOld[i].name);
+    CHECK(preset["label"] == kOld[i].label);
+    CHECK(preset["variable"] == kOld[i].variable);
+    CHECK(preset["base_url"] == kOld[i].base_url);
+    CHECK(preset["wire_api"] == kOld[i].wire_api);
+    CHECK(JsonValue(preset, "free_only", false) == kOld[i].free_only);
+    // OpenRouter's key endpoint refuses a wrong key; Anthropic lists 1000.
+    const bool openrouter =
+        std::string(kOld[i].base_url).find("openrouter") != std::string::npos;
+    CHECK(JsonValue(preset, "key_check_path", "") ==
+          (openrouter ? "/key" : ""));
+    CHECK(JsonValue(preset, "models_path", "/models") ==
+          (std::string(kOld[i].name) == "anthropic" ? "/models?limit=1000"
+                                                    : "/models"));
+  }
+
+  Endpoint router;
+  router.base_url = "https://openrouter.ai/api/v1";
+  CHECK(DeclareHost(router));
+  CHECK(FeatureNames(router.features) ==
+        json::parse(R"(["hosted_search","provider_routing",
+          "session_passthrough","raw_vendor_ids","model_variants",
+          "reasoning_object","reasoning_replay_text","prompt_cache_control",
+          "pdf_parser","inline_usage","decisions"])"));
+  CHECK(router.options == json::parse(R"({
+    "pdf_engine": "cloudflare-ai",
+    "decisions_url": "https://openrouter.ai/api/alpha/decisions",
+    "decisions_model": "~typesafe/jev-latest",
+    "decision_bars": {
+      "~typesafe/jev-latest": {"allow": 0.85, "deny": 0.95, "veto": 0.9},
+      "openai/gpt-6-luna-decisions": {"allow": 0.85, "deny": 0.9, "veto": 0.9}
+    }})"));
+  Endpoint openai;
+  openai.base_url = "https://api.openai.com/v1";
+  CHECK(DeclareHost(openai));
+  CHECK(FeatureNames(openai.features) ==
+        json::parse(R"(["max_completion_tokens","reasoning_summary"])"));
+  CHECK(openai.options.is_null());
+  Endpoint local;
+  local.base_url = "http://localhost:8080/v1";
+  CHECK(!DeclareHost(local));
+
+  CHECK(data["hosted_search_tools"] == json::parse(R"({
+    "responses": {"type": "web_search"},
+    "anthropic_messages": {"type": "web_search_20250305", "name": "web_search"},
+    "chat_completions": {"type": "openrouter:web_search"}})"));
+  CHECK(data["anthropic_version"] == "2023-06-01");
+}
+
 TEST_CASE(TestSetupSavesKeys) {
   SettingValues scope;
-  ApplySetupKeys({.openrouter = "sk-or"}, scope);
+  ApplySetupKeys({{"openrouter", "sk-or"}}, scope);
   CHECK(scope.at("OPENROUTER_API_KEY") == "sk-or");
   json providers = json::parse(scope.at("UAGENT_PROVIDERS"));
   CHECK(providers["openrouter"]["api_key"] == "$OPENROUTER_API_KEY");
@@ -21,7 +97,7 @@ TEST_CASE(TestSetupSavesKeys) {
   CHECK(providers["openrouter"]["wire_api"] == "chat_completions");
 
   scope.clear();
-  ApplySetupKeys({.openai = "sk-oa", .anthropic = "sk-ant"}, scope);
+  ApplySetupKeys({{"openai", "sk-oa"}, {"anthropic", "sk-ant"}}, scope);
   CHECK(scope.at("OPENAI_API_KEY") == "sk-oa");
   CHECK(scope.at("ANTHROPIC_API_KEY") == "sk-ant");
   providers = json::parse(scope.at("UAGENT_PROVIDERS"));
@@ -35,7 +111,7 @@ TEST_CASE(TestSetupSavesKeys) {
             R"({"local":{"base_url":"http://localhost:8080/v1"},)"
             R"("anthropic":{"base_url":"https://proxy.example/v1",)"
             R"("models":{"s":"claude-sonnet-5-5"}}})"}};
-  ApplySetupKeys({.anthropic = "sk-ant"}, scope);
+  ApplySetupKeys({{"anthropic", "sk-ant"}}, scope);
   providers = json::parse(scope.at("UAGENT_PROVIDERS"));
   CHECK(providers["local"]["base_url"] == "http://localhost:8080/v1");
   CHECK(providers["anthropic"]["base_url"] == "https://proxy.example/v1");
@@ -44,7 +120,7 @@ TEST_CASE(TestSetupSavesKeys) {
   CHECK(!providers.contains("openai"));
 
   scope = {{"UAGENT_PROVIDERS", "$MY_PROVIDERS"}};
-  ApplySetupKeys({.openai = "sk-oa"}, scope);
+  ApplySetupKeys({{"openai", "sk-oa"}}, scope);
   CHECK(scope.at("UAGENT_PROVIDERS") == "$MY_PROVIDERS");
 
   scope.clear();
@@ -59,7 +135,7 @@ TEST_CASE(TestSetupFreeProvider) {
       {"UAGENT_PROVIDERS",
        R"({"openrouter":{"base_url":"https://openrouter.ai/api/v1","api_key":"$OPENROUTER_API_KEY"}})"}};
   const json paid = json::parse(scope.at("UAGENT_PROVIDERS"))["openrouter"];
-  ApplySetupKeys({.openrouter_free = "free-key"}, scope);
+  ApplySetupKeys({{"openrouter-free", "free-key"}}, scope);
   const json providers = json::parse(scope.at("UAGENT_PROVIDERS"));
   CHECK(providers["openrouter"] == paid);
   CHECK(scope.at("OPENROUTER_API_KEY") == "paid-key");

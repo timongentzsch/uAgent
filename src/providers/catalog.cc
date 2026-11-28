@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/api/provider_data.h"
 #include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
@@ -19,41 +20,6 @@
 
 namespace uagent {
 namespace {
-// What a well-known host declares for any provider on it. This table and
-// the provider entries are the only places a vendor is named.
-struct KnownEndpoint {
-  const char* host;
-  FeatureSet features;
-  const char* options;
-};
-
-// The decision models the endpoint serves. Per model: allow needs P(allow)
-// at least `allow`, deny needs P(deny) at least `deny`, and a reason question
-// at or above `veto` asks instead. A model with no row gets the strict bars.
-constexpr char kOpenRouterOptions[] = R"({
-  "pdf_engine": "cloudflare-ai",
-  "decisions_url": "https://openrouter.ai/api/alpha/decisions",
-  "decisions_model": "~typesafe/jev-latest",
-  "decision_bars": {
-    "~typesafe/jev-latest": {"allow": 0.85, "deny": 0.95, "veto": 0.9},
-    "openai/gpt-6-luna-decisions": {"allow": 0.85, "deny": 0.9, "veto": 0.9}
-  }
-})";
-
-constexpr KnownEndpoint kKnownEndpoints[] = {
-    {"openrouter.ai",
-     FeaturesOf({Feature::kHostedSearch, Feature::kProviderRouting,
-                 Feature::kSessionPassthrough, Feature::kRawVendorIds,
-                 Feature::kModelVariants, Feature::kReasoningObject,
-                 Feature::kReasoningReplayText, Feature::kPromptCacheControl,
-                 Feature::kPdfParser, Feature::kInlineUsage,
-                 Feature::kDecisions}),
-     kOpenRouterOptions},
-    {"api.openai.com",
-     FeaturesOf({Feature::kMaxCompletionTokens, Feature::kReasoningSummary}),
-     ""},
-};
-
 constexpr std::chrono::hours kCatalogueLife{24};
 constexpr size_t kCatalogueCacheBytes = MiB(8);
 
@@ -93,11 +59,16 @@ bool FreeCodingModel(const json& model) {
 
 bool DeclareHost(Endpoint& endpoint) {
   const std::string host = UrlHost(endpoint.base_url);
-  for (const KnownEndpoint& known : kKnownEndpoints) {
-    const std::string name = known.host;
+  // An endpoint's features and options, and for one serving decisions its
+  // models and the bars they are held to, are in presets.json.
+  for (const json& known : ProviderData()["endpoints"]) {
+    const std::string name = JsonValue(known, "host", "");
     if (host != name && !host.ends_with("." + name)) continue;
-    endpoint.features = known.features;
-    endpoint.options = *known.options ? json::parse(known.options) : json();
+    std::string unknown;
+    FeatureSet features;
+    if (!ParseFeatures(known["features"], features, unknown)) return false;
+    endpoint.features = features;
+    endpoint.options = JsonValue(known, "options", json());
     return true;
   }
   return false;

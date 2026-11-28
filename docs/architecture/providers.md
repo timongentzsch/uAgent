@@ -12,8 +12,10 @@ settings are in [Settings](../interfaces/settings.md).
 cause and error classification. `src/providers/` turns configuration into
 `Route`s (endpoint, wire API, features, model, effort, context window).
 Route behaviour is declared, never inferred from a provider or model name:
-the only vendor table is `kKnownEndpoints` (`src/providers/catalog.cc`),
-keyed by host.
+everything uAgent knows of particular vendors is one data file,
+`src/providers/presets.json`: setup's presets, the endpoints it recognizes by
+host, the hosted search tool each wire API names, and the Anthropic API
+version. It is built into the binary.
 
 ## Processes and threads
 
@@ -29,7 +31,7 @@ from `UAGENT_PROVIDERS`: each entry has `base_url`, `api_key`, `wire_api`
 (`chat_completions` default, `responses`, `anthropic_messages`), optional
 `context`, `supports` (features), `options`, `hosted_tools`, `features`
 (model features) and `models` (aliases). An address on `openrouter.ai` or
-`api.openai.com` gets that host's features from `kKnownEndpoints`; a
+`api.openai.com` gets that host's features from `presets.json`; a
 `supports` list replaces them (names: `enum class Feature`,
 `include/api/capabilities.h`). An endpoint with `options.free_only` loses
 hosted search, the PDF parser, decisions and hosted tools.

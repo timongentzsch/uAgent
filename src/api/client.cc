@@ -16,6 +16,7 @@
 #include <utility>
 
 #include "include/api/exchange.h"
+#include "include/api/provider_data.h"
 #include "include/api/retry.h"
 #include "include/api/stream.h"
 #include "include/api/wire.h"
@@ -159,7 +160,8 @@ bool AddApiHeaders(CurlHeaders& headers, WireApi wire_api,
                    const std::string& api_key) {
   if (wire_api == WireApi::kAnthropicMessages) {
     return headers.Add("x-api-key: " + api_key) &&
-           headers.Add("anthropic-version: 2023-06-01");
+           headers.Add("anthropic-version: " +
+                       ProviderData()["anthropic_version"].get<std::string>());
   }
   return headers.Add("Authorization: Bearer " + api_key);
 }

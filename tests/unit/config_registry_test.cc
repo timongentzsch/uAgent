@@ -76,6 +76,8 @@ constexpr ConstantDefault kConstantDefaults[] = {
     {"UAGENT_TITLE_SECONDS", kTitleTimeoutSeconds},
     {"UAGENT_MEMORY_SECONDS", kMemoryExtractSeconds},
     {"UAGENT_PARENT_DECISION_SECONDS", kParentDecisionSeconds},
+    {"UAGENT_WEB_TERMINAL_SCROLLBACK_KB",
+     static_cast<int64_t>(kWebTerminalScrollbackBytes / KiB(1))},
 };
 
 std::vector<std::string> DirectRuntimeSettingLookups(std::string_view source) {

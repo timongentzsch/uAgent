@@ -205,6 +205,9 @@ int WebMain(const Options& options, char** argv) {
   int64_t idle_minutes = std::get<int64_t>(idle.default_value);
   ParseInt64(setting(Cfg("UAGENT_WEB_TERMINAL_IDLE_MINUTES").EnvName()).c_str(),
              idle_minutes);
+  const ConfigDescriptor& scrollback = Cfg("UAGENT_WEB_TERMINAL_SCROLLBACK_KB");
+  int64_t scrollback_kb = std::get<int64_t>(scrollback.default_value);
+  ParseInt64(setting(scrollback.EnvName()).c_str(), scrollback_kb);
   bool update_check = false;
   ParseBool(setting(Cfg("UAGENT_WEB_UPDATE_CHECK").EnvName()), update_check);
   return web::MasterMain(
@@ -212,6 +215,7 @@ int WebMain(const Options& options, char** argv) {
        setting(Cfg("UAGENT_WEB_PUSH_CONTACT").EnvName()), notification_detail,
        bind, setting(Cfg("UAGENT_BROWSER_DATA").EnvName()), terminal_on,
        std::clamp(idle_minutes, idle.minimum, idle.maximum),
+       std::clamp(scrollback_kb, scrollback.minimum, scrollback.maximum),
        setting(Cfg("UAGENT_REMOTE_BUNDLE").EnvName()), update_check},
       argv);
 }

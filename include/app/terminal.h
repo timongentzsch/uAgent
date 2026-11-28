@@ -19,6 +19,7 @@
 
 #include "include/core/env.h"
 #include "include/core/fd.h"
+#include "include/core/limits.h"
 #include "include/core/thread_annotations.h"
 
 namespace uagent {
@@ -75,10 +76,12 @@ class TerminalViewer {
 
 class Terminals {
  public:
-  // At most `limit` shells at once. A folder's shell no device has attached
-  // that printed nothing for `idle` ends. `changed` hears that the list did.
+  // At most `limit` shells at once, each keeping its newest `kept` bytes of
+  // output. A folder's shell no device has attached that printed nothing for
+  // `idle` ends. `changed` hears that the list did.
   Terminals(size_t limit, std::chrono::milliseconds idle,
-            std::function<void()> changed = {});
+            std::function<void()> changed = {},
+            size_t kept = kWebTerminalScrollbackBytes);
   ~Terminals();
   Terminals(const Terminals&) = delete;
   Terminals& operator=(const Terminals&) = delete;
@@ -104,6 +107,7 @@ class Terminals {
 
   const size_t limit_;
   const std::chrono::milliseconds idle_;
+  const size_t kept_;
   const std::function<void()> changed_;
   mutable std::mutex mutex_;
   std::vector<std::shared_ptr<TerminalShell>> shells_ UAGENT_GUARDED_BY(mutex_);

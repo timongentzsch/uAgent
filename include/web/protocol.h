@@ -40,6 +40,8 @@ struct WebOptions {
   // without output.
   bool terminal = false;
   int64_t terminal_idle_minutes = 0;
+  // Each terminal's newest output kept, in KiB (web.terminalScrollbackKb).
+  int64_t terminal_scrollback_kb = 0;
   // Optional complete gateway bundle, resolved from user configuration.
   std::string remote_bundle;
   // Ask GitHub for the newest release once a day, unasked.

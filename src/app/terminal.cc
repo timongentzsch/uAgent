@@ -71,8 +71,8 @@ struct TerminalShell {
   std::mutex input_mutex;
   std::mutex mutex;
   std::condition_variable changed;
-  // The newest output, at most kWebTerminalScrollbackBytes of it, and how
-  // much the shell printed in all.
+  // The newest output, at most what Terminals keeps, and how much the shell
+  // printed in all.
   std::string output UAGENT_GUARDED_BY(mutex);
   uint64_t produced UAGENT_GUARDED_BY(mutex) = 0;
   // The viewer that may type, 0 for none, and the last one given out.
@@ -88,9 +88,9 @@ namespace {
 
 // Moves what the shell printed into its kept output; false once its
 // terminal hung up (every process holding it has gone).
-bool Drain(TerminalShell& shell) {
+bool Drain(TerminalShell& shell, size_t kept) {
   std::array<char, kReadBytes> buffer;
-  for (size_t taken = 0; taken < kWebTerminalScrollbackBytes;) {
+  for (size_t taken = 0; taken < kept;) {
     const ssize_t count =
         read(shell.controller.Get(), buffer.data(), buffer.size());
     if (count < 0 && errno == EINTR) continue;
@@ -101,8 +101,8 @@ bool Drain(TerminalShell& shell) {
     taken += bytes;
     std::lock_guard lock(shell.mutex);
     shell.output.append(buffer.data(), bytes);
-    if (shell.output.size() > kWebTerminalScrollbackBytes) {
-      shell.output.erase(0, shell.output.size() - kWebTerminalScrollbackBytes);
+    if (shell.output.size() > kept) {
+      shell.output.erase(0, shell.output.size() - kept);
     }
     shell.produced += bytes;
     shell.quiet_since = Clock::now();
@@ -225,8 +225,8 @@ void TerminalViewer::Wake() {
 }
 
 Terminals::Terminals(size_t limit, std::chrono::milliseconds idle,
-                     std::function<void()> changed)
-    : limit_(limit), idle_(idle), changed_(std::move(changed)) {
+                     std::function<void()> changed, size_t kept)
+    : limit_(limit), idle_(idle), kept_(kept), changed_(std::move(changed)) {
   int wake[2] = {-1, -1};
   if (OpenNonblockingPipe(wake)) {
     wake_read_.Reset(wake[0]);
@@ -452,10 +452,10 @@ void Terminals::Loop() {
     for (size_t at = 0; at < live.size(); ++at) {
       TerminalShell& shell = *live[at];
       int status = 0;
-      const bool hung_up = ready[at + 1].revents != 0 && !Drain(shell);
+      const bool hung_up = ready[at + 1].revents != 0 && !Drain(shell, kept_);
       if (WaitPid(shell.pid, &status, WNOHANG) == shell.pid) {
         // What it printed last is still in the terminal.
-        Drain(shell);
+        Drain(shell, kept_);
         Finish(shell, status);
       } else if (hung_up) {
         Finish(shell, std::nullopt);

@@ -5,7 +5,7 @@ import socket
 import struct
 import time
 
-from integration_support import Server, assert_true, budget, event, wait_until
+from integration_support import Server, assert_true, budget, event, settings_path, wait_until
 from web_support import web_host
 
 from integration_web.moves import watch
@@ -217,6 +217,40 @@ def test_web_terminal_runs_a_shell_for_paired_devices(root, home, *, binary):
             _, notices, _ = again.until("never printed")
             assert_true({"type": "exit", "code": -1} in notices, notices)
             again.close()
+
+
+def test_web_terminal_keeps_the_saved_scrollback(root, home, *, binary):
+    """web.terminalScrollbackKb saved in Settings bounds what a reconnecting
+    device is given: the newest output, not the shell's first lines."""
+    project = root / "scrollback"
+    project.mkdir()
+    saved = settings_path(home)
+    saved.parent.mkdir(parents=True, exist_ok=True)
+    saved.write_text(
+        json.dumps({"format": 3, "all": {"web.terminalScrollbackKb": 64}, "projects": {}})
+    )
+    with Server([event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url, extra_env={"SHELL": "/bin/sh"}) as (
+            client,
+            code,
+            _,
+            _,
+        ):
+            client.pair(code)
+            terminal = open_terminal(client, str(project), str(project))
+            path = f"/api/terminals/{terminal}"
+            first = Socket(client, path)
+            # 200 KiB between the markers, printed by the shell, not echoed.
+            first.type(
+                "printf 'ST''ART\\n'; head -c 204800 /dev/zero | tr '\\0' x; printf '\\nE''ND\\n'\n"
+            )
+            first.until("END\r")
+            first.close()
+            again = Socket(client, path)
+            output, _, _ = again.until("END\r")
+            again.close()
+            assert_true("START" not in output, output[:200])
+            assert_true(len(output.encode()) <= 64 * 1024 + 4096, len(output.encode()))
 
 
 def test_web_terminal_can_be_turned_off(root, home, *, binary):

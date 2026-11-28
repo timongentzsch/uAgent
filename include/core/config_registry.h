@@ -343,6 +343,15 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Terminal idle minutes",
         "How long a terminal nobody has open may print nothing before it "
         "ends")),
+    registry::Advanced(registry::Named(
+        registry::Int(
+            "web.terminalScrollbackKb", "UAGENT_WEB_TERMINAL_SCROLLBACK_KB", {},
+            static_cast<int64_t>(kWebTerminalScrollbackBytes / KiB(1)), 64,
+            16384, ReloadPolicy::kRestartRequired, "host",
+            "kibibytes of a web terminal's output kept for scrolling "
+            "back and for a device that connects later",
+            kScopeUser),
+        "Terminal scrollback")),
     registry::PerConversation(registry::Named(
         registry::Fallback(
             registry::Str(

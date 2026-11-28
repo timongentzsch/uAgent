@@ -377,7 +377,8 @@ bool Master::Initialize(std::string& error) {
           host_.Publish(
               "", "",
               {{"kind", "terminals.changed"}, {"terminals", TerminalList()}});
-        });
+        },
+        KiB(static_cast<size_t>(options_.terminal_scrollback_kb)));
   }
   remotes_ = std::make_unique<RemoteHosts>(executable_, options_.remote_bundle);
   RegisterRemoteRoutes();

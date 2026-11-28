@@ -1,6 +1,6 @@
 // A page's values from a CSV of its folder: filled where its marks say,
 // formatted, said where they came from, and drawn again when the file is.
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   test,
@@ -59,6 +59,37 @@ test("marks fill from a CSV in the page's folder, say their file, column and row
   );
   await files.getByRole("button", { name: "Back" }).click();
   await expect(stage.locator("#eu")).toHaveText("$201,000");
+});
+
+test("a page changed in place fills its marks again, the page not loaded again", async ({
+  page: app,
+  session,
+  host,
+}) => {
+  const path = join(host.project, "design/kpi/01-march.html");
+  await writeFiles(join(host.project, "design/kpi"), {
+    "sales.csv": SALES,
+    "01-march.html": paper(
+      "March",
+      '<h1>March</h1><p>EU <b id="eu" data-source="sales.csv" data-field="revenue"></b></p>',
+    ),
+  });
+  const files = await openFiles(app, session, "design/kpi/01-march.html");
+  const { stage } = viewerOf(files);
+  await expect(stage.locator("#eu")).toHaveText("198700");
+  await stage.locator("body").evaluate(() => {
+    window.kept = true;
+  });
+  await app.waitForResponse((response) => response.url().includes("stamps="));
+  await writeFile(
+    path,
+    (await readFile(path, "utf8")).replace(
+      "</p>",
+      '</p><p>US <b id="us" data-source="sales.csv" data-field="revenue" data-where="region=US"></b></p>',
+    ),
+  );
+  await expect(stage.locator("#us")).toHaveText("266400");
+  expect(await stage.locator("body").evaluate(() => window.kept)).toBe(true);
 });
 
 test("a mark that names a missing file, column or row is said to the agent, and the page is ready after its values", async ({

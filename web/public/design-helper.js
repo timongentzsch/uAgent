@@ -468,17 +468,23 @@
   // (skills/artifact/references/data.md): filled by their own code once the
   // page has loaded, after a sheet or a whiteboard is drawn, so a capture
   // waits for them; what is missing is said to the agent.
-  addEventListener("DOMContentLoaded", () => {
+  const fillMarks = () => {
     const marks = [...document.querySelectorAll("[data-source][data-field]")];
-    if (!marks.length) return;
+    return marks.length
+      ? import(`${base}~sheet/marks.js`).then(
+          (code) => code.fill(marks, base, (type, data) => send(type, data)),
+          (error) => [`values from files were not filled: ${error.message}`],
+        )
+      : null;
+  };
+  addEventListener("DOMContentLoaded", () => {
+    const filled = fillMarks();
+    if (!filled) return;
     const before = window.uagentReady;
-    window.uagentReady = Promise.all([
-      before,
-      import(`${base}~sheet/marks.js`).then(
-        (code) => code.fill(marks, base, (type, data) => send(type, data)),
-        (error) => [`values from files were not filled: ${error.message}`],
-      ),
-    ]).then(([drawn, said]) => [...(drawn ?? []), ...said]);
+    window.uagentReady = Promise.all([before, filled]).then(([drawn, said]) => [
+      ...(drawn ?? []),
+      ...said,
+    ]);
   });
 
   if (parent === window) {
@@ -1181,8 +1187,7 @@
     const changed = new Set();
     morph(document.body, next.body, changed);
     notes()?.style.setProperty("display", "none", "important");
-    for (const mark of document.querySelectorAll("[data-source][data-field]"))
-      void fill(mark);
+    void fillMarks();
     repaged?.();
     for (const element of changed)
       element.setAttribute("data-uagent-changed", "");

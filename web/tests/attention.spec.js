@@ -94,6 +94,40 @@ test("a notification's link opens the session at its decision", async ({
     .toBe(`#session=${other.id}`);
 });
 
+test("a push it cannot read still shows the generic notification", async ({
+  page,
+  context,
+  browserName,
+}) => {
+  test.skip(browserName !== "chromium", "a push is delivered through CDP");
+  await page.goto("/");
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  // The test browser grants no notifications: the worker's are counted.
+  const [worker] = context.serviceWorkers();
+  await worker.evaluate(() => {
+    self.shown = [];
+    self.registration.showNotification = async (title) => {
+      self.shown.push(title);
+    };
+  });
+  const cdp = await context.newCDPSession(page);
+  const registered = new Promise((resolve) =>
+    cdp.on("ServiceWorker.workerRegistrationUpdated", ({ registrations }) => {
+      if (registrations.length) resolve(registrations[0]);
+    }),
+  );
+  await cdp.send("ServiceWorker.enable");
+  const { registrationId, scopeURL } = await registered;
+  await cdp.send("ServiceWorker.deliverPushMessage", {
+    origin: new URL(scopeURL).origin,
+    registrationId,
+    data: "not json",
+  });
+  await expect
+    .poll(() => worker.evaluate(() => self.shown))
+    .toEqual(["µAgent needs your attention"]);
+});
+
 test("a conversation's agents at work sit beneath it, finished ones leave the list", async ({
   page,
   host,

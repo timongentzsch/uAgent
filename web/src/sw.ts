@@ -98,23 +98,24 @@ self.addEventListener("activate", (event) => {
   );
 });
 const shown = new Set<string>();
-async function attention(data: Attention | undefined) {
-  if (
-    !data ||
-    !/^[a-f0-9:.-]{1,150}$/.test(data.id || "") ||
-    !/^[a-f0-9]{16,64}$/.test(data.session_id || "")
-  )
-    return;
+// A payload it cannot trust still shows the generic notification: WebKit
+// revokes a subscription whose pushes show nothing.
+async function attention(payload: Attention | undefined) {
+  const data =
+    /^[a-f0-9:.-]{1,150}$/.test(payload?.id || "") &&
+    /^[a-f0-9]{16,64}$/.test(payload?.session_id || "")
+      ? payload
+      : undefined;
   await self.registration.showNotification(
-    data.title || "µAgent needs your attention",
+    data?.title || "µAgent needs your attention",
     {
-      body: data.title
+      body: data?.title
         ? (reasons[data.reason || ""] ?? "Needs your attention")
         : "Open the app to see what the conversation needs.",
-      tag: data.id,
+      tag: data?.id,
       icon: "/icon-192.png",
       badge: "/icon-192.png",
-      data: { session_id: data.session_id, decision: data.id },
+      data: data && { session_id: data.session_id, decision: data.id },
     },
   );
 }
@@ -134,19 +135,18 @@ self.addEventListener("push", (event) => {
   let data;
   try {
     data = event.data?.json();
-  } catch {
-    return;
-  }
+  } catch {}
   event.waitUntil(attention(data));
 });
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const id = event.notification.data?.session_id;
-  if (!/^[a-f0-9]{16,64}$/.test(id || "")) return;
   // To the decision itself: the app opens the session and focuses it.
   const decision = encodeURIComponent(event.notification.data?.decision || "");
   const target = new URL(
-    `/#session=${id}&decision=${decision}`,
+    /^[a-f0-9]{16,64}$/.test(id || "")
+      ? `/#session=${id}&decision=${decision}`
+      : "/",
     self.location.origin,
   ).href;
   event.waitUntil(

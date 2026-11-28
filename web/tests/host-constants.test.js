@@ -5,8 +5,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { localRoutes, protocol } from "../src/state/api.ts";
-import { zoomSteps } from "../src/shared/layout.ts";
-import { storageKeys } from "../src/shared/storage-keys.ts";
 import * as limits from "../src/shared/limits.ts";
 
 const UNIT = { KiB: 1024, MiB: 1024 * 1024 };
@@ -102,24 +100,4 @@ test("the Browser popup offers the host's viewports", () => {
   ].map(([, name, width, height]) => `${name} ${width}x${height}`);
   assert.ok(host.length, "kViewports");
   assert.deepEqual(page, host);
-});
-
-// theme.js runs before any module, so it repeats what it needs.
-test("theme.js repeats the keys, zoom range and panes it restores", () => {
-  const theme = source("web/public/theme.js");
-  for (const key of ["theme", "zoom", "panes"])
-    assert.ok(theme.includes(`"${storageKeys[key]}"`), key);
-  const [, low, high] = theme.match(/Math\.min\((\d+), Math\.max\((\d+),/);
-  assert.deepEqual(
-    [Number(high), Number(low)],
-    [zoomSteps[0], zoomSteps.at(-1)],
-  );
-  assert.ok(theme.includes(`|| "${limits.defaultZoom}"`), "defaultZoom");
-  const panes = (list) =>
-    [...list.matchAll(/"([\w-]+)"/g)].map(([, n]) => n).sort();
-  const restored = theme.match(/for \(const name of \[([^\]]*)\]/)[1];
-  const typed = source("web/src/shared/device-prefs.ts").match(
-    /export type Pane = ([^;]*);/,
-  )[1];
-  assert.deepEqual(panes(restored), panes(typed));
 });

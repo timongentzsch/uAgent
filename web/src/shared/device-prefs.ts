@@ -1,13 +1,11 @@
 import { applyMotion, applyTheme, applyZoom, normalizeZoom } from "./layout.ts";
 import { defaultZoom } from "./limits.ts";
 import { stored, type Stored } from "./storage.ts";
-import { storageKeys } from "./storage-keys.ts";
+import { panes, storageKeys } from "./storage-keys.ts";
 import { defaultTimePrefs, normalizeTimePrefs } from "./time.ts";
 import { detailLevels } from "./tree.ts";
 
-// The docked panes someone can resize (shared/side-pane.tsx); each width
-// (the terminal's height) is kept in rem, so it follows the text size.
-export type Pane = "sidebar" | "side" | "files" | "files-list" | "terminal";
+export type Pane = (typeof panes)[number];
 
 export const devicePrefs = {
   theme: stored(storageKeys.theme, "system"),

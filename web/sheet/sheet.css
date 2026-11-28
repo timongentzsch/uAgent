@@ -13,6 +13,44 @@
   --sheet-pick: color-mix(in srgb, var(--sheet-accent) 12%, transparent);
   --sheet-handle: 7px;
   --sheet-reach: 17px;
+  --sheet-line-width: 1px;
+  --sheet-focus-width: 2px;
+  --sheet-space-1: 2px;
+  --sheet-space-2: 4px;
+  --sheet-space-3: 6px;
+  --sheet-space-4: 8px;
+  --sheet-space-6: 12px;
+  --sheet-space-12: 24px;
+  --sheet-font-small: 11px;
+  --sheet-weight-regular: 400;
+  --sheet-weight-strong: 600;
+  /* A cell's small and large text; grid.js measures cells by them. */
+  --sheet-small: 0.85em;
+  --sheet-large: 1.3em;
+  --sheet-row: 24px;
+  /* A group level's lane beside the grid; grid.js lays the gutter out by it. */
+  --sheet-lane: 16px;
+  --sheet-fold: 14px;
+  /* A chart's size handle and a legend's swatch. */
+  --sheet-mark: 8px;
+  --sheet-edge-min: 40px;
+  --sheet-editor-min: 120px;
+  --sheet-menu-min: 180px;
+  --sheet-suggest-width: 440px;
+  --sheet-suggest-height: 208px;
+  /* What stands over what: charts under the grid, the row and column edges
+     and the frozen panes over the cells, the editor, suggestions and the
+     resize guide over those, and a menu over everything. */
+  --sheet-z-chart: 0;
+  --sheet-z-edge: 1;
+  --sheet-z-frozen: 2;
+  --sheet-z-frozen-edge: 3;
+  --sheet-z-letters: 4;
+  --sheet-z-letters-pinned: 5;
+  --sheet-z-corner: 6;
+  --sheet-z-editor: 7;
+  --sheet-z-float: 8;
+  --sheet-z-menu: 10;
   --sheet-series-0: var(--sheet-accent);
   --sheet-series-1: color-mix(in srgb, var(--sheet-accent) 55%, var(--sheet-ground));
   --sheet-series-2: color-mix(in srgb, var(--sheet-accent) 25%, var(--sheet-ground));
@@ -49,15 +87,15 @@ table[data-sheet] {
 }
 table[data-sheet] :is(th, td) {
   box-sizing: border-box;
-  height: 24px;
-  padding: 2px 8px;
+  height: var(--sheet-row);
+  padding: var(--sheet-space-1) var(--sheet-space-4);
   border: solid var(--sheet-line);
-  border-width: 0 1px 1px 0;
+  border-width: 0 var(--sheet-line-width) var(--sheet-line-width) 0;
   overflow: hidden;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 400;
+  font-weight: var(--sheet-weight-regular);
   background: var(--sheet-ground);
 }
 /* In the pane the table is a window on the grid: the cells in view, laid
@@ -103,32 +141,32 @@ table[data-sheet] .sheet-link {
    all. */
 table[data-sheet] .sheet-edge {
   position: sticky;
-  z-index: 1;
-  min-width: 40px;
-  padding: 2px 6px;
+  z-index: var(--sheet-z-edge);
+  min-width: var(--sheet-edge-min);
+  padding: var(--sheet-space-1) var(--sheet-space-3);
   background: var(--sheet-edge);
   color: var(--sheet-muted);
   text-align: center;
-  font-size: 11px;
+  font-size: var(--sheet-font-small);
 }
 table[data-sheet] .sheet-edge:first-child {
   left: 0;
 }
 table[data-sheet] .sheet-letters .sheet-edge {
   top: 0;
-  z-index: 4;
+  z-index: var(--sheet-z-letters);
 }
 table[data-sheet] .sheet-letters .sheet-edge:first-child {
-  z-index: 6;
+  z-index: var(--sheet-z-corner);
 }
-/* The groups' gutter, a lane of 16px (grid.js LANE) for each level, beside
+/* The groups' gutter, a lane of --sheet-lane for each level, beside
    the row numbers and over the letters: a line along a group, its button on
    the row or column after it. */
 table[data-sheet] tbody .sheet-edge {
-  padding-left: calc(6px + var(--sheet-gutter-x, 0px));
+  padding-left: calc(var(--sheet-space-3) + var(--sheet-gutter-x, 0px));
 }
 table[data-sheet] .sheet-letters .sheet-edge {
-  padding-top: calc(2px + var(--sheet-gutter-y, 0px));
+  padding-top: calc(var(--sheet-space-1) + var(--sheet-gutter-y, 0px));
 }
 .sheet-lanes {
   position: absolute;
@@ -141,28 +179,28 @@ table[data-sheet] .sheet-letters .sheet-edge {
   flex-direction: column;
 }
 .sheet-lane {
-  flex: 0 0 16px;
+  flex: 0 0 var(--sheet-lane);
   align-self: stretch;
 }
 .sheet-along {
   background: linear-gradient(var(--sheet-muted), var(--sheet-muted)) center /
-    1px 100% no-repeat;
+    var(--sheet-line-width) 100% no-repeat;
 }
 .sheet-letters .sheet-along {
-  background-size: 100% 1px;
+  background-size: 100% var(--sheet-line-width);
 }
 .sheet-fold {
-  flex: 0 0 14px;
-  height: 14px;
-  width: 14px;
-  margin: 1px;
+  flex: 0 0 var(--sheet-fold);
+  height: var(--sheet-fold);
+  width: var(--sheet-fold);
+  margin: var(--sheet-line-width);
   padding: 0;
-  border: 1px solid var(--sheet-muted);
+  border: var(--sheet-line-width) solid var(--sheet-muted);
   border-radius: 0;
   background: var(--sheet-ground);
   color: var(--sheet-ink);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--sheet-font-small);
   line-height: 1;
   cursor: pointer;
 }
@@ -170,19 +208,19 @@ table[data-sheet] .sheet-letters .sheet-edge {
 /* The header band, and the rows frozen with it. */
 table[data-sheet] .sheet-head :where(th, td):where(:not(.sheet-edge)) {
   background: var(--sheet-head);
-  font-weight: 600;
+  font-weight: var(--sheet-weight-strong);
 }
 table[data-sheet] .sheet-frozen :is(th, td) {
   position: sticky;
   top: var(--sheet-top);
-  z-index: 2;
+  z-index: var(--sheet-z-frozen);
 }
 table[data-sheet] .sheet-frozen :is(.sheet-edge, .sheet-pinned) {
-  z-index: 3;
+  z-index: var(--sheet-z-frozen-edge);
 }
 table[data-sheet] tr.total :is(th, td):not(.sheet-edge) {
-  border-top: 1px solid var(--sheet-ink);
-  font-weight: 600;
+  border-top: var(--sheet-line-width) solid var(--sheet-ink);
+  font-weight: var(--sheet-weight-strong);
 }
 table[data-sheet] [data-fill="accent"] {
   background: var(--sheet-tint);
@@ -217,17 +255,17 @@ table[data-sheet] [data-ink="accent"] {
 }
 /* A size against the grid's, as grid.js measures it. */
 table[data-sheet] .sheet-small {
-  font-size: 0.85em;
+  font-size: var(--sheet-small);
 }
 table[data-sheet] .sheet-large {
-  font-size: 1.3em;
+  font-size: var(--sheet-large);
 }
 /* The lines written about a cell; its right and bottom are the grid's. */
 table[data-sheet] :is([data-border~="all"], [data-border~="top"]) {
-  border-top: 1px solid var(--sheet-ink);
+  border-top: var(--sheet-line-width) solid var(--sheet-ink);
 }
 table[data-sheet] :is([data-border~="all"], [data-border~="left"]) {
-  border-left: 1px solid var(--sheet-ink);
+  border-left: var(--sheet-line-width) solid var(--sheet-ink);
 }
 table[data-sheet] :is([data-border~="all"], [data-border~="bottom"]) {
   border-bottom-color: var(--sheet-ink);
@@ -241,8 +279,8 @@ table[data-sheet] :is(.sheet-in, .sheet-read) {
   box-shadow: inset 0 0 0 100vmax var(--sheet-pick);
 }
 table[data-sheet] [aria-selected="true"] {
-  outline: 2px solid var(--sheet-accent);
-  outline-offset: -2px;
+  outline: var(--sheet-focus-width) solid var(--sheet-accent);
+  outline-offset: calc(-1 * var(--sheet-focus-width));
 }
 /* The handle at the selection's last corner, which fills from it; on a
    touch screen its reach grows to the cell's corner, not its look. */
@@ -275,15 +313,15 @@ table[data-sheet] .sheet-edge {
 /* Columns held in view beside the row numbers. */
 table[data-sheet] .sheet-pinned {
   position: sticky;
-  z-index: 1;
+  z-index: var(--sheet-z-edge);
 }
 table[data-sheet] .sheet-letters .sheet-pinned {
-  z-index: 5;
+  z-index: var(--sheet-z-letters-pinned);
 }
 /* A header cell's menu, and the mark of a cell edited through a list. */
 table[data-sheet] .sheet-more {
-  margin-left: 4px;
-  padding: 0 2px;
+  margin-left: var(--sheet-space-2);
+  padding: 0 var(--sheet-space-1);
   border: 0;
   background: none;
   color: var(--sheet-muted);
@@ -296,7 +334,7 @@ table[data-sheet] .sheet-options::after {
   color: var(--sheet-muted);
 }
 table[data-sheet] .sheet-options::after {
-  margin-left: 4px;
+  margin-left: var(--sheet-space-2);
 }
 /* A column a filter is on. */
 table[data-sheet] .sheet-more[aria-pressed="true"]::before {
@@ -309,8 +347,8 @@ table[data-sheet] .sheet-more[aria-pressed="true"]::before {
   position: absolute;
   box-sizing: border-box;
   margin: 0;
-  padding: 0 6px;
-  border: 2px solid var(--sheet-accent);
+  padding: 0 var(--sheet-space-3);
+  border: var(--sheet-focus-width) solid var(--sheet-accent);
   border-radius: 0;
   outline: none;
   background: var(--sheet-ground);
@@ -320,27 +358,27 @@ table[data-sheet] .sheet-more[aria-pressed="true"]::before {
   pointer-events: none;
 }
 .sheet-editor[data-editing] {
-  z-index: 7;
-  min-width: 120px;
+  z-index: var(--sheet-z-editor);
+  min-width: var(--sheet-editor-min);
   opacity: 1;
   pointer-events: auto;
 }
 .sheet-menu {
   position: fixed;
-  z-index: 10;
+  z-index: var(--sheet-z-menu);
   display: flex;
   flex-direction: column;
-  min-width: 180px;
+  min-width: var(--sheet-menu-min);
   max-height: 100vh;
   box-sizing: border-box;
   overflow-y: auto;
-  padding: 4px;
-  border: 1px solid var(--sheet-ink);
+  padding: var(--sheet-space-2);
+  border: var(--sheet-line-width) solid var(--sheet-ink);
   background: var(--sheet-ground);
 }
 .sheet-menu > * {
   box-sizing: border-box;
-  padding: 6px 8px;
+  padding: var(--sheet-space-3) var(--sheet-space-4);
   border: 0;
   background: none;
   color: inherit;
@@ -348,8 +386,8 @@ table[data-sheet] .sheet-more[aria-pressed="true"]::before {
   text-align: left;
 }
 .sheet-menu > input {
-  margin: 4px;
-  border: 1px solid var(--sheet-line);
+  margin: var(--sheet-space-2);
+  border: var(--sheet-line-width) solid var(--sheet-line);
 }
 .sheet-menu > :is(:hover, :focus) {
   outline: none;
@@ -359,22 +397,22 @@ table[data-sheet] .sheet-more[aria-pressed="true"]::before {
    to choose from, or the arguments of the one it stands in. */
 .sheet-suggest {
   position: absolute;
-  z-index: 8;
+  z-index: var(--sheet-z-float);
   box-sizing: border-box;
-  max-width: min(440px, 100vw);
-  max-height: min(208px, var(--sheet-room, 208px));
+  max-width: min(var(--sheet-suggest-width), 100vw);
+  max-height: min(var(--sheet-suggest-height), var(--sheet-room, var(--sheet-suggest-height)));
   overflow-y: auto;
-  border: 1px solid var(--sheet-ink);
+  border: var(--sheet-line-width) solid var(--sheet-ink);
   background: var(--sheet-ground);
   color: var(--sheet-muted);
 }
 .sheet-suggest b {
   color: var(--sheet-ink);
-  font-weight: 600;
+  font-weight: var(--sheet-weight-strong);
 }
 .sheet-suggest[role="note"],
 .sheet-suggest > [role="option"] {
-  padding: 6px 8px;
+  padding: var(--sheet-space-3) var(--sheet-space-4);
 }
 .sheet-suggest > [role="option"] {
   overflow: hidden;
@@ -386,14 +424,14 @@ table[data-sheet] .sheet-more[aria-pressed="true"]::before {
   background: var(--sheet-edge);
 }
 .sheet-menu > hr {
-  margin: 4px 0;
+  margin: var(--sheet-space-2) 0;
   padding: 0;
-  border-top: 1px solid var(--sheet-line);
+  border-top: var(--sheet-line-width) solid var(--sheet-line);
 }
 /* A command's keys, not part of its name. */
 .sheet-menu > button {
   display: flex;
-  gap: 8px;
+  gap: var(--sheet-space-4);
 }
 .sheet-menu > [data-keys]::after {
   content: attr(data-keys) / "";
@@ -407,15 +445,15 @@ table[data-sheet] .sheet-more[aria-pressed="true"]::before {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 7px;
+  width: var(--sheet-handle);
   cursor: col-resize;
 }
 .sheet-guide {
   position: fixed;
   top: 0;
   bottom: 0;
-  z-index: 8;
-  border-left: 1px solid var(--sheet-accent);
+  z-index: var(--sheet-z-float);
+  border-left: var(--sheet-line-width) solid var(--sheet-accent);
 }
 table[data-sheet] input[type="checkbox"] {
   margin: 0;
@@ -423,7 +461,7 @@ table[data-sheet] input[type="checkbox"] {
 }
 /* What a rule gives the cells it matches, or a cell's own class. */
 table[data-sheet] .sheet-bold {
-  font-weight: 600;
+  font-weight: var(--sheet-weight-strong);
 }
 table[data-sheet] .sheet-italic {
   font-style: italic;
@@ -435,42 +473,42 @@ table[data-sheet] .sheet-strike {
    and the row numbers. */
 .sheet-chart {
   position: absolute;
-  z-index: 0;
+  z-index: var(--sheet-z-chart);
   pointer-events: auto;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sheet-space-2);
   margin: 0;
-  padding: 8px;
-  border: 1px solid var(--sheet-line);
+  padding: var(--sheet-space-4);
+  border: var(--sheet-line-width) solid var(--sheet-line);
   background: var(--sheet-ground);
   cursor: move;
 }
 .sheet-chart > figcaption {
   min-height: 1lh;
-  padding-right: 24px;
+  padding-right: var(--sheet-space-12);
   overflow: hidden;
-  font-weight: 600;
+  font-weight: var(--sheet-weight-strong);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 /* A chart picked: ringed, its tools at its top, a handle at each corner
    that sizes it from there. */
 .sheet-chart[data-picked] {
-  outline: 2px solid var(--sheet-accent);
-  outline-offset: -1px;
+  outline: var(--sheet-focus-width) solid var(--sheet-accent);
+  outline-offset: calc(-1 * var(--sheet-line-width));
 }
 .sheet-chart-tools {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: var(--sheet-space-2);
+  right: var(--sheet-space-2);
   display: flex;
-  gap: 4px;
+  gap: var(--sheet-space-2);
 }
 .sheet-chart-tools > button {
-  padding: 0 6px;
-  border: 1px solid var(--sheet-line);
+  padding: 0 var(--sheet-space-3);
+  border: var(--sheet-line-width) solid var(--sheet-line);
   background: var(--sheet-ground);
   color: var(--sheet-ink);
   font: inherit;
@@ -478,10 +516,10 @@ table[data-sheet] .sheet-strike {
 }
 .sheet-size {
   position: absolute;
-  width: 8px;
-  height: 8px;
-  margin: -4px;
-  border: 1px solid var(--sheet-accent);
+  width: var(--sheet-mark);
+  height: var(--sheet-mark);
+  margin: calc(var(--sheet-mark) / -2);
+  border: var(--sheet-line-width) solid var(--sheet-accent);
   background: var(--sheet-ground);
   cursor: nwse-resize;
 }
@@ -521,7 +559,7 @@ table[data-sheet] .sheet-strike {
 }
 .sheet-chart text {
   fill: var(--sheet-muted);
-  font-size: 11px;
+  font-size: var(--sheet-font-small);
   text-anchor: middle;
 }
 .sheet-chart text[data-axis="y"] {
@@ -555,18 +593,18 @@ table[data-sheet] .sheet-strike {
 .sheet-chart > ul {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 12px;
+  gap: var(--sheet-space-1) var(--sheet-space-6);
   margin: 0;
   padding: 0;
   list-style: none;
   color: var(--sheet-muted);
-  font-size: 11px;
+  font-size: var(--sheet-font-small);
 }
 .sheet-chart li::before {
   content: "";
   display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 4px;
+  width: var(--sheet-mark);
+  height: var(--sheet-mark);
+  margin-right: var(--sheet-space-2);
   background: var(--series);
 }

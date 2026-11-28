@@ -83,7 +83,7 @@ test("spacing, font sizes and line heights use the scale tokens", () => {
         return false;
       const value = bare(declaration.value);
       return LENGTH.test(value) || LITERAL.test(value);
-    }),
+    }, true),
     [],
   );
 });
@@ -97,6 +97,7 @@ test("sizes, positions and border widths use the size tokens", () => {
   assert.deepEqual(
     strays(
       ({ property, value }) => SIZED.test(property) && LENGTH.test(bare(value)),
+      true,
     ),
     [],
   );
@@ -119,6 +120,7 @@ test("weights, tracking, offsets, opacity and stacking use their tokens", () => 
       ({ rule, property, value }) =>
         // A font file's own weight range is not a weight a rule picks.
         !rule.startsWith("@font-face") && WRITTEN[property]?.test(bare(value)),
+      true,
     ),
     [],
   );

@@ -3,6 +3,8 @@
 // data and its own rendering promise settle. The host's PDF capture awaits
 // this promise. A browser print window also opens its native print dialog.
 (() => {
+  // How long a print waits for every slide before offering to print anyway.
+  const LOAD_WAIT_MS = 10_000;
   const interactive = location.hash === "#print";
   const drawn = new Set();
   let slides;
@@ -64,7 +66,7 @@
           autoPrint = false;
           button.disabled = false;
           button.textContent = "Some slides are still loading. Print anyway";
-        }, 10000);
+        }, LOAD_WAIT_MS);
       }
       check();
     });

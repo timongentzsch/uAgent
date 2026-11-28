@@ -966,4 +966,19 @@ TEST_CASE(TestMcpTakesEveryLineOfAFullBuffer) {
   CHECK(server.rbuf == "{\"partial");
 }
 
+// A long reply arriving in pieces is scanned once, not from its start per read.
+TEST_CASE(TestMcpScansAPartialLineOnce) {
+  McpServer server;
+  std::string line;
+  for (int i = 0; i < 4; ++i) {
+    server.rbuf += std::string(1 << 16, 'x');
+    CHECK(!McpTakeLine(server, line));
+    CHECK(server.rscanned == server.rbuf.size());
+  }
+  server.rbuf += "\n{}\n";
+  CHECK(McpTakeLine(server, line) && line == std::string(1 << 18, 'x'));
+  CHECK(McpTakeLine(server, line) && line == "{}");
+  CHECK(!McpTakeLine(server, line) && server.rbuf.empty());
+}
+
 }  // namespace uagent

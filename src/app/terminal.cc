@@ -60,6 +60,7 @@ int ExitCode(int status) {
 struct TerminalShell {
   // No folder: the page's own shell, which ends with its viewer.
   std::string id, cwd, folder;
+  size_t kept = 0;
   // Set under Terminals::mutex_, as the shell is listed.
   std::string title;
   int64_t started = 0;
@@ -71,8 +72,8 @@ struct TerminalShell {
   std::mutex input_mutex;
   std::mutex mutex;
   std::condition_variable changed;
-  // The newest output, at most what Terminals keeps, and how much the shell
-  // printed in all.
+  // The newest output, its last `kept` bytes shown and at most twice that
+  // held, and how much the shell printed in all.
   std::string output UAGENT_GUARDED_BY(mutex);
   uint64_t produced UAGENT_GUARDED_BY(mutex) = 0;
   // The viewer that may type, 0 for none, and the last one given out.
@@ -88,9 +89,9 @@ namespace {
 
 // Moves what the shell printed into its kept output; false once its
 // terminal hung up (every process holding it has gone).
-bool Drain(TerminalShell& shell, size_t kept) {
+bool Drain(TerminalShell& shell) {
   std::array<char, kReadBytes> buffer;
-  for (size_t taken = 0; taken < kept;) {
+  for (size_t taken = 0; taken < shell.kept;) {
     const ssize_t count =
         read(shell.controller.Get(), buffer.data(), buffer.size());
     if (count < 0 && errno == EINTR) continue;
@@ -101,8 +102,8 @@ bool Drain(TerminalShell& shell, size_t kept) {
     taken += bytes;
     std::lock_guard lock(shell.mutex);
     shell.output.append(buffer.data(), bytes);
-    if (shell.output.size() > kept) {
-      shell.output.erase(0, shell.output.size() - kept);
+    if (shell.output.size() > 2 * shell.kept) {
+      shell.output.erase(0, shell.output.size() - shell.kept);
     }
     shell.produced += bytes;
     shell.quiet_since = Clock::now();
@@ -194,20 +195,22 @@ TerminalOutput TerminalViewer::Read(std::chrono::milliseconds wait) {
   });
   TerminalOutput out;
   if (woken_) return out;
-  const uint64_t begin = shell.produced - shell.output.size();
+  const size_t shown = std::min(shell.output.size(), shell.kept);
+  const size_t skip = shell.output.size() - shown;
+  const uint64_t begin = shell.produced - shown;
   if (!replayed_) {
     replayed_ = true;
     cursor_ = begin;
     // Output cut short begins mid-line, perhaps mid-sequence: replay from
     // the first whole line.
     if (begin > 0) {
-      const size_t line = shell.output.find('\n');
-      if (line != std::string::npos) cursor_ += line + 1;
+      const size_t line = shell.output.find('\n', skip);
+      if (line != std::string::npos) cursor_ += line + 1 - skip;
     }
   }
   // A viewer that fell behind what is kept goes on from the oldest output.
   cursor_ = std::max(cursor_, begin);
-  const auto from = static_cast<size_t>(cursor_ - begin);
+  const auto from = skip + static_cast<size_t>(cursor_ - begin);
   out.bytes = shell.output.substr(from, kWebTerminalMessageBytes);
   cursor_ += out.bytes.size();
   if (cursor_ == shell.produced) {
@@ -265,6 +268,7 @@ std::string Terminals::Open(const std::string& directory,
   shell->id = RandomToken(kIdBytes);
   shell->cwd = paths[0];
   shell->folder = paths[1];
+  shell->kept = kept_;
   shell->started = NowMillis();
   shell->wake = wake_write_.Get();
   UniqueLock lock(mutex_);
@@ -452,10 +456,10 @@ void Terminals::Loop() {
     for (size_t at = 0; at < live.size(); ++at) {
       TerminalShell& shell = *live[at];
       int status = 0;
-      const bool hung_up = ready[at + 1].revents != 0 && !Drain(shell, kept_);
+      const bool hung_up = ready[at + 1].revents != 0 && !Drain(shell);
       if (WaitPid(shell.pid, &status, WNOHANG) == shell.pid) {
         // What it printed last is still in the terminal.
-        Drain(shell, kept_);
+        Drain(shell);
         Finish(shell, status);
       } else if (hung_up) {
         Finish(shell, std::nullopt);

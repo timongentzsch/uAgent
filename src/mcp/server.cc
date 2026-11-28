@@ -135,10 +135,11 @@ bool McpFillBuffer(McpServer& s, bool eof_is_fatal) {
 // Taken lines stay in the buffer until no whole line is left: one erase per
 // read, however many lines it held.
 bool McpTakeLine(McpServer& s, std::string& line) {
-  const size_t newline = s.rbuf.find('\n', s.rstart);
+  const size_t newline = s.rbuf.find('\n', std::max(s.rstart, s.rscanned));
   if (newline == std::string::npos) {
     s.rbuf.erase(0, s.rstart);
     s.rstart = 0;
+    s.rscanned = s.rbuf.size();
     return false;
   }
   line = s.rbuf.substr(s.rstart, newline - s.rstart);

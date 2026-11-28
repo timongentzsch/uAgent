@@ -118,4 +118,22 @@ TEST_CASE(TestWebTerminal) {
   CHECK(!page.Close(own));
 }
 
+// A new viewer replays at most the kept output, from its first whole line.
+TEST_CASE(TestWebTerminalReplaysOnlyWhatIsKept) {
+  TestWorkspace workspace("web-terminal-kept");
+  ScopedEnv shell("SHELL", "/bin/sh");
+  constexpr size_t kKept = KiB(4);
+  Terminals terminals(1, std::chrono::minutes(1), {}, kKept);
+  std::string error;
+  const std::string folder = workspace.workspace.string();
+  const std::string id = terminals.Open(folder, folder, error);
+  auto first = terminals.Attach(id);
+  CHECK(first->Write("seq 100000 103000; echo done-$((1+1))\n"));
+  CHECK(ReadUntil(*first, "done-2").find("done-2") != std::string::npos);
+  auto second = terminals.Attach(id);
+  const std::string replay = second->Read(std::chrono::milliseconds(0)).bytes;
+  CHECK(replay.size() <= kKept && replay.size() > kKept / 2);
+  CHECK(replay.starts_with("10") && replay.find("done-2") != std::string::npos);
+}
+
 }  // namespace uagent

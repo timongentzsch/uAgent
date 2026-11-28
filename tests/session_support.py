@@ -81,15 +81,26 @@ def close_sessions(home):
 
 
 # How long no runtime of a home may appear before its sessions count as
-# ended: a runtime that ends can start another (an agent's report wakes its
-# parent).
+# ended: a runtime that ends can start another (an agent's report or a side
+# chat's merge wakes the conversation it belongs to).
 SETTLE_SECONDS = 1
 
 
 def late_wakers(home):
     """Whether a runtime of `home` can still start another once its sessions
-    are closed: only an agent, saved beside its parent, reports to one."""
-    return any((home / ".uagent" / "history").rglob("agent-*.json"))
+    are closed: an agent, saved beside its parent, reports to it, and a side
+    chat, its header marked `side`, merges into the conversation it left."""
+    history = home / ".uagent" / "history"
+    if any(history.rglob("agent-*.json")):
+        return True
+    for path in history.rglob("*.json"):
+        try:
+            with path.open(encoding="utf-8") as saved:
+                if json.loads(saved.readline()).get("side"):
+                    return True
+        except (OSError, ValueError, AttributeError):
+            continue
+    return False
 
 
 def stop_sessions(home, settle=0.0):

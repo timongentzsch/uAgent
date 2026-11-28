@@ -2,8 +2,15 @@ import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
 import { withBreakpoints } from "./src/shared/breakpoints.ts";
+import { readFileSync } from "node:fs";
+import { themeScript } from "./src/boot/theme.ts";
 const optionalAssets = new Set();
 const outDir = process.env.UAGENT_WEB_OUT_DIR || "dist";
+const tokens = () =>
+  readFileSync(
+    new URL("./src/shared/styles/tokens.css", import.meta.url),
+    "utf8",
+  );
 const rendererManifest = () => ({
   name: "renderer-assets",
   generateBundle(_options, bundle) {
@@ -63,6 +70,24 @@ export default defineConfig({
   esbuild: { jsx: "automatic", jsxImportSource: "preact" },
   plugins: [
     rendererManifest(),
+    {
+      // /theme.js, written out with the keys, zoom range, panes and
+      // backgrounds the app keeps (src/boot/theme.ts).
+      name: "theme-script",
+      configureServer(server) {
+        server.middlewares.use("/theme.js", (_request, response) => {
+          response.setHeader("Content-Type", "text/javascript");
+          response.end(themeScript(tokens()));
+        });
+      },
+      generateBundle() {
+        this.emitFile({
+          type: "asset",
+          fileName: "theme.js",
+          source: themeScript(tokens()),
+        });
+      },
+    },
     {
       // Each `(--name)` a stylesheet writes in a query becomes its query.
       name: "breakpoints",

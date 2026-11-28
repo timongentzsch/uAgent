@@ -4,7 +4,7 @@
 import { headOf, isTotal, openBook } from "./book.js";
 import { CHART } from "./chart.js";
 import { listenCharts } from "./figure.js";
-import { draw, figuresOf, LANE, paint, readTab, sizesOf } from "./grid.js";
+import { draw, figuresOf, lane, paint, readTab, sizesOf } from "./grid.js";
 import { listen } from "./input.js";
 import { post } from "./items.js";
 import { layoutOf } from "./layout.js";
@@ -337,8 +337,8 @@ async function open() {
   const fit = () => {
     grid = extent();
     const edge =
-      LANE * lanes.rows + Math.max(40, 14 + 7 * `${grid.rows}`.length);
-    const top = LANE * lanes.columns + sizes.row;
+      lane() * lanes.rows + Math.max(40, 14 + 7 * `${grid.rows}`.length);
+    const top = lane() * lanes.columns + sizes.row;
     if (edge !== layout.x(1) || top !== layout.y(1))
       drawn = { top: 1, bottom: 0, left: 1, right: 0 };
     const along = (sizes, groups, unit, show) =>

@@ -101,8 +101,9 @@ const edge = (text, scope, data = {}) => {
   return cell;
 };
 
-// A cell's text size against the grid's (sheet.css).
-const SIZES = { small: 0.85, large: 1.3 };
+// A size or weight sheet.css sets, as `style` (a computed style) has it.
+const sheetToken = (style, name) =>
+  Number.parseFloat(style.getPropertyValue(`--sheet-${name}`));
 
 // A text's width on a canvas, asked once a text.
 const pen = document.createElement("canvas").getContext("2d");
@@ -139,13 +140,13 @@ const lines = (text, font, room) => {
   }
   return count;
 };
-// A cell's padding and line, as sheet.css sets them; a column is as wide as
-// its widest text needs, within these, where the file says no width.
-const PAD = 17;
+// A column is as wide as its widest text needs, within these, where the file
+// says no width.
 const NARROW = 40;
 const WIDE = 400;
 // A lane of the groups' gutter, as sheet.css sets it.
-export const LANE = 16;
+export const lane = () =>
+  sheetToken(getComputedStyle(document.documentElement), "lane");
 // A row's or column's piece of the gutter: in each group's lane a line
 // along it, or the button of the group it follows, which lies over a line.
 const gutter = (groups, lanes, n, across) => {
@@ -176,8 +177,12 @@ const gutter = (groups, lanes, n, across) => {
 export function sizesOf(table, book, sheet) {
   const tab = book.tabs[sheet];
   const style = getComputedStyle(table);
+  // A cell's text size against the grid's, and its padding and line.
+  const scale = (size) => (size ? sheetToken(style, size) : 1);
+  const pad =
+    2 * sheetToken(style, "space-4") + sheetToken(style, "line-width");
   const font = (bold, size = "") =>
-    `${bold ? 600 : 400} ${Number.parseFloat(style.fontSize) * (SIZES[size] ?? 1)}px ${style.fontFamily}`;
+    `${sheetToken(style, bold ? "weight-strong" : "weight-regular")} ${Number.parseFloat(style.fontSize) * scale(size)}px ${style.fontFamily}`;
   // The mark of a header's menu (in a button) and of a list of options.
   const mark = wide("▾", font(false)) + 4;
   const head = headOf(tab);
@@ -216,7 +221,7 @@ export function sizesOf(table, book, sheet) {
         ),
       0,
     );
-    return Math.min(WIDE, Math.max(NARROW, Math.ceil(most) + PAD));
+    return Math.min(WIDE, Math.max(NARROW, Math.ceil(most) + pad));
   });
   // A row is as high as a line of the look the app passes in needs.
   const line = Number.parseFloat(style.lineHeight) || 0;
@@ -228,9 +233,9 @@ export function sizesOf(table, book, sheet) {
       Number(tab.rows[r].attrs["data-height"]) || 0,
       ...texts.map((text, c) => {
         const { bold, size, wrap } = marks[r][c];
-        const high = line * (SIZES[size] ?? 1);
+        const high = line * scale(size);
         return wrap
-          ? lines(text, font(bold, size), widths[c] - PAD) * high + 5
+          ? lines(text, font(bold, size), widths[c] - pad) * high + 5
           : size && text
             ? Math.ceil(high) + 5
             : 0;
@@ -394,8 +399,11 @@ export function draw(table, book, sheet, filters, view) {
     make("tbody", {}, body),
   );
   table.setAttribute("role", "grid");
-  table.style.setProperty("--sheet-gutter-x", `${LANE * view.lanes.rows}px`);
-  table.style.setProperty("--sheet-gutter-y", `${LANE * view.lanes.columns}px`);
+  table.style.setProperty("--sheet-gutter-x", `${lane() * view.lanes.rows}px`);
+  table.style.setProperty(
+    "--sheet-gutter-y",
+    `${lane() * view.lanes.columns}px`,
+  );
   const first = (drawn, held) => drawn.find((at) => at > held) ?? held + 1;
   const [row, column] = [
     first(view.rows, frozen.rows),

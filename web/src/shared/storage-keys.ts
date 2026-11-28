@@ -1,6 +1,6 @@
 // Each key is named once, here. The values never change, or what is already
-// kept would be lost; public/theme.js, which runs before any module, repeats
-// theme, zoom and panes.
+// kept would be lost; /theme.js (boot/theme.ts) is written out with theme,
+// zoom and panes at build.
 export const storageKeys = {
   catalogue: "uagent-catalogue",
   spaces: "uagent-spaces",
@@ -54,3 +54,13 @@ export const hostDataKeys = [
 // Local keeps its existing keys; remote content is qualified by its owner.
 export const hostStorageKey = (key: string, host: string) =>
   host ? `${key}:host:${host}` : key;
+
+// The docked panes someone can resize (shared/side-pane.tsx); each width
+// (the terminal's height) is kept in rem, so it follows the text size.
+export const panes = [
+  "sidebar",
+  "side",
+  "files",
+  "files-list",
+  "terminal",
+] as const;

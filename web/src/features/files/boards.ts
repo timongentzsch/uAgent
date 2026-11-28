@@ -4,7 +4,7 @@
 
 import type { ArtifactType } from "../../shared/artifact.ts";
 import { HTML, IMAGE, VIDEO } from "../../shared/file-types.ts";
-import { maxUploadBytes } from "../../shared/limits.ts";
+import { maxTransferBytes } from "../../shared/limits.ts";
 import type { PageInfo, PageMessage } from "../../shared/page-frame.tsx";
 import { pageSize } from "../../shared/page-size.ts";
 import { bytes, plural } from "../../shared/quantities.ts";
@@ -360,8 +360,8 @@ export function boardsOf(
         media: IMAGE.test(entry.name) ? "image" : "video",
         // The preview address serves no more, so it is not asked for.
         failed:
-          (entry.size ?? 0) > maxUploadBytes
-            ? `is larger than ${bytes(maxUploadBytes)}`
+          (entry.size ?? 0) > maxTransferBytes
+            ? `is larger than ${bytes(maxTransferBytes)}`
             : made.failed,
       });
   }

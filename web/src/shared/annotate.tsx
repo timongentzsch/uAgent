@@ -14,7 +14,7 @@ import { Button, DialogHeader, IconButton, LoadError, Spinner } from "./ui.tsx";
 import { Input } from "./form-controls.tsx";
 import { capturePointer, TAP_SLOP_PX, type ZoomView } from "./zoom.ts";
 import { ZoomSurface } from "./zoom-surface.tsx";
-import { maxUploadBytes } from "./limits.ts";
+import { useHostContext } from "../state/host-context.ts";
 import { useAction } from "./use-action.ts";
 import { useResource } from "./use-resource.ts";
 import "./annotate.css";
@@ -337,6 +337,7 @@ export default function Annotator({
       ),
     );
 
+  const { uploadBytes } = useHostContext();
   const done = () =>
     image &&
     save.run(async () => {
@@ -350,7 +351,7 @@ export default function Annotator({
         );
       let blob = await encode("image/png");
       let extension = "png";
-      if (!blob || blob.size > maxUploadBytes) {
+      if (!blob || blob.size > (uploadBytes ?? Infinity)) {
         blob = await encode("image/jpeg");
         extension = "jpg";
       }

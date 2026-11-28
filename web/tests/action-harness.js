@@ -38,6 +38,7 @@ export async function mountUploads() {
         selected: id,
         drafts,
         report: (error) => errors.push(error.message),
+        catalogue: { sessions: [], devices: [], capabilities: {} },
       },
       session: { id },
     });

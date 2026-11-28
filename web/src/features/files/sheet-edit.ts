@@ -1,7 +1,7 @@
 // A sheet's edited tab saved into its file: only that tab's table changes
 // in the source text, so what the agent wrote around it stays as it is.
 
-import { maxTextFileBytes, maxUploadBytes } from "../../shared/limits.ts";
+import { maxTextFileBytes, maxTransferBytes } from "../../shared/limits.ts";
 import { CLOSING_BYTES } from "./doc-edit.ts";
 import { bytes } from "../../shared/quantities.ts";
 import type { PageMessage } from "../../shared/page-frame.tsx";
@@ -101,7 +101,7 @@ export function fileOf({
   if (as === "xlsx" ? !(data instanceof Uint8Array) : typeof data !== "string")
     return undefined;
   const blob = new Blob([data as BlobPart]);
-  const most = as === "sheet" ? maxTextFileBytes : maxUploadBytes;
+  const most = as === "sheet" ? maxTextFileBytes : maxTransferBytes;
   if (blob.size > most)
     return `${as === "sheet" ? "Not saved" : "Not exported"}: the file would be larger than ${bytes(most)}.`;
   return as === "sheet" ? { as, text: data as string } : { as, blob };

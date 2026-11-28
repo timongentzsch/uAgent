@@ -17,7 +17,8 @@ import { ImageTile } from "./attachments.tsx";
 import { Tabs } from "./tabs.tsx";
 import { useApi } from "../state/api.ts";
 import { bytes } from "./quantities.ts";
-import { maxUploadBytes } from "./limits.ts";
+import { tooLarge, uploadLimit } from "./limits.ts";
+import { useHostContext } from "../state/host-context.ts";
 
 interface Answer {
   choices: string[];
@@ -54,6 +55,7 @@ export default function Ask({
   report: Report;
 }) {
   const { uploadAttachment } = useApi();
+  const { uploadBytes } = useHostContext();
   const [answers, setAnswers] = useState(() => questions.map(blank));
   const update = (index: number, change: Partial<Answer>) =>
     setAnswers((current) =>
@@ -63,13 +65,20 @@ export default function Ask({
     );
   const attach = async (index: number, file?: File) => {
     if (!file) return;
-    if (file.size > maxUploadBytes) {
-      report(new Error(`Attach an image of at most ${bytes(maxUploadBytes)}.`));
+    const refused = uploadLimit([file], 0, uploadBytes);
+    if (refused) {
+      report(refused);
       return;
     }
     update(index, { uploading: true });
     try {
-      const image = await uploadAttachment(session, file, file.name || "image");
+      const image = await uploadAttachment(
+        session,
+        file,
+        file.name || "image",
+      ).catch((error) => {
+        throw tooLarge(error, file, uploadBytes);
+      });
       update(index, { image, uploading: false });
     } catch (failure) {
       report(failure);

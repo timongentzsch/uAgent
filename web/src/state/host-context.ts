@@ -26,6 +26,8 @@ export interface Host {
   forget: (id: string) => void;
   setModal: (modal: AppModal | null) => void;
   showContext: (item?: Session) => void;
+  // The largest upload the host accepts; unknown from a host that does not say.
+  uploadBytes?: number;
 }
 
 // What the open conversation’s surfaces share. The composer subscribes to its draft.

@@ -31,6 +31,7 @@ test("mirrored constants match the native host", () => {
     [limits.maxSpaceNameChars, "core/limits.h", "kSpaceNameChars"],
     [limits.maxScheduleMinutes, "core/limits.h", "kSecondsPerYear", 60],
     [limits.maxDraftFiles, "app/asset_store.h", "kUploadCount"],
+    [limits.maxTransferBytes, "app/asset_store.h", "kTransferBytes"],
     [limits.maxTerminals, "core/limits.h", "kWebTerminals"],
     [limits.maxTextFileBytes, "core/limits.h", "kFileViewBytes"],
   ])

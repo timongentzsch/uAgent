@@ -882,8 +882,19 @@ function App({ host, bindResult, reading }: HostAppProps) {
       forget,
       setModal,
       showContext: (item?: Session) => latest.current.showContext(item),
+      uploadBytes: catalogue.upload_bytes,
     }),
-    [online, connection, report, pins, snapshots, load, refresh, forget],
+    [
+      online,
+      connection,
+      report,
+      pins,
+      snapshots,
+      load,
+      refresh,
+      forget,
+      catalogue.upload_bytes,
+    ],
   );
   const conversation = useMemo(
     () => ({

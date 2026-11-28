@@ -1,5 +1,6 @@
 // Fixed browser memory and rendering policies. Runtime configurable native
 // limits live in the C++ config registry; these bounds protect local UI state.
+import { failure } from "./types.ts";
 
 export function dropOldest<K>(
   entries: { size: number; keys(): Iterable<K>; delete(key: K): unknown },
@@ -83,17 +84,32 @@ export const reconnectBaseDelayMs = 1_000;
 // browsers that start the download afterwards.
 export const downloadRevokeMs = 30_000;
 
-// As the host has them (kUploadCount, kUploadBytes).
+// As the host has them (kUploadCount, kTransferBytes).
 export const maxDraftFiles = 8;
-export const maxUploadBytes = 8 * 1024 * 1024;
+export const maxTransferBytes = 8 * 1024 * 1024;
+// One upload's limit is the host's `upload_bytes`; a host that does not say
+// it is left to refuse a file itself.
+const mib = (most: number) => `${most / 1024 / 1024} MiB`;
 // What refuses `adding` beside `kept` files already on a message.
-export const uploadLimit = (adding: File[], kept: number) =>
+export const uploadLimit = (adding: File[], kept: number, most?: number) =>
   adding.length + kept > maxDraftFiles ||
-  adding.some((file) => file.size > maxUploadBytes)
+  (most !== undefined && adding.some((file) => file.size > most))
     ? new Error(
-        `Attach up to ${maxDraftFiles} files, at most ${maxUploadBytes / 1024 / 1024} MiB each.`,
+        most === undefined
+          ? `Attach up to ${maxDraftFiles} files.`
+          : `Attach up to ${maxDraftFiles} files, at most ${mib(most)} each.`,
       )
     : null;
+// An upload the host refused for its size, which it does with 413 or by
+// dropping the connection: said as too large, never as the host unreachable.
+export function tooLarge(error: unknown, file: File, most?: number) {
+  const { status, network } = failure(error);
+  const over = most !== undefined && file.size > most;
+  if (status !== 413 && !(network && over)) return error;
+  return new Error(
+    `${file.name || "This file"} is too large to attach${over ? `: at most ${mib(most)}` : ""}.`,
+  );
+}
 // The host writes no larger text file.
 export const maxTextFileBytes = 1024 * 1024;
 

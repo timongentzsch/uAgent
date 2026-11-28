@@ -656,6 +656,8 @@ export interface Catalogue {
     push_reason?: string;
     vapid_public_key?: string;
   };
+  // The largest upload the host accepts, in bytes.
+  upload_bytes?: number;
 }
 export interface Outcome {
   request_id: string;

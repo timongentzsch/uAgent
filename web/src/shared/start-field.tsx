@@ -39,7 +39,7 @@ export function StartField({
   start: (text: string, files: File[]) => Promise<unknown> | undefined | false;
   children?: (text: string) => ComponentChildren;
 }) {
-  const { report } = useHostContext();
+  const { report, uploadBytes } = useHostContext();
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const { run } = useAction({ report });
@@ -55,7 +55,7 @@ export function StartField({
     });
   };
   const add = (adding: File[]) => {
-    const refused = uploadLimit(adding, files.length);
+    const refused = uploadLimit(adding, files.length, uploadBytes);
     if (refused) report(refused);
     else setFiles((kept) => [...kept, ...adding]);
   };

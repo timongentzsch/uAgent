@@ -4,11 +4,11 @@ import { emptyDraft } from "../state/store.ts";
 import { requestId, useApi } from "../state/api.ts";
 import type { HostState } from "../state/use-host.ts";
 import { dedupeName } from "../features/composer/mention.ts";
-import { uploadLimit } from "../shared/limits.ts";
+import { tooLarge, uploadLimit } from "../shared/limits.ts";
 
 // No state of its own beyond admission: the drafts are the host layer's.
 export function useDraftUploads({
-  host: { online, selected, drafts, report },
+  host: { online, selected, drafts, report, catalogue },
 }: {
   host: HostState;
 }) {
@@ -44,7 +44,8 @@ export function useDraftUploads({
     const draft = drafts.get()[id] ?? emptyDraft();
     if (draft.files.some((file) => file.pending) || active.current.has(id))
       return false;
-    const refused = uploadLimit(files, draft.files.length);
+    const most = catalogue.upload_bytes;
+    const refused = uploadLimit(files, draft.files.length, most);
     if (refused) {
       report(refused);
       return false;
@@ -74,7 +75,9 @@ export function useDraftUploads({
           id,
           file,
           pendingFiles[index].name,
-        );
+        ).catch((error) => {
+          throw tooLarge(error, file, most);
+        });
         updateDraft(id, (draft) => ({
           ...draft,
           files: draft.files.map((item) =>

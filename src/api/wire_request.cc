@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "include/api/client.h"
+#include "include/api/provider_data.h"
 #include "include/api/wire.h"
 #include "include/core/env.h"
 #include "include/core/limits.h"
@@ -346,21 +347,19 @@ json AnthropicMessages(const json& canonical, std::string& system,
 json RequestTools(WireApi wire_api, const WireRequest& request) {
   json tools = FunctionTools(wire_api, request.tool_schemas);
   if (request.native_web_search) {
-    if (wire_api == WireApi::kResponses) {
-      tools.push_back({{"type", "web_search"}});
-    } else if (wire_api == WireApi::kAnthropicMessages) {
-      tools.push_back({{"type", "web_search_20250305"},
-                       {"name", "web_search"},
-                       {"max_uses", WebSearchMaxUses()}});
-    } else {
-      tools.push_back(
-          {{"type", "openrouter:web_search"},
-           {"parameters",
-            {{"engine", "auto"},
-             {"max_results", WebSearchMaxResults()},
-             {"max_total_results", WebSearchMaxResults() * WebSearchMaxUses()},
-             {"max_uses", WebSearchMaxUses()}}}});
+    // The tool's type is the provider's name for it; the bounds are ours.
+    json tool = JsonValue(ProviderData()["hosted_search_tools"],
+                          WireApiName(wire_api), json::object());
+    if (wire_api == WireApi::kAnthropicMessages) {
+      tool["max_uses"] = WebSearchMaxUses();
+    } else if (wire_api == WireApi::kChatCompletions) {
+      tool["parameters"] = {
+          {"engine", "auto"},
+          {"max_results", WebSearchMaxResults()},
+          {"max_total_results", WebSearchMaxResults() * WebSearchMaxUses()},
+          {"max_uses", WebSearchMaxUses()}};
     }
+    tools.push_back(std::move(tool));
     return tools;
   }
   // Hosted tools join only a request that offers the agent's own; without

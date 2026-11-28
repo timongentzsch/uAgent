@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "include/api/client.h"
+#include "include/api/provider_data.h"
 #include "include/app/control.h"
 #include "include/app/openrouter_signin.h"
 #include "include/app/update.h"
@@ -34,33 +35,40 @@ namespace {
 constexpr const char* kProviders = Cfg("UAGENT_PROVIDERS").EnvName();
 constexpr const char* kModel = Cfg("UAGENT_MODEL").EnvName();
 
-// The endpoints setup knows, in the order a default model is chosen from.
-// OpenRouter's key is a setting of its own; the others are variables.
+// The endpoints setup knows (presets.json), in the order a default model is
+// chosen from. Each key is saved in a variable the provider refers to.
 struct Known {
-  const char* name;
-  const char* label;
-  const char* variable;
-  const char* base_url;
-  WireApi wire;
+  std::string name, label, variable, base_url;
+  WireApi wire = WireApi::kChatCompletions;
   bool free_only = false;
-};
-constexpr Known kKnown[] = {
-    {"anthropic", "Anthropic", "ANTHROPIC_API_KEY",
-     "https://api.anthropic.com/v1", WireApi::kAnthropicMessages},
-    {"openai", "OpenAI", "OPENAI_API_KEY", "https://api.openai.com/v1",
-     WireApi::kResponses},
-    {"openrouter", "OpenRouter", "OPENROUTER_API_KEY",
-     "https://openrouter.ai/api/v1", WireApi::kChatCompletions},
-    {"openrouter-free", "OpenRouter Free", "OPENROUTER_FREE_API_KEY",
-     "https://openrouter.ai/api/v1", WireApi::kChatCompletions, true},
+  // Where a key is checked when listing models does not refuse a wrong one,
+  // and where the models are listed.
+  std::string key_check_path, models_path;
+  json suggest;
 };
 
-template <typename Keys>
-auto& KeyOf(Keys& keys, std::string_view name) {
-  if (name == "openrouter-free") return keys.openrouter_free;
-  if (name == "anthropic") return keys.anthropic;
-  if (name == "openai") return keys.openai;
-  return keys.openrouter;
+const std::vector<Known>& Presets() {
+  static const std::vector<Known> kPresets = [] {
+    std::vector<Known> presets;
+    for (const json& preset : ProviderData()["presets"]) {
+      presets.push_back(
+          {JsonValue(preset, "name", ""), JsonValue(preset, "label", ""),
+           JsonValue(preset, "variable", ""), JsonValue(preset, "base_url", ""),
+           ParseWireApi(JsonValue(preset, "wire_api", ""))
+               .value_or(WireApi::kChatCompletions),
+           JsonValue(preset, "free_only", false),
+           JsonValue(preset, "key_check_path", ""),
+           JsonValue(preset, "models_path", "/models"),
+           JsonValue(preset, "suggest", json())});
+    }
+    return presets;
+  }();
+  return kPresets;
+}
+
+const Known* FindPreset(std::string_view name) {
+  const auto found = std::ranges::find(Presets(), name, &Known::name);
+  return found == Presets().end() ? nullptr : &*found;
 }
 
 // Echo stays off only while a key is typed; an interrupt puts it back.
@@ -128,8 +136,8 @@ KeyCheck CheckKey(const Known& known, const std::string& key) {
   KeyCheck check;
   // OpenRouter lists its models to anyone; its key endpoint is what refuses
   // a wrong key.
-  if (std::string_view(known.name) == "openrouter" || known.free_only) {
-    JsonResponse response = api.Get("/key");
+  if (!known.key_check_path.empty()) {
+    JsonResponse response = api.Get(known.key_check_path);
     if (response.http_status == 401 || response.http_status == 403) {
       check.accepted = false;
       check.reason = "rejected (" + std::to_string(response.http_status) + ")";
@@ -153,9 +161,7 @@ KeyCheck CheckKey(const Known& known, const std::string& key) {
     for (const ModelInfo& info : *models) check.models.push_back(info.id);
     return check;
   }
-  JsonResponse response =
-      api.Get(std::string_view(known.name) == "anthropic" ? "/models?limit=1000"
-                                                          : "/models");
+  JsonResponse response = api.Get(known.models_path);
   if (response.http_status == 401 || response.http_status == 403) {
     check.accepted = false;
     check.reason = "rejected (" + std::to_string(response.http_status) + ")";
@@ -257,12 +263,12 @@ std::string Held(const SavedSettings& saved, const std::string& name) {
 // The free endpoint's address: a saved provider keeps its own.
 std::string FreeBaseUrl(const SavedSettings& saved, const Known& free) {
   const json providers = json::parse(Held(saved, kProviders), nullptr, false);
-  return JsonValue(JsonValue(providers, free.name, json::object()), "base_url",
-                   free.base_url);
+  return JsonValue(JsonValue(providers, free.name.c_str(), json::object()),
+                   "base_url", free.base_url);
 }
 
 const Known& FreeKnown() {
-  return *std::ranges::find(kKnown, true, &Known::free_only);
+  return *std::ranges::find(Presets(), true, &Known::free_only);
 }
 
 // Saves `key` as the free provider with the default model `choose` takes
@@ -274,14 +280,14 @@ std::string SaveFreeKey(const std::string& key, auto choose,
   if (!saved.error.empty()) return saved.error;
   Known free = FreeKnown();
   const std::string base = FreeBaseUrl(saved, free);
-  free.base_url = base.c_str();
+  free.base_url = base;
   const KeyCheck check = CheckKey(free, key);
   if (check.accepted != true || check.models.empty()) {
     return "no usable free coding models: " +
            (check.reason.empty() ? "none listed with tools and 64K context"
                                  : check.reason);
   }
-  const std::string prefix = std::string(free.name) + "/";
+  const std::string prefix = free.name + "/";
   std::string current = Held(saved, kModel);
   if (std::ranges::none_of(check.models, [&](const std::string& id) {
         return current == prefix + id;
@@ -292,7 +298,7 @@ std::string SaveFreeKey(const std::string& key, auto choose,
   if (model.empty()) model = current;
   if (!model.empty() && !model.starts_with(prefix)) model = prefix + model;
   return ChangeSettings("", [&](SettingValues& scope) {
-    ApplySetupKeys({.openrouter_free = key}, scope);
+    ApplySetupKeys({{free.name, key}}, scope);
     if (!model.empty()) scope[kModel] = model;
     return std::string();
   });
@@ -301,8 +307,8 @@ std::string SaveFreeKey(const std::string& key, auto choose,
 }  // namespace
 
 void ApplySetupKeys(const SetupKeys& keys, SettingValues& scope) {
-  if (keys.openrouter.empty() && keys.openai.empty() &&
-      keys.anthropic.empty() && keys.openrouter_free.empty()) {
+  if (std::ranges::all_of(keys,
+                          [](const auto& key) { return key.second.empty(); })) {
     return;
   }
   json providers = json::object();
@@ -311,9 +317,10 @@ void ApplySetupKeys(const SetupKeys& keys, SettingValues& scope) {
     // Providers set from a variable are that variable's to change.
     if (!providers.is_object()) return;
   }
-  for (const Known& known : kKnown) {
-    const std::string& key = KeyOf(keys, known.name);
-    if (key.empty()) continue;
+  for (const Known& known : Presets()) {
+    const auto found = keys.find(known.name);
+    if (found == keys.end() || found->second.empty()) continue;
+    const std::string& key = found->second;
     scope[known.variable] = key;
     json& provider = providers[known.name];
     if (!provider.is_object()) provider = json::object();
@@ -330,24 +337,22 @@ void ApplySetupKeys(const SetupKeys& keys, SettingValues& scope) {
 std::string SuggestModel(const std::string& provider,
                          const std::vector<std::string>& ids) {
   std::string best;
-  if (provider == "anthropic") {
-    best = Newest(ids,
-                  [](const std::string& id) { return Contains(id, "sonnet"); });
-  } else if (provider == "openrouter") {
-    best = Newest(ids, [](const std::string& id) {
-      return id.starts_with("anthropic/") && Contains(id, "sonnet") &&
-             !Contains(id, ":");
-    });
-  } else if (provider == "openai") {
-    best = Newest(ids, [](const std::string& id) {
-      if (!id.starts_with("gpt-")) return false;
-      for (std::string_view skip :
-           {"mini", "nano", "audio", "realtime", "search", "transcribe", "tts",
-            "image", "decisions", "codex", "chat"}) {
-        if (Contains(id, skip)) return false;
+  // A preset's rule (presets.json): the id starts with `prefix`, contains
+  // `contains`, none of `skip`, and has at most `max_dashes` dashes, since a
+  // dated snapshot is the same model as its alias.
+  const Known* preset = FindPreset(provider);
+  if (preset && preset->suggest.is_object()) {
+    const json& rule = preset->suggest;
+    const std::string prefix = JsonValue(rule, "prefix", "");
+    const std::string contains = JsonValue(rule, "contains", "");
+    const json skips = JsonValue(rule, "skip", json::array());
+    const int64_t dashes = JsonValue(rule, "max_dashes", int64_t{-1});
+    best = Newest(ids, [&](const std::string& id) {
+      if (!id.starts_with(prefix) || !Contains(id, contains)) return false;
+      for (const json& skip : skips) {
+        if (Contains(id, skip.get<std::string>())) return false;
       }
-      // A dated snapshot is the same model as its alias.
-      return std::count(id.begin(), id.end(), '-') < 3;
+      return dashes < 0 || std::count(id.begin(), id.end(), '-') <= dashes;
     });
   }
   if (best.empty() && !ids.empty()) best = ids.front();
@@ -411,17 +416,17 @@ int RunSetup() {
   SetupKeys keys;
   // The key each endpoint will use, new or kept, and what it lists.
   std::vector<std::pair<const Known*, KeyCheck>> usable;
-  for (const Known& known : kKnown) {
+  for (const Known& known : Presets()) {
     if (known.free_only != free_only) continue;
     const std::string existing = held(known.variable);
-    const char* exported = std::getenv(known.variable);
+    const char* exported = std::getenv(known.variable.c_str());
     std::string hint;
     if (!existing.empty()) {
       hint = " [saved, Enter keeps it]";
     } else if (exported && *exported) {
       hint = std::string(" [found in $") + known.variable + ", Enter uses it]";
     }
-    printf("%s API key%s: ", known.label, hint.c_str());
+    printf("%s API key%s: ", known.label.c_str(), hint.c_str());
     fflush(stdout);
     std::string key = Trim(ReadHidden());
     if (key.empty() && existing.empty() && exported) key = exported;
@@ -443,11 +448,11 @@ int RunSetup() {
     } else {
       printf("  ✓ %zu models\n", check.models.size());
     }
-    KeyOf(keys, known.name) = key;
+    keys[known.name] = key;
     usable.emplace_back(&known, std::move(check));
   }
-  if (!keys.openrouter.empty() || !keys.openai.empty() ||
-      !keys.anthropic.empty() || !keys.openrouter_free.empty()) {
+  if (std::ranges::any_of(
+          keys, [](const auto& key) { return !key.second.empty(); })) {
     const std::string error = ChangeSettings("", [&](SettingValues& scope) {
       ApplySetupKeys(keys, scope);
       return std::string();
@@ -467,7 +472,7 @@ int RunSetup() {
 
   // The default model comes from the first endpoint with a key.
   const auto& [known, check] = usable.front();
-  const std::string prefix = std::string(known->name) + "/";
+  const std::string prefix = known->name + "/";
   std::string current = held(kModel);
   if (free_only &&
       std::ranges::none_of(check.models, [&](const std::string& id) {
@@ -475,7 +480,7 @@ int RunSetup() {
       })) {
     current.clear();
   }
-  printf("\nDefault model, from %s:\n", known->label);
+  printf("\nDefault model, from %s:\n", known->label.c_str());
   std::string chosen = ChooseModel(
       check.models, SuggestModel(known->name, check.models), current);
   if (!chosen.empty()) {

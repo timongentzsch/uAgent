@@ -1,0 +1,72 @@
+{
+  "presets": [
+    {
+      "name": "anthropic",
+      "label": "Anthropic",
+      "variable": "ANTHROPIC_API_KEY",
+      "base_url": "https://api.anthropic.com/v1",
+      "wire_api": "anthropic_messages",
+      "models_path": "/models?limit=1000",
+      "suggest": {"contains": "sonnet"}
+    },
+    {
+      "name": "openai",
+      "label": "OpenAI",
+      "variable": "OPENAI_API_KEY",
+      "base_url": "https://api.openai.com/v1",
+      "wire_api": "responses",
+      "suggest": {
+        "prefix": "gpt-",
+        "skip": ["mini", "nano", "audio", "realtime", "search", "transcribe", "tts",
+                 "image", "decisions", "codex", "chat"],
+        "max_dashes": 2
+      }
+    },
+    {
+      "name": "openrouter",
+      "label": "OpenRouter",
+      "variable": "OPENROUTER_API_KEY",
+      "base_url": "https://openrouter.ai/api/v1",
+      "wire_api": "chat_completions",
+      "key_check_path": "/key",
+      "suggest": {"prefix": "anthropic/", "contains": "sonnet", "skip": [":"]}
+    },
+    {
+      "name": "openrouter-free",
+      "label": "OpenRouter Free",
+      "variable": "OPENROUTER_FREE_API_KEY",
+      "base_url": "https://openrouter.ai/api/v1",
+      "wire_api": "chat_completions",
+      "key_check_path": "/key",
+      "free_only": true
+    }
+  ],
+  "endpoints": [
+    {
+      "host": "openrouter.ai",
+      "features": ["hosted_search", "provider_routing", "session_passthrough",
+                   "raw_vendor_ids", "model_variants", "reasoning_object",
+                   "reasoning_replay_text", "prompt_cache_control", "pdf_parser",
+                   "inline_usage", "decisions"],
+      "options": {
+        "pdf_engine": "cloudflare-ai",
+        "decisions_url": "https://openrouter.ai/api/alpha/decisions",
+        "decisions_model": "~typesafe/jev-latest",
+        "decision_bars": {
+          "~typesafe/jev-latest": {"allow": 0.85, "deny": 0.95, "veto": 0.9},
+          "openai/gpt-6-luna-decisions": {"allow": 0.85, "deny": 0.9, "veto": 0.9}
+        }
+      }
+    },
+    {
+      "host": "api.openai.com",
+      "features": ["max_completion_tokens", "reasoning_summary"]
+    }
+  ],
+  "hosted_search_tools": {
+    "responses": {"type": "web_search"},
+    "anthropic_messages": {"type": "web_search_20250305", "name": "web_search"},
+    "chat_completions": {"type": "openrouter:web_search"}
+  },
+  "anthropic_version": "2023-06-01"
+}

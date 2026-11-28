@@ -4,6 +4,7 @@
 // `uagent setup`: saves provider keys and a default model for all
 // conversations, so a first start needs no environment.
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -13,17 +14,15 @@
 namespace uagent {
 
 // The keys to save; an empty one leaves what is saved as it is.
-struct SetupKeys {
-  std::string openrouter = "", openai = "", anthropic = "",
-              openrouter_free = "";
-};
+// By preset name (presets.json).
+using SetupKeys = std::map<std::string, std::string>;
 
 // Writes each key into a variable that a provider of that name refers to.
 // Other providers, and fields a saved provider already has, stay.
 void ApplySetupKeys(const SetupKeys& keys, SettingValues& scope);
 
-// The model offered first for `provider` (openrouter, openai or anthropic)
-// from what its endpoint lists: a Sonnet, the newest GPT, or the first id.
+// The model offered first for the preset named `provider` from what its
+// endpoint lists: the newest its rule in presets.json takes, or the first id.
 std::string SuggestModel(const std::string& provider,
                          const std::vector<std::string>& ids);
 

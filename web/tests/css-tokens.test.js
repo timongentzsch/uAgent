@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { declarations, page, tree } from "./stylesheets.js";
+import { breakpoints } from "../src/shared/breakpoints.ts";
 
 // A token block: the palettes (the root and the inverse surface) and the
 // root's scales. Only a custom property there may hold a literal.
@@ -154,21 +155,26 @@ test("animations and transitions use the motion tokens", () => {
   );
 });
 
-// A media query cannot read a custom property, so a script asks the phone
-// layout's question with the stylesheets' number (layout.test.js pins those).
-test("the scripts ask about the phone width as the stylesheets do", () => {
-  const layout = readFileSync("src/shared/layout.ts", "utf8");
-  assert.match(layout, /useMedia\("\(max-width: 600px\)"\)/);
+// A script asks a layout question with the stylesheets' own query, from
+// shared/breakpoints.ts, never with a size of its own.
+test("the scripts ask about widths and heights only by breakpoint", () => {
+  const written = [...tree("src", [".ts", ".tsx"])]
+    .filter((path) => !path.endsWith("breakpoints.ts"))
+    .filter((path) =>
+      /\(m(?:ax|in)-(?:width|height):/.test(
+        readFileSync(join("src", path), "utf8"),
+      ),
+    );
+  assert.deepEqual(written, []);
 });
 
 // The conversations list sits beside the chat where --sidebar and --chat-min
-// fit: a container query cannot read the tokens, so it states their sum.
-test("the list's container query is the sum of its tokens", () => {
+// fit: a container query cannot read the tokens, so --dockable is their sum.
+test("the list's breakpoint is the sum of its tokens", () => {
   const tokens = readFileSync("src/shared/styles/tokens.css", "utf8");
-  const shell = readFileSync("src/shared/styles/primitives.css", "utf8");
   const token = (name) =>
     Number(tokens.match(new RegExp(`--${name}: calc\\((\\d+)rem / 14\\)`))[1]);
-  const [, rem] = shell.match(/@container app \(min-width: ([\d.]+)rem\) and/);
+  const [, rem] = breakpoints["--dockable"].match(/min-width: ([\d.]+)rem/);
   assert.ok(
     Math.abs(Number(rem) - (token("sidebar") + token("chat-min")) / 14) < 0.01,
   );

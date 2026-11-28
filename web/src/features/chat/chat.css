@@ -19,7 +19,7 @@
   padding-left: var(--reading-left);
   padding-right: var(--reading-right);
 }
-@container column (max-width: 43rem) {
+@container column (--narrow-column) {
   .side-chat {
     --column-inset: var(--space-4);
   }

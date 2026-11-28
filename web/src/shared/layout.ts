@@ -1,10 +1,10 @@
+import { breakpoints } from "./breakpoints.ts";
 import type { RefObject } from "preact";
 import { useEffect, useLayoutEffect, useState } from "preact/hooks";
 import { defaultZoom, longPressMs, longPressSlopPx } from "./limits.ts";
 // The interface zoom in steps, as a browser offers it: choosing one rescales
 // once, where a slider rescaled the page under the finger dragging it.
 export const zoomSteps = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
-const conversationMeasure = 1040;
 export const zoomChanged = "uagent:zoom";
 
 // The room inside an element: measured as it mounts, so nothing in it is
@@ -38,10 +38,6 @@ export function normalizeZoom(value: number) {
 export function applyZoom(value: number) {
   const zoom = normalizeZoom(value);
   document.documentElement.style.setProperty("--zoom", String(zoom / 100));
-  document.documentElement.style.setProperty(
-    "--conversation-measure",
-    `${(conversationMeasure * 100) / zoom}px`,
-  );
   dispatchEvent(new Event(zoomChanged));
 }
 
@@ -331,7 +327,7 @@ export function useMedia(query: string) {
 }
 
 // The width under which the phone layout applies, as the stylesheets have it.
-export const usePhone = () => useMedia("(max-width: 600px)");
+export const usePhone = () => useMedia(breakpoints["--phone"]);
 
 // Layout the stylesheet decides in a container query, which script cannot
 // ask: the query sets a custom property, read back as the room changes.

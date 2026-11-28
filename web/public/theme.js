@@ -35,10 +35,6 @@
   }
   document.documentElement.dataset.theme = t;
   document.documentElement.style.setProperty("--zoom", String(z / 100));
-  document.documentElement.style.setProperty(
-    "--conversation-measure",
-    `${(1040 * 100) / z}px`,
-  );
   // Each palette's --bg, before the stylesheet that holds them has loaded.
   // dataset.bg keeps each scheme's own for the system theme (applyTheme).
   const bars = { light: "#fff", dark: "#000" };

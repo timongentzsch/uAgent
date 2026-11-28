@@ -43,7 +43,7 @@ div.node-row > .row-chevron {
 .node-lead > .truncate {
   min-width: 0;
 }
-@container column (max-width: 43rem) {
+@container column (--narrow-column) {
   .node-word.agent-figures {
     display: none;
   }

@@ -53,7 +53,7 @@
 }
 /* Narrow, the latest three stand as plain lines and the drawer holds the
    rest. */
-@container column (max-width: 43rem) {
+@container column (--narrow-column) {
   .home-list.recent ul {
     padding: 0;
     border: 0;

@@ -36,7 +36,7 @@
 .settings-nav .group-rows > :not(:first-child) {
   background-image: none;
 }
-@media (min-width: 601px) {
+@media not (--phone) {
   .settings-nav .row-chevron {
     display: none;
   }
@@ -67,7 +67,7 @@
 }
 /* raw: a value of fixed width at the end of a settings row; on a phone it
    is a line of its own (primitives.css). */
-@media (min-width: 601px) {
+@media not (--phone) {
   .setting-field .row-value > .text-control:not(.select) {
     width: var(--pane);
   }
@@ -91,7 +91,7 @@
   display: grid;
   gap: var(--gap);
 }
-@media (max-width: 600px) {
+@media (--phone) {
   .settings-content {
     grid-template-columns: minmax(0, 1fr);
   }

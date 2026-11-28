@@ -10,7 +10,7 @@
 }
 /* A one-line draft shares its row with the controls while both fit; the
    controls take the next row before the draft is squeezed. */
-@container composer (min-width: 40rem) {
+@container composer (--roomy-composer) {
   .composer > form:not(:has(> .message-input[data-multiline])) {
     display: flex;
     flex-wrap: wrap;
@@ -138,7 +138,7 @@
 .composer > .decision {
   margin-bottom: var(--space-2);
 }
-@container column (max-width: 43rem) {
+@container column (--narrow-column) {
   .composer {
     padding-top: var(--space-2);
   }
@@ -223,7 +223,7 @@
   gap: var(--space-2);
   margin-left: auto;
 }
-@container column (max-width: 43rem) {
+@container column (--narrow-column) {
   /* raw: touch targets in the queue. */
   .queue-controls button {
     min-height: var(--touch);

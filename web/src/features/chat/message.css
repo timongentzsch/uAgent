@@ -87,7 +87,7 @@
   flex-shrink: 0;
 }
 /* In a narrow pane a timestamp must not reserve a column beside every line. */
-@container column (max-width: 43rem) {
+@container column (--narrow-column) {
   .message-line {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
@@ -154,7 +154,7 @@
 .turn-files .notice {
   flex-basis: 100%;
 }
-@container column (max-width: 43rem) {
+@container column (--narrow-column) {
   .turn-calls {
     display: none;
   }
@@ -229,7 +229,7 @@
   display: none;
 }
 
-@container column (max-width: 43rem) {
+@container column (--narrow-column) {
   /* raw: a bar above the composer, under the passage it quotes. */
   .selection-quote {
     position: static;

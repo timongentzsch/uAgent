@@ -69,7 +69,7 @@
   opacity: var(--opacity-disabled);
 }
 
-@media (max-width: 600px) {
+@media (--phone) {
   .tools-summary {
     align-items: stretch;
     flex-direction: column;

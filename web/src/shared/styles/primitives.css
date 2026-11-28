@@ -589,7 +589,7 @@
     gap: var(--gap);
     pointer-events: none;
   }
-  @media (min-width: 601px) {
+  @media not (--phone) {
     .toasts {
       left: calc(var(--safe-left) + var(--content-width) / 2);
       translate: -50% 0;
@@ -688,7 +688,7 @@
   }
   /* Docked where --sidebar and --chat-min both fit and the window is not
      short; elsewhere a drawer holds it. A query cannot read a token, so
-     44.28rem is their sum. The query also sets --docked, for useCompact. */
+     --dockable is their sum. The query also sets --docked, for useCompact. */
   aside.sidebar {
     display: none;
     position: relative;
@@ -711,7 +711,7 @@
   dialog.sidebar:not([open]) {
     display: none;
   }
-  @container app (min-width: 44.28rem) and (not (max-height: 500px)) {
+  @container app (--dockable) and (not (--short)) {
     .shell {
       --docked: 1;
     }
@@ -906,7 +906,7 @@
   .home-start {
     padding-bottom: var(--space-4);
   }
-  @container column (max-width: 43rem) {
+  @container column (--narrow-column) {
     .home {
       gap: var(--space-6);
       padding-top: var(--pad);
@@ -1098,7 +1098,7 @@
     justify-content: space-between;
   }
   /* A narrow column gives each of its buttons a row of its own. */
-  @container column (max-width: 43rem) {
+  @container column (--narrow-column) {
     .cluster[data-narrow="stack"] {
       flex-direction: column;
       align-items: stretch;
@@ -1202,7 +1202,7 @@
   dialog[data-layout="spotlight"]:has(.spotlight-preview) {
     --dialog-width: var(--spotlight-wide);
   }
-  @media (max-width: 600px) {
+  @media (--phone) {
     dialog[data-layout="spotlight"] {
       top: calc(var(--viewport-top) + var(--safe-top) + var(--pad));
       width: calc(var(--content-width) - 2 * var(--pad));
@@ -1224,7 +1224,7 @@
     width: min(var(--dialog-width), var(--content-width));
     border-width: 0 0 0 1px;
   }
-  @media (max-width: 600px) {
+  @media (--phone) {
     /* Edge to edge: the sheet's own surface runs under the home indicator. */
     dialog[data-layout="sheet"] {
       left: calc(var(--viewport-left) + var(--safe-left));
@@ -1236,7 +1236,7 @@
     }
   }
   /* A small sheet rises from the bottom only as tall as its content. */
-  @media (max-width: 600px) {
+  @media (--phone) {
     dialog[data-layout="sheet"][data-size="s"] {
       top: calc(var(--viewport-top) + var(--viewport-height));
       transform: translateY(-100%);
@@ -1375,7 +1375,7 @@
     gap: 0;
   }
   /* A phone's drawer leaves an edge of the page, enough to close it by. */
-  @media (max-width: 600px) {
+  @media (--phone) {
     dialog.sidebar.drawer[open] {
       width: calc(var(--content-width) - 2 * var(--pad));
       max-width: none;
@@ -1389,13 +1389,13 @@
   }
   /* The header carries --roomy for useRoomyColumn: --chat-min and two
      panes of --popover fit. */
-  @container column (min-width: 71.5rem) {
+  @container column (--wide-column) {
     .conversation-head {
       --roomy: 1;
     }
   }
   /* The header carries --narrow for useNarrowColumn. */
-  @container column (max-width: 43rem) {
+  @container column (--narrow-column) {
     .conversation-head {
       --narrow: 1;
       min-height: var(--head-narrow);
@@ -1408,7 +1408,7 @@
       scrollbar-gutter: auto;
     }
   }
-  @container app (max-height: 500px) {
+  @container app (--short) {
     .conversation-head {
       min-height: var(--control-l);
     }
@@ -1462,7 +1462,7 @@
       translate: -100% 0;
     }
   }
-  @media (max-width: 600px) {
+  @media (--phone) {
     dialog[data-layout="sheet"][open][data-leaving] {
       translate: 0 100%;
     }
@@ -1637,7 +1637,7 @@
   /* On a phone a row's value is a field under its text, as wide as the text,
      so a description keeps the line; a reset stays at the label's end and a
      switch or an action beside the label. */
-  @media (max-width: 600px) {
+  @media (--phone) {
     .row:has(
         > .row-value
           > :is(.text-control, .sheet-control, .segmented, .setting-summary)

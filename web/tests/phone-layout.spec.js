@@ -135,10 +135,17 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
     await page.goto("/", { waitUntil: "commit" });
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
     await expect(page.locator("html")).toHaveCSS("--zoom", "0.5");
-    await expect(page.locator("html")).toHaveCSS(
-      "--conversation-measure",
-      "2080px",
-    );
+    // The column's measure follows the zoom before the app starts.
+    expect(
+      await page.evaluate(() => {
+        const probe = document.createElement("div");
+        probe.style.width = "var(--conversation-measure)";
+        document.body.append(probe);
+        const width = getComputedStyle(probe).width;
+        probe.remove();
+        return width;
+      }),
+    ).toBe("2080px");
     await expect(page.locator("body")).toHaveCSS(
       "background-color",
       "rgb(255, 255, 255)",
@@ -150,10 +157,6 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
     await page.evaluate(() => {
       localStorage.setItem("uagent-zoom", "100");
       document.documentElement.style.setProperty("--zoom", "1");
-      document.documentElement.style.setProperty(
-        "--conversation-measure",
-        "1040px",
-      );
     });
   } finally {
     release();

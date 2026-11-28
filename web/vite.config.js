@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
+import { withBreakpoints } from "./src/shared/breakpoints.ts";
 const optionalAssets = new Set();
 const outDir = process.env.UAGENT_WEB_OUT_DIR || "dist";
 const rendererManifest = () => ({
@@ -62,6 +63,15 @@ export default defineConfig({
   esbuild: { jsx: "automatic", jsxImportSource: "preact" },
   plugins: [
     rendererManifest(),
+    {
+      // Each `(--name)` a stylesheet writes in a query becomes its query.
+      name: "breakpoints",
+      enforce: "pre",
+      transform(code, id) {
+        if (/\.css(\?|$)/.test(id) && id.includes("/src/"))
+          return withBreakpoints(code);
+      },
+    },
     {
       // elkjs is large and only an alternative layout: Mermaid lays an
       // unregistered algorithm out with dagre, so no diagram type is lost.

@@ -59,7 +59,8 @@
       var(--safe-top) -
       var(--safe-bottom)
     );
-    --conversation-measure: 1040px;
+    /* The same width on the screen at every interface zoom. */
+    --conversation-measure: calc(1040px / var(--zoom, 1));
     --space-1: calc(2rem / 14);
     --space-2: calc(4rem / 14);
     --space-3: calc(6rem / 14);

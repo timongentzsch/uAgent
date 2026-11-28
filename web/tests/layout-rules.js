@@ -77,17 +77,20 @@ export const flexedFields = () =>
   );
 
 // Every width or height a container or media query asks about.
-export const breakpoints = () => {
-  const found = new Set();
-  for (const { css } of sheets)
-    for (const [, kind, name, query] of css.matchAll(
-      /@(container|media)\s+(?:(\w+)\s+)?([^{]*)\{/g,
-    ))
-      for (const [, edge, size] of query.matchAll(
-        /\((m(?:ax|in)-(?:width|height)):\s*([\d.]+(?:px|rem))\)/g,
-      ))
-        found.add(`${kind === "media" ? "media" : name} ${edge}: ${size}`);
-  return [...found].sort();
+// What the app's queries ask: sizes written out, and breakpoint names.
+export const queries = () => {
+  const sizes = new Set();
+  const names = new Set();
+  for (const { path, css } of sheets) {
+    if (path.startsWith("sheet/")) continue;
+    for (const [query] of css.matchAll(/@(?:container|media)\b[^{]*/g)) {
+      for (const [size] of query.matchAll(/[\d.]+(?:px|rem|em)\b/g))
+        sizes.add(`${path}: ${query.trim()}`);
+      for (const [, name] of query.matchAll(/\((--[a-z-]+)\)/g))
+        names.add(name);
+    }
+  }
+  return { sizes: [...sizes], names: [...names].sort() };
 };
 
 // A screen's bars and rows of controls are Bar, Cluster and Actions; one

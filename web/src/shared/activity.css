@@ -5,7 +5,7 @@
   min-width: 0;
   max-width: 100%;
 }
-@container app (max-height: 500px) {
+@container app (--short) {
   .activity-list {
     max-height: var(--scroll-s);
   }
@@ -181,12 +181,12 @@
   content: "· ";
 }
 /* Narrow: what fits, the elapsed time dropping first, then the tokens. */
-@container column (max-width: 43rem) {
+@container column (--narrow-column) {
   .agent-time {
     display: none;
   }
 }
-@media (max-width: 600px) {
+@media (--phone) {
   .agent-tokens {
     display: none;
   }

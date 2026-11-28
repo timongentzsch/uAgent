@@ -213,7 +213,7 @@
 
 /* A wide pane scrolls long lines; a narrow one wraps them and shows the
    list or the file. */
-@container files (max-width: 40rem) {
+@container files (--narrow-files) {
   .files-columns {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -235,7 +235,7 @@
     overflow-wrap: anywhere;
   }
 }
-@container files (min-width: 40.0625rem) {
+@container files not (--narrow-files) {
   .files-back:not(.files-back-canvas) {
     display: none;
   }
@@ -764,7 +764,7 @@
   }
 }
 /* A narrow pane stacks them: the legend a filmstrip under the stage. */
-@container files (max-width: 40rem) {
+@container files (--narrow-files) {
   .page-body {
     flex-direction: column;
   }

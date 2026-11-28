@@ -640,6 +640,54 @@ def test_activity_wait_outlives_the_per_call_budget(root, home, *, binary):
         assert_true(elapsed > waited, f"returned in {elapsed:.1f}s, before the activity ended")
 
 
+def test_background_output_is_cut_at_the_tool_result_size(root, home, *, binary):
+    """A finished background command's output, delivered or waited for, is a
+    tool result: tools.resultChars cuts it, keeping its head and tail."""
+    workspace = root / "background-cut-workspace"
+    workspace.mkdir()
+    long = "sleep 1; printf HEAD; head -c 20000 /dev/zero | tr '\\0' x; printf TAIL"
+    seen = {}
+
+    def launch(*_):
+        return tool_call("run", {"command": long, "yield_ms": 250})
+
+    def let_it_finish(*_):
+        return tool_call("run", {"command": "sleep 2"}, call_id="call-2")
+
+    def delivered(_, body):
+        def text(message):
+            content = message.get("content")
+            if isinstance(content, list):
+                return "".join(part.get("text", "") for part in content if isinstance(part, dict))
+            return content if isinstance(content, str) else ""
+
+        seen["delivered"] = next(text(m) for m in body["messages"] if "[Activity result" in text(m))
+        return tool_call("run", {"command": long, "yield_ms": 250}, call_id="call-3")
+
+    def wait_for_it(*_):
+        return tool_call(
+            "activity", {"operation": "wait", "mode": "all", "wait_ms": 10000}, call_id="call-4"
+        )
+
+    def finish(_, body):
+        seen["waited"] = tool_results(body["messages"])[-1]
+        return event({"content": "cut-ok"})
+
+    for cap, kept, least in ((None, 8000, 6000), ("3000", 3000, 1500)):
+        steps = [launch, let_it_finish, delivered, wait_for_it, finish]
+        with Server(steps) as server:
+            env = base_env(home, server.url)
+            if cap:
+                env["UAGENT_TOOL_RESULT_CHARS"] = cap
+            result = run(workspace, env, "--yolo", "-p", "run it", timeout=60, binary=binary)
+            assert_true(result.returncode == 0, result.stderr)
+        for path, text in seen.items():
+            # Head and tail kept, the middle cut, within the setting; by
+            # default more than the 6000 the activity paths once kept.
+            assert_true("HEAD" in text and "TAIL" in text, (path, text[:200]))
+            assert_true(least < text.count("x") <= kept, (path, cap, text.count("x")))
+
+
 def test_parallel_run_overlaps(root, home, *, binary):
     """`run` is parallel_safe: independent commands must overlap, not queue."""
     count = 4

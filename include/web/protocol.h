@@ -12,11 +12,10 @@
 namespace uagent::web {
 using session::kCommandBytes;
 using session::kFrameBytes;
-using session::kGlobalAssetBytes;
 using session::kProtocol;
 using session::kQueueBytes;
 using session::kSessionAssetBytes;
-using session::kUploadBytes;
+using session::kTransferBytes;
 using session::kUploadCount;
 using session::OpaqueId;
 using session::Pipe;
@@ -42,6 +41,8 @@ struct WebOptions {
   int64_t terminal_idle_minutes = 0;
   // Each terminal's newest output kept, in KiB (web.terminalScrollbackKb).
   int64_t terminal_scrollback_kb = 0;
+  // One web upload at most, in MiB (attachments.maxMb), read at start.
+  int64_t upload_mb = 0;
   // Optional complete gateway bundle, resolved from user configuration.
   std::string remote_bundle;
   // Ask GitHub for the newest release once a day, unasked.

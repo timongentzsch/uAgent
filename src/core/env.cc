@@ -75,6 +75,18 @@ std::string PlanFile() {
 int64_t ReadFileLines() { return LongSetting(Cfg("UAGENT_READ_FILE_LINES")); }
 
 int64_t AttachmentLimitMb() { return LongSetting(Cfg("UAGENT_ATTACHMENT_MB")); }
+int64_t AttachmentStoreMb() {
+  return LongSetting(Cfg("UAGENT_ATTACHMENT_STORE_MB"));
+}
+int64_t AgentReportChars() {
+  return LongSetting(Cfg("UAGENT_AGENT_REPORT_CHARS"));
+}
+int64_t WebSearchMaxTokens() {
+  return LongSetting(Cfg("UAGENT_WEB_SEARCH_MAX_TOKENS"));
+}
+int64_t CompactionInputKb() {
+  return LongSetting(Cfg("UAGENT_COMPACTION_INPUT_KB"));
+}
 
 int64_t HistoryDays() { return LongSetting(Cfg("UAGENT_HISTORY_DAYS")); }
 int64_t HistoryFiles() { return LongSetting(Cfg("UAGENT_HISTORY_FILES")); }

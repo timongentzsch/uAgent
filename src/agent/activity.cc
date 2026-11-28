@@ -1013,12 +1013,6 @@ std::string ActivityResultHeader(const ActivityCompletion& completion) {
 
 namespace {
 
-int64_t AutomaticResultCap() {
-  int64_t cap = ToolResultCap();
-  return cap > 0 ? std::min<int64_t>(cap, kActivityResultChars)
-                 : kActivityResultChars;
-}
-
 // A detached leader's exit status, kept from the poll that reaps it until
 // its result is taken: no later poll finds a child to ask. Reaping and
 // keeping are one step, so two waits at once agree on it.
@@ -1166,7 +1160,8 @@ ToolResult WaitResult(const std::vector<ActivityCompletion>& completions,
 
 std::vector<ActivityCompletion> ActivityTakeCompletedDetails(
     ActivitySupervisor& supervisor, std::string_view kind) {
-  return TakeCompleted(supervisor, kind, nullptr, AutomaticResultCap());
+  // A finished command's output is a tool result, cut as one.
+  return TakeCompleted(supervisor, kind, nullptr, ToolResultCap());
 }
 
 EndedCommand EndedOf(const ActivityCompletion& completion) {

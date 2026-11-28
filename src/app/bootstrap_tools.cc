@@ -47,11 +47,11 @@ session::AssetStoreResult StoreSessionFile(const std::string& session_path,
   if (RemoteWorkspace()) {
     const json remote = WorkspaceRequest({{"op", "bytes"}, {"path", path}});
     if (!HexDecode(JsonValue(remote, "data", ""), bytes,
-                   session::kUploadBytes)) {
+                   session::kTransferBytes)) {
       stored.error = JsonValue(remote, "error", "Cannot read remote file.");
       return stored;
     }
-  } else if (!ReadRegularFile(path, session::kUploadBytes, bytes,
+  } else if (!ReadRegularFile(path, session::kTransferBytes, bytes,
                               stored.error)) {
     return stored;
   }

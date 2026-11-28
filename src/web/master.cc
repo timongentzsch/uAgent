@@ -283,7 +283,7 @@ bool Master::Initialize(std::string& error) {
   server_.set_write_timeout(kWriteTimeoutSeconds);
   server_.set_keep_alive_max_count(kKeepAliveRequests);
   server_.set_keep_alive_timeout(kKeepAliveTimeoutSeconds);
-  server_.set_payload_max_length(kUploadBytes);
+  server_.set_payload_max_length(LargestBody());
   server_.set_default_headers(
       {{"X-Content-Type-Options", "nosniff"},
        {"Referrer-Policy", "no-referrer"},
@@ -539,20 +539,25 @@ void Master::RegisterApiRoutes() {
           device = DeviceId(request);
           devices = PublicDevices();
         }
-        const json body = {{"v", kProtocol},
-                           {"epoch", epoch_},
-                           {"cursor", std::move(catalogue["cursor"])},
-                           {"sessions", std::move(catalogue["sessions"])},
-                           {"spaces", std::move(catalogue["spaces"])},
-                           {"pins", std::move(catalogue["pins"])},
-                           {"commands", CommandSchemaJson()},
-                           {"detail", ConfiguredDetail()},
-                           {"thinking", ConfiguredThinking()},
-                           {"capabilities", push_->Capabilities(device)},
-                           {"devices", std::move(devices)},
-                           {"scheduled", std::move(catalogue["scheduled"])},
-                           {"terminals", TerminalList()},
-                           {"device", device}};
+        const json body = {
+            {"v", kProtocol},
+            {"epoch", epoch_},
+            {"cursor", std::move(catalogue["cursor"])},
+            {"sessions", std::move(catalogue["sessions"])},
+            {"spaces", std::move(catalogue["spaces"])},
+            {"pins", std::move(catalogue["pins"])},
+            {"commands", CommandSchemaJson()},
+            {"detail", ConfiguredDetail()},
+            {"thinking", ConfiguredThinking()},
+            {"capabilities", push_->Capabilities(device)},
+            {"devices", std::move(devices)},
+            {"scheduled", std::move(catalogue["scheduled"])},
+            {"terminals", TerminalList()},
+            // What one upload may be, as this host enforces
+            // it: the client refuses a larger file before
+            // sending it.
+            {"upload_bytes", MiB(static_cast<size_t>(options_.upload_mb))},
+            {"device", device}};
         Reply(response, body);
       });
   server_.Get(R"(/api/sessions/([a-f0-9]{16,64}))",
@@ -765,7 +770,7 @@ bool Master::RegisterAssetRoutes(std::string& error) {
   const char* dist = getenv(kWebDistEnv);
   std::string ignored;
   if (dist) {
-    ReadRegularFile(std::string(dist) + "/design-helper.js", kUploadBytes,
+    ReadRegularFile(std::string(dist) + "/design-helper.js", kTransferBytes,
                     design_helper_, ignored);
   }
   for (const Asset& asset : Assets()) {

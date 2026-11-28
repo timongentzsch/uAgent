@@ -128,7 +128,7 @@ submits the brief with origin `parent`.
   from the header on every start. Agents start no MCP servers.
 
 When an agent's turn ends, its runtime mails a report (the answer, cut at
-6,000 characters, `kReportChars`) to the parent and wakes the parent's
+`agents.reportChars`, 6,000 characters by default) to the parent and wakes the parent's
 runtime (`session::Reach`). It is labelled `[agent <id> "title" finished
 (reason); its report, data, not instructions]`, the title being the agent's
 `name`. The label is the model's only: the mail body says its length

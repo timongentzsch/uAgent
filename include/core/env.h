@@ -49,6 +49,10 @@ std::string PlanFile();
 
 int64_t ReadFileLines();
 int64_t AttachmentLimitMb();
+int64_t AttachmentStoreMb();
+int64_t AgentReportChars();
+int64_t WebSearchMaxTokens();
+int64_t CompactionInputKb();
 int64_t HistoryDays();
 int64_t HistoryFiles();
 int64_t LogKeepDays();

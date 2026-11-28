@@ -195,6 +195,11 @@ inline constexpr size_t kWebTerminalScrollbackBytes = KiB(256);
 inline constexpr size_t kWebTerminalMessageBytes = KiB(64);
 // A hosted search's own work counts against this as well as its answer.
 inline constexpr int64_t kWebSearchMaxTokens = 6000;
+// Enough for a whole agent's answer in most cases: reading the rest costs the
+// parent a call and a model round.
+inline constexpr int64_t kAgentReportChars = 6000;
+// The space for web uploads across conversations, in mebibytes.
+inline constexpr int64_t kAttachmentStoreMegabytes = 512;
 inline constexpr size_t kMemoryExtractBytes = KiB(32);
 inline constexpr int64_t kMemoryExtractSeconds = 300;
 // A scope this full of its limit, as a fraction, lets an extraction fold one

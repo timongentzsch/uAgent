@@ -176,8 +176,9 @@ void Master::Events(const Request& request, Response& response) {
 void Master::Upload(const Request& request, Response& response,
                     const httplib::ContentReader& reader) {
   std::string bytes;
+  const size_t most = MiB(static_cast<size_t>(options_.upload_mb));
   bool read = reader([&](const char* data, size_t length) {
-    if (length > kUploadBytes - bytes.size()) return false;
+    if (length > most - bytes.size()) return false;
     bytes.append(data, length);
     return true;
   });
@@ -214,7 +215,7 @@ void Master::AssetRead(const Request& request, Response& response) {
   const auto [asset, extension] = session::ReadAssetRecord(stem);
   const std::string mime = JsonValue(asset, "mime", "");
   if (extension.empty() ||
-      !ReadRegularFile(stem + extension, kUploadBytes, bytes, error)) {
+      !ReadRegularFile(stem + extension, LargestBody(), bytes, error)) {
     Error(response, "asset unavailable", 404);
     return;
   }

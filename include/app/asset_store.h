@@ -18,11 +18,14 @@
 
 namespace uagent::session {
 
-// Upload quotas: one file, one message, one session, all sessions.
-inline constexpr size_t kUploadBytes = MiB(8);
+// A file passed whole between the host and the web or a remote main. One
+// web upload is bounded by attachments.maxMb instead.
+inline constexpr size_t kTransferBytes = MiB(8);
+// Upload quotas: one message, one session, all sessions.
 inline constexpr size_t kUploadCount = 8;
 inline constexpr size_t kSessionAssetBytes = MiB(64);
-inline constexpr size_t kGlobalAssetBytes = MiB(512);
+// The space for uploads across conversations, from attachments.storeMb.
+size_t GlobalAssetBytes();
 // An asset's record (`<id>.json` beside its bytes), small by construction.
 inline constexpr size_t kAssetRecordBytes = KiB(1);
 

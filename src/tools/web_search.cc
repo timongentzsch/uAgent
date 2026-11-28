@@ -134,7 +134,7 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
         config.request_timeout_s = WebSearchTimeoutSeconds();
         Api side(std::move(config));
         ApplyRoute(side, active);
-        side.max_output_tokens = kWebSearchMaxTokens;
+        side.max_output_tokens = WebSearchMaxTokens();
         side.native_web_search = true;
         side.keep_abort = true;
         const auto started = std::chrono::steady_clock::now();

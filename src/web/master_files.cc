@@ -239,7 +239,7 @@ void Master::Files(const Request& request, Response& response) {
       Reply(response, result);
       return;
     }
-    if (!HexDecode(JsonValue(result, "data", ""), bytes, kUploadBytes)) {
+    if (!HexDecode(JsonValue(result, "data", ""), bytes, kTransferBytes)) {
       Error(response, "Invalid remote file", 502);
       return;
     }
@@ -250,7 +250,7 @@ void Master::Files(const Request& request, Response& response) {
     const auto target = root ? Resolve(*root, path) : std::nullopt;
     std::string error;
     if (!target ||
-        !ReadRegularFile(target->string(), kUploadBytes, bytes, error)) {
+        !ReadRegularFile(target->string(), kTransferBytes, bytes, error)) {
       Error(response, "not found", 404);
       return;
     }
@@ -401,7 +401,7 @@ void Master::Preview(const Request& request, Response& response) {
     std::string bytes, error;
     if (mime.empty() || !rest.is_relative() ||
         relative.find("..") != std::string::npos ||
-        !ReadRegularFile(file.string(), kUploadBytes, bytes, error)) {
+        !ReadRegularFile(file.string(), kTransferBytes, bytes, error)) {
       Error(response, "not found", 404);
       return;
     }
@@ -429,7 +429,7 @@ void Master::Preview(const Request& request, Response& response) {
   std::string bytes;
   if (result.contains("error") ||
       (!deck &&
-       !HexDecode(JsonValue(result, "data", ""), bytes, kUploadBytes))) {
+       !HexDecode(JsonValue(result, "data", ""), bytes, kTransferBytes))) {
     Error(response, JsonValue(result, "error", "not found"),
           JsonValue(result, "status", 404));
     return;
@@ -533,7 +533,7 @@ void Master::Picture(const Request& request, Response& response,
   const char* kind = pdf ? "pdf" : "png";
   std::string bytes;
   if (!result.contains(kind) ||
-      !Base64Decode(JsonValue(result, kind, ""), bytes, kUploadBytes)) {
+      !Base64Decode(JsonValue(result, kind, ""), bytes, kTransferBytes)) {
     Error(response, JsonValue(result, "error", "the browser drew nothing"),
           502);
     return;

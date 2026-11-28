@@ -203,7 +203,7 @@ std::string Application::PresentPlan() {
   const std::string path = PlanFile();
   std::string plan, error;
   if (path.empty() ||
-      !ReadRegularFile(path, session::kUploadBytes, plan, error) ||
+      !ReadRegularFile(path, session::kTransferBytes, plan, error) ||
       Blank(plan)) {
     agent_.RecordReceipt({"Planning", "No plan written", "still in plan mode"},
                          json::array());

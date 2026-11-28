@@ -486,6 +486,16 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       ReloadPolicy::kNextUserTurn, "conversation",
                       "context percentage that triggers compaction"),
         "Compact at"),
+    registry::Advanced(registry::Named(
+        registry::Int(
+            "context.compactionInputKb", "UAGENT_COMPACTION_INPUT_KB", {},
+            static_cast<int64_t>(kCompactionTranscriptBytes / KiB(1)),
+            static_cast<int64_t>(kCompactionTranscriptFloorBytes / KiB(1)),
+            4096, ReloadPolicy::kNextUserTurn, "conversation",
+            "kibibytes of the conversation the summary model reads "
+            "when the context is compacted",
+            kScopeUser),
+        "Compaction input")),
 
     registry::Advanced(registry::Named(
         registry::Int("tools.resultChars", "UAGENT_TOOL_RESULT_CHARS", {}, 8000,
@@ -608,6 +618,13 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "approval before asking the person",
                       kScopeUser),
         "Parent decision wait")),
+    registry::Advanced(registry::Named(
+        registry::Int("agents.reportChars", "UAGENT_AGENT_REPORT_CHARS", {},
+                      kAgentReportChars, 500, 48000,
+                      ReloadPolicy::kNextUserTurn, "agents",
+                      "characters of an agent's final answer its parent reads",
+                      kScopeUser),
+        "Agent report length")),
 
     registry::Named(
         registry::Choice(
@@ -630,6 +647,13 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       5, 1, 50, ReloadPolicy::kRestartRequired, "web-search",
                       "results one search query returns"),
         "Results per search")),
+    registry::Advanced(registry::Named(
+        registry::Int("webSearch.maxTokens", "UAGENT_WEB_SEARCH_MAX_TOKENS", {},
+                      kWebSearchMaxTokens, 500, 64000,
+                      ReloadPolicy::kNextUserTurn, "web-search",
+                      "tokens the web-search model's answer may take",
+                      kScopeUser),
+        "Search answer length")),
     registry::Advanced(registry::Named(
         registry::Int("webSearch.maxUses", "UAGENT_WEB_SEARCH_MAX_USES", {}, 3,
                       1, 10, ReloadPolicy::kRestartRequired, "web-search",
@@ -760,13 +784,23 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Advanced(registry::Named(
         registry::Int("attachments.maxMb", "UAGENT_ATTACHMENT_MB", {}, 10, 1,
                       kConfigMaxMegabytes, ReloadPolicy::kNextUserTurn,
-                      "attachments", "largest attachment in mebibytes"),
+                      "attachments",
+                      "largest attachment or web upload in mebibytes; the web "
+                      "host takes a new value when it restarts"),
         "Attachment size limit")),
     registry::Advanced(registry::Named(
         registry::Int("attachments.maxCount", "UAGENT_ATTACHMENT_COUNT", {}, 8,
                       1, 64, ReloadPolicy::kNextUserTurn, "attachments",
                       "attachments queued for one model request"),
         "Attachments per request")),
+    registry::Advanced(registry::Named(
+        registry::Int("attachments.storeMb", "UAGENT_ATTACHMENT_STORE_MB", {},
+                      kAttachmentStoreMegabytes, 64, 65536,
+                      ReloadPolicy::kNextUserTurn, "attachments",
+                      "mebibytes kept for files uploaded in the web app, "
+                      "across conversations; a full store refuses new ones",
+                      kScopeUser),
+        "Upload storage")),
     registry::Advanced(registry::Named(
         registry::Int("attachments.maxImagePx", "UAGENT_IMAGE_MAX_PX", {}, 2048,
                       256, 8192, ReloadPolicy::kNextUserTurn, "attachments",

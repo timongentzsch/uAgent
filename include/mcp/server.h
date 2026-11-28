@@ -79,6 +79,7 @@ struct McpServer {
   // Protocol 2026-07-28 is stateless: no initialize lifecycle is kept here.
   std::string rbuf;  // lines from the server, read up to `rstart`
   size_t rstart = 0;
+  size_t rscanned = 0;  // no newline in rbuf before this
   int64_t next_id = 1;
   json config;
   json roots = json::array();

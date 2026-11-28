@@ -473,7 +473,6 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   std::map<std::string, Entry> next;
   if (fs::is_directory(fs::symlink_status(base, ec))) {
     for (const auto& entry : fs::directory_iterator(base, ec)) {
-      if (out.size() >= kMaxCatalogueEntries) break;
       if (entry.path().extension() != ".json" ||
           !fs::is_regular_file(entry.symlink_status(ec))) {
         continue;
@@ -514,7 +513,6 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.name = SessionName(header);
         item.agent_call = JsonValue(agent, "call", "");
         item.side = JsonValue(header, "side", json(nullptr));
-        if (!item.side.contains("asked")) item.side = nullptr;
         item.parent =
             JsonValue(agent, "parent",
                       JsonValue(item.side, "detached", false)
@@ -537,15 +535,13 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
             [](const SessionInfo& a, const SessionInfo& b) {
               return a.mtime == b.mtime ? a.path < b.path : a.mtime > b.mtime;
             });
+  if (out.size() > kMaxCatalogueEntries) out.resize(kMaxCatalogueEntries);
   return out;
 }
 
 json SideOf(const json& facts) {
   const json* origin = JsonObject(facts, "side-origin");
-  // Before 1.12, /btw forked an independent conversation. Its origin
-  // recorded the source and tools, without the timestamp of an attached side
-  // chat.
-  if (!origin || !origin->contains("asked")) return nullptr;
+  if (!origin) return nullptr;
   const auto parent = JsonValue(*origin, "parent", "");
   const json* fork = JsonObject(facts, "fork-origin");
   if (parent.empty() || (fork && JsonValue(*fork, "source", "") != parent)) {

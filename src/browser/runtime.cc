@@ -276,6 +276,7 @@ void Runtime::Stop(bool preserve_lease) {
   action_target_.clear();
   view_width_ = view_height_ = 0;
   cdp_buffer_.clear();
+  cdp_scanned_ = 0;
   profile_setup_ = false;
   agent_session_ = std::move(session);
   interaction_ = std::move(interaction);
@@ -519,12 +520,13 @@ json Runtime::Call(const std::string& method, const json& parameters,
       Send(method, scaled.is_null() ? parameters : scaled, session);
   if (id < 0) return {{"error", "Chrome control pipe is stuck or closed"}};
   for (;;) {
-    size_t end = cdp_buffer_.find('\0');
+    size_t end = cdp_buffer_.find('\0', cdp_scanned_);
     if (end != std::string::npos) {
       json response = json::parse(
           cdp_buffer_.begin(),
           cdp_buffer_.begin() + static_cast<ptrdiff_t>(end), nullptr, false);
       cdp_buffer_.erase(0, end + 1);
+      cdp_scanned_ = 0;
       if (JsonValue(response, "id", int64_t{-1}) == id) return response;
       // Events have no reply id. Only the main frame's loading state is
       // kept; a page's main frame id is its target id.
@@ -599,6 +601,7 @@ json Runtime::Call(const std::string& method, const json& parameters,
       if (held && OpenDialog()) return {{"dialog", true}};
       continue;
     }
+    cdp_scanned_ = cdp_buffer_.size();
     if (cdp_buffer_.size() > MiB(16)) {
       return {{"error", "Chrome response exceeded limit"}};
     }

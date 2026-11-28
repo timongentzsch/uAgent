@@ -2,7 +2,7 @@
 
 import json
 
-from integration_support import Server, assert_true, event, session_id, wait_until, write_session
+from integration_support import Server, assert_true, event, wait_until
 from web_support import idle, web_host
 
 
@@ -38,52 +38,6 @@ def test_web_side_chat_belongs_to_its_conversation_until_detached(root, home, *,
                 return item["parent"] == "" and item["side"].get("detached")
 
             wait_until(own, "the side chat stayed one")
-
-
-def test_web_side_chat_from_v1_11_stays_independent_after_resume_and_parent_deletion(
-    root, home, *, binary
-):
-    messages = [
-        {"role": "system", "content": "baseline"},
-        {"role": "user", "content": "earlier question"},
-    ]
-    lead = write_session(home, "lead", messages, cwd=root)
-    parent = session_id(lead)
-    old = write_session(
-        home,
-        "earlier-side",
-        messages,
-        cwd=root,
-        parent_session_id=lead.stem,
-        display={
-            "ids": [1, 2],
-            "next": 3,
-            "facts": {
-                "fork-origin": {"source": parent},
-                "side-origin": {"parent": parent, "tools": ["read_path"]},
-            },
-        },
-    )
-    old_id = session_id(old)
-    with Server([lambda *_: event({"content": "new answer"})]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, _):
-            client.pair(code)
-
-            def check_standalone():
-                row = listing(client)[old_id]
-                assert_true(not row["parent"] and row.get("side") is None, row)
-
-            check_standalone()
-            active = client.command("activate", {"id": old_id, "generation": ""})["session"]
-            client.command("submit", active, text="resume")
-            client.until(active, lambda value: idle(value) and "new answer" in json.dumps(value))
-            client.command("close", client.snapshot(active)["metadata"])
-            check_standalone()
-            client.command("delete", listing(client)[parent])
-            check_standalone()
-            assert_true(
-                old.is_file() and not lead.exists(), "only the original conversation is deleted"
-            )
 
 
 def test_web_side_chats_are_deleted_with_their_conversation(root, home, *, binary):

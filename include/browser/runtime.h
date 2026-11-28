@@ -109,6 +109,7 @@ class Runtime {
   int64_t next_id_ = 0;
   int view_width_ = 0, view_height_ = 0;
   std::string cdp_buffer_;
+  size_t cdp_scanned_ = 0;  // no frame end in cdp_buffer_ before this
   std::string target_, page_session_, observation_;
   // The looks at this tab's document, the latest last. A number of any of
   // them names what that look numbered, so one look serves several actions.

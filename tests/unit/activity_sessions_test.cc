@@ -1456,6 +1456,24 @@ TEST_CASE(TestChildSessionsStayOutOfTheCatalogue) {
   }
 }
 
+TEST_CASE(TestAFullCatalogueLeavesOutTheOldest) {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("catalogue-cap");
+  const fs::path dir = fs::path(UagentDir(kHistoryDir));
+  fs::create_directories(dir);
+  for (size_t i = 0; i < kMaxCatalogueEntries; ++i) {
+    WriteSessionFile(dir / ("s" + std::to_string(i) + ".json"));
+  }
+  const fs::path oldest = WriteSessionFile(dir / "oldest.json");
+  fs::last_write_time(oldest,
+                      fs::file_time_type::clock::now() - std::chrono::hours(1));
+  const std::vector<SessionInfo> listed = ListSessions(SessionScope::kAll);
+  CHECK(listed.size() == kMaxCatalogueEntries);
+  CHECK(std::ranges::none_of(listed, [&](const SessionInfo& info) {
+    return info.path == oldest.string();
+  }));
+}
+
 TEST_CASE(TestAFolderHoldsWhatWorksInItAndTheAgentsUnderIt) {
   namespace fs = std::filesystem;
   TestWorkspace workspace("folder-sessions");

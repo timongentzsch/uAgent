@@ -123,7 +123,9 @@ const watch = (base, send) => {
 
 // Fills the marks and watches the pointer on them: what was not filled is
 // said, for the agent.
+let watched = false;
 export async function fill(marks, base, send) {
-  watch(base, send);
+  if (!watched) watch(base, send);
+  watched = true;
   return (await Promise.all(marks.map(fillOne))).filter(Boolean);
 }
